@@ -1,6 +1,6 @@
+import { CrownIcon, RoleType } from "./CrownIcon";
 'use client'
 
-import { CrownIcon, RoleType } from "./CrownIcon";
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -37,21 +37,6 @@ interface PostModalProps {
   onDeleted?: () => void
 }
 
-
-function renderFormattedContent(text: string) {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  return text.split(urlRegex).map((part, i) => {
-    if (part.match(urlRegex)) {
-      return (
-        <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline break-all hover:text-blue-400">
-          {part}
-        </a>
-      );
-    }
-    return <span key={i} className="break-words break-all">{part}</span>;
-  });
-}
-
 export default function PostModal({ postId, onClose, onDeleted }: PostModalProps) {
   const router = useRouter()
   const [post, setPost] = useState<Post | null>(null)
@@ -64,25 +49,37 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
 
   // 편집 모드 상태 관리
-  const [isEditing, setIsEditing] = useState(false)
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
+  const [authorNickname, setAuthorNickname] = useState<string>("");
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const email = session?.user?.email?.toLowerCase();
+      if (email === "iwsamuel08@gmail.com") {
+        setCurrentUserRole("creator");
+      } else if (email) {
+        supabase.from("user_roles").select("role").eq("email", email).maybeSingle().then(({ data }) => {
+          if (data?.role) setCurrentUserRole(data.role as RoleType);
+        });
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!post?.author_id) {
       setAuthorRole(null);
+      setAuthorNickname("");
       return;
     }
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", post.author_id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.role) setAuthorRole(data.role as RoleType);
-        else setAuthorRole(null);
-      });
+    supabase.from("user_roles").select("role").eq("user_id", post.author_id).maybeSingle().then(({ data }) => {
+      if (data?.role) setAuthorRole(data.role as RoleType);
+    });
+    supabase.from("profiles").select("nickname").eq("id", post.author_id).maybeSingle().then(({ data }) => {
+      if (data?.nickname) setAuthorNickname(data.nickname);
+    });
   }, [post?.author_id]);
-  const [currentUserRole, setCurrentUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -137,14 +134,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   // 게시글 데이터 및 세션 로드
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-        const uEmail = session?.user?.email?.toLowerCase()
-        if (uEmail === "iwsamuel08@gmail.com") {
-          setCurrentUserRole("creator")
-        } else if (uEmail) {
-          supabase.from("user_roles").select("role").eq("email", uEmail).maybeSingle().then(({ data }) => {
-            if (data?.role) setCurrentUserRole(data.role as any)
-          })
-        }
       setCurrentUserId(session?.user?.id ?? null)
     })
 
@@ -304,8 +293,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   }
 
-  const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id)
-  const canManage = Boolean(post && (isAuthor || ["creator", "super_admin", "admin"].includes(currentUserRole || "")))
+  const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
+  const canManage = Boolean(post && (isAuthor || currentUserRole === "creator" || currentUserRole === "super_admin" || currentUserRole === "admin"));
 
   return (
     <>

@@ -1,10 +1,8 @@
 import React from "react";
-
 export type RoleType = "creator" | "super_admin" | "admin" | null | undefined;
 
 export function CrownIcon({ role, className = "w-4 h-4" }: { role: RoleType; className?: string }) {
   if (!role) return null;
-
   let color = "#EF4444";
   let title = "사이트 제작자";
   if (role === "super_admin") {

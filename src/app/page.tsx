@@ -1,3 +1,4 @@
+import { CrownIcon } from "@/components/CrownIcon";
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
@@ -146,7 +147,7 @@ function FeedContent() {
                     </p>
                     <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-zinc-500 pt-1">
                       <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
-                        <UserIcon className="w-3.5 h-3.5 text-zinc-400" />
+                        <CrownIcon role={(post as any)?.author_role} className="w-3.5 h-3.5" />
                         {post.author_nickname}
                       </span>
                       <span className="flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500">
