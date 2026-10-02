@@ -1,6 +1,6 @@
 'use client'
 
-import { CrownIcon } from "./CrownIcon"
+import { CrownIcon, RoleType } from "./CrownIcon";
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -65,6 +65,23 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   // 편집 모드 상태 관리
   const [isEditing, setIsEditing] = useState(false)
+  const [authorRole, setAuthorRole] = useState<RoleType>(null);
+
+  useEffect(() => {
+    if (!post?.author_id) {
+      setAuthorRole(null);
+      return;
+    }
+    supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", post.author_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.role) setAuthorRole(data.role as RoleType);
+        else setAuthorRole(null);
+      });
+  }, [post?.author_id]);
   const [currentUserRole, setCurrentUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [saving, setSaving] = useState(false)
