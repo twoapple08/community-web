@@ -1,4 +1,4 @@
-import { CrownIcon } from "./CrownIcon";
+import { CrownIcon } from "./CrownIcon"
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -50,6 +50,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   // 편집 모드 상태 관리
   const [isEditing, setIsEditing] = useState(false)
+  const [currentUserRole, setCurrentUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -104,6 +105,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   // 게시글 데이터 및 세션 로드
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+        const uEmail = session?.user?.email?.toLowerCase()
+        if (uEmail === "iwsamuel08@gmail.com") {
+          setCurrentUserRole("creator")
+        } else if (uEmail) {
+          supabase.from("user_roles").select("role").eq("email", uEmail).maybeSingle().then(({ data }) => {
+            if (data?.role) setCurrentUserRole(data.role as any)
+          })
+        }
       setCurrentUserId(session?.user?.id ?? null)
     })
 
@@ -263,7 +272,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   }
 
-  const isAuthor = currentUserId && post && currentUserId === post.author_id
+  const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id)
+  const canManage = Boolean(post && (isAuthor || ["creator", "super_admin", "admin"].includes(currentUserRole || "")))
 
   return (
     <>
@@ -290,11 +300,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     <span>{copied ? '링크 복사됨' : '공유'}</span>
                   </button>
 
-                  {canManage && (
+                  {Boolean(canManage && post) && (
                     <>
                       <button
                         onClick={() => {
-                          setEditTitle(post.title)
+                          setEditTitle(post?.title || "")
                           setIsEditing(true)
                         }}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900/50 transition"

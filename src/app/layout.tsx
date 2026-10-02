@@ -1,5 +1,5 @@
-import { CrownIcon } from "@/components/CrownIcon";
-import { AdminModal } from "@/components/AdminModal";
+import { CrownIcon } from "@/components/CrownIcon"
+import { AdminModal } from "@/components/AdminModal"
 'use client'
 
 import './globals.css'
@@ -15,7 +15,9 @@ export default function RootLayout({
 }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [user, setUser] = useState<any>(null)
-  const [nickname, setNickname] = useState<string>('')
+  const [nickname, setNickname] = useState<string>("")
+  const [userRole, setUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null)
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
   
   // 닉네임 수정 팝업 상태
   const [showNicknameModal, setShowNicknameModal] = useState(false)
@@ -175,16 +177,6 @@ export default function RootLayout({
               </button>
 
               {user ? (
-              <>
-                {(userRole === "creator" || userRole === "super_admin") && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAdminModalOpen(true)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition"
-                  >
-                    <span>👑 관리자</span>
-                  </button>
-                )}
                 <>
                   <Link
                     href="/write"
@@ -204,9 +196,19 @@ export default function RootLayout({
                     title="닉네임 변경"
                   >
                     <UserIcon className="w-3.5 h-3.5 text-emerald-500" />
-                    <div className="flex items-center gap-1.5"><CrownIcon role={userRole} className="w-4 h-4" /><span className="max-w-[110px] truncate">{nickname || "닉네임 설정"}</span></div>
+                    <CrownIcon role={userRole} className="w-4 h-4" />
+                <span className="max-w-[110px] truncate">{nickname || "닉네임 설정"}</span>
                     <Settings2 className="w-3 h-3 text-zinc-400" />
                   </button>
+                {(userRole === "creator" || userRole === "super_admin") && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAdminModalOpen(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition shrink-0"
+                  >
+                    <span>👑 관리자</span>
+                  </button>
+                )}
 
                   <button
                     onClick={handleLogout}
@@ -291,7 +293,7 @@ export default function RootLayout({
           </div>
         )}
       <AdminModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} currentUserRole={userRole} />
-</body>
+  </body>
     </html>
   )
 }

@@ -5,13 +5,13 @@ export type RoleType = "creator" | "super_admin" | "admin" | null | undefined;
 export function CrownIcon({ role, className = "w-4 h-4" }: { role: RoleType; className?: string }) {
   if (!role) return null;
 
-  let color = "#EF4444"; // creator: 빨간색
+  let color = "#EF4444";
   let title = "사이트 제작자";
   if (role === "super_admin") {
-    color = "#F59E0B"; // super_admin: 노란색
+    color = "#F59E0B";
     title = "최고관리자";
   } else if (role === "admin") {
-    color = "#FFFFFF"; // admin: 흰색
+    color = "#FFFFFF";
     title = "일반관리자";
   }
 
@@ -22,9 +22,9 @@ export function CrownIcon({ role, className = "w-4 h-4" }: { role: RoleType; cla
       stroke="#18181b"
       strokeWidth="1.5"
       className={`inline-block shrink-0 drop-shadow-sm ${className}`}
-      title={title}
       style={{ filter: role === "admin" ? "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" : undefined }}
     >
+      <title>{title}</title>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
