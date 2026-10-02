@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { MessageSquare, Calendar, User as UserIcon } from 'lucide-react'
+import { MessageSquare, Calendar, User as UserIcon, Image as ImageIcon } from 'lucide-react'
 import PostModal from '@/components/PostModal'
 
 interface Post {
@@ -12,6 +12,27 @@ interface Post {
   content: string
   created_at: string
   author_id: string
+}
+
+// 본문 HTML에서 첫 번째 대표 이미지 URL 추출
+const extractFirstImage = (html: string): string | null => {
+  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i)
+  return match ? match[1] : null
+}
+
+// HTML 태그를 제거하고 목록용 순수 텍스트만 추출
+const extractPlainText = (html: string): string => {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// 본문에 포함된 전체 이미지 개수 산출
+const countImages = (html: string): number => {
+  const matches = html.match(/<img[^>]+src=["']([^"']+)["']/gi)
+  return matches ? matches.length : 0
 }
 
 function FeedContent() {
@@ -38,12 +59,10 @@ function FeedContent() {
     fetchPosts()
   }, [])
 
-  // 카드 클릭 시 URL을 ?post=아이디 로 변경 (새로고침 없이 팝업 오픈)
   const handleOpenPost = (id: string) => {
     router.push(`/?post=${id}`, { scroll: false })
   }
 
-  // 닫을 때 URL에서 ?post 파라미터 제거
   const handleClosePost = () => {
     router.push('/', { scroll: false })
   }
@@ -65,35 +84,63 @@ function FeedContent() {
         </div>
       ) : (
         <div className="space-y-4">
-          {posts.map((post) => (
-            <article
-              key={post.id}
-              onClick={() => handleOpenPost(post.id)}
-              className="p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-2xl transition duration-200 shadow-sm dark:shadow-md space-y-3 cursor-pointer group select-none"
-            >
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                {post.title}
-              </h2>
-              <div
-                className="text-sm text-zinc-600 dark:text-zinc-300 line-clamp-3 prose prose-zinc dark:prose-invert max-w-none leading-relaxed pointer-events-none"
-                dangerouslySetInnerHTML={{ __html: post.content }}
-              />
-              <div className="flex items-center gap-4 text-xs text-zinc-500 border-t border-zinc-100 dark:border-zinc-800/80 pt-3 mt-2 pointer-events-none">
-                <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                  <UserIcon className="w-3.5 h-3.5" />
-                  작성자
-                </span>
-                <span className="flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {new Date(post.created_at).toLocaleDateString()}
-                </span>
-              </div>
-            </article>
-          ))}
+          {posts.map((post) => {
+            const thumbnail = extractFirstImage(post.content)
+            const plainText = extractPlainText(post.content)
+            const imageCount = countImages(post.content)
+
+            return (
+              <article
+                key={post.id}
+                onClick={() => handleOpenPost(post.id)}
+                className="group p-5 sm:p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-2xl transition duration-200 shadow-sm dark:shadow-md cursor-pointer select-none"
+              >
+                <div className="flex items-start justify-between gap-4 sm:gap-6">
+                  {/* 좌측: 텍스트 정보 영역 */}
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1">
+                      {post.title}
+                    </h2>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                      {plainText || '내용이 없습니다.'}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-zinc-500 pt-1">
+                      <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
+                        <UserIcon className="w-3.5 h-3.5" />
+                        작성자
+                      </span>
+                      <span className="flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {new Date(post.created_at).toLocaleDateString()}
+                      </span>
+                      {imageCount > 1 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50">
+                          <ImageIcon className="w-3 h-3" />
+                          +{imageCount}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 우측: 대표 썸네일 이미지 미리보기 영역 (사진 존재 시 노출) */}
+                  {thumbnail && (
+                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80">
+                      <img
+                        src={thumbnail}
+                        alt={post.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                </div>
+              </article>
+            )
+          })}
         </div>
       )}
 
-      {/* URL에 ?post=아이디 가 있을 경우 모달 팝업 표시 */}
+      {/* URL에 ?post=아이디 가 있을 경우 오버레이 모달 표시 */}
       {activePostId && (
         <PostModal
           postId={activePostId}
@@ -107,7 +154,7 @@ function FeedContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-zinc-400">로딩 중...</div>}>
+    <Suspense fallback={<div className="py-20 text-center text-zinc-400">피드 데이터를 불러오는 중...</div>}>
       <FeedContent />
     </Suspense>
   )
