@@ -1,3 +1,4 @@
+import { CrownIcon } from "./CrownIcon";
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -289,7 +290,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     <span>{copied ? '링크 복사됨' : '공유'}</span>
                   </button>
 
-                  {isAuthor && (
+                  {canManage && (
                     <>
                       <button
                         onClick={() => {
