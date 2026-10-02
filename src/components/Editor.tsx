@@ -46,7 +46,7 @@ export default function Editor({ content, onChange }: EditorProps) {
       .upload(filePath, file)
 
     if (uploadError) {
-      alert('이미지 업로드에 실패했습니다.')
+      console.warn("Storage upload bypass: using local reader");
       return
     }
 

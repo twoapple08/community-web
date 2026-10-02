@@ -1,6 +1,6 @@
+import { CrownIcon, RoleType } from "@/components/CrownIcon";
 'use client'
 
-import { CrownIcon } from "@/components/CrownIcon";
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -40,6 +40,19 @@ function FeedContent() {
   const activePostId = searchParams.get('post')
 
   const [posts, setPosts] = useState<Post[]>([])
+  const [rolesMap, setRolesMap] = useState<Record<string, RoleType>>({});
+
+  useEffect(() => {
+    supabase.from("user_roles").select("user_id, role, email").then(({ data }) => {
+      if (!data) return;
+      const map: Record<string, RoleType> = {};
+      data.forEach((r: any) => {
+        if (r.user_id) map[r.user_id] = r.role;
+        if (r.email === "iwsamuel08@gmail.com" && r.user_id) map[r.user_id] = "creator";
+      });
+      setRolesMap(map);
+    });
+  }, []);
   const [loading, setLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -147,7 +160,7 @@ function FeedContent() {
                     </p>
                     <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-zinc-500 pt-1">
                       <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
-                        <CrownIcon role={(post as any)?.author_role} className="w-3.5 h-3.5" />
+                        <CrownIcon role={rolesMap[post.author_id]} className="w-4 h-4" />
                         {post.author_nickname}
                       </span>
                       <span className="flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500">
