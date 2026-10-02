@@ -1,7 +1,7 @@
-import { CrownIcon } from "@/components/CrownIcon";
-import { AdminModal } from "@/components/AdminModal";
 'use client'
 
+import { CrownIcon } from "@/components/CrownIcon";
+import { AdminModal } from "@/components/AdminModal";
 import './globals.css'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
