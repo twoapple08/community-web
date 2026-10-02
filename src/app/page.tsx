@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MessageSquare, Calendar, User as UserIcon } from 'lucide-react'
+import Link from 'next/link'
 
 interface Post {
   id: string
@@ -45,18 +46,21 @@ export default function Home() {
         <div className="py-20 text-center border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl bg-zinc-50 dark:bg-zinc-900/50">
           <MessageSquare className="w-10 h-10 text-zinc-400 dark:text-zinc-600 mx-auto mb-3" />
           <p className="text-zinc-700 dark:text-zinc-300 font-medium">아직 등록된 게시글이 없습니다.</p>
-          <p className="text-sm text-zinc-500 mt-1">상단 '글쓰기' 버튼을 눌러 첫 번째 게시글을 작성해 보세요!</p>
+          <p className="text-sm text-zinc-500 mt-1">상단 '글쓰기' 버튼을 눌러 첫 번째 게시글을 작성해 보세요.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <article
+            <Link
               key={post.id}
-              className="p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 rounded-2xl transition shadow-sm dark:shadow-md space-y-3"
+              href={`/posts/${post.id}`}
+              className="block group p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700 rounded-2xl transition duration-200 shadow-sm dark:shadow-md space-y-3 cursor-pointer"
             >
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">{post.title}</h2>
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                {post.title}
+              </h2>
               <div
-                className="text-sm text-zinc-600 dark:text-zinc-300 line-clamp-3 prose prose-zinc dark:prose-invert max-w-none leading-relaxed"
+                className="text-sm text-zinc-600 dark:text-zinc-300 line-clamp-3 prose prose-zinc dark:prose-invert max-w-none leading-relaxed pointer-events-none"
                 dangerouslySetInnerHTML={{ __html: post.content }}
               />
               <div className="flex items-center gap-4 text-xs text-zinc-500 border-t border-zinc-100 dark:border-zinc-800/80 pt-3 mt-2">
@@ -69,7 +73,7 @@ export default function Home() {
                   {new Date(post.created_at).toLocaleDateString()}
                 </span>
               </div>
-            </article>
+            </Link>
           ))}
         </div>
       )}
