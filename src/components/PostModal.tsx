@@ -17,7 +17,9 @@ import {
   Italic,
   Underline,
   Image as ImageIcon,
-  Loader2
+  Loader2,
+  ZoomIn,
+  Eye
 } from 'lucide-react'
 
 interface Post {
@@ -42,11 +44,17 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [deleting, setDeleting] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // 사진 확대 미리보기 (Lightbox) 상태
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+
   // 편집 모드 상태 관리
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [attachedImages, setAttachedImages] = useState<string[]>([])
+  const [selectedEditorImg, setSelectedEditorImg] = useState<HTMLImageElement | null>(null)
+
   const editorRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -54,15 +62,25 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  // ESC 키 이벤트 감지
+  // 본문 내 이미지 목록 스캔 동기화
+  const syncAttachedImages = () => {
+    if (!editorRef.current) return
+    const imgs = Array.from(editorRef.current.querySelectorAll('img')).map((img) => img.src)
+    setAttachedImages(imgs)
+  }
+
+  // ESC 키 이벤트 감지 (계층별 종료)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showDeleteConfirm) {
+        if (previewImageUrl) {
+          setPreviewImageUrl(null)
+        } else if (showDeleteConfirm) {
           setShowDeleteConfirm(false)
         } else if (isEditing) {
           if (window.confirm('수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.')) {
             setIsEditing(false)
+            setSelectedEditorImg(null)
           }
         } else {
           onClose()
@@ -71,7 +89,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, showDeleteConfirm, isEditing])
+  }, [onClose, showDeleteConfirm, isEditing, previewImageUrl])
 
   // 배경 스크롤 차단
   useEffect(() => {
@@ -108,10 +126,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   }, [postId])
 
-  // 편집 모드 진입 시 에디터 본문 초기화
+  // 편집 모드 진입 시 에디터 본문 초기화 및 이미지 추출
   useEffect(() => {
     if (isEditing && editorRef.current && post) {
       editorRef.current.innerHTML = post.content
+      syncAttachedImages()
     }
   }, [isEditing, post])
 
@@ -122,7 +141,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // 복사 오류 예외 처리
+      // 복사 예외
     }
   }
 
@@ -149,12 +168,44 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       if (editorRef.current) {
         editorRef.current.focus()
         document.execCommand('insertImage', false, publicUrl)
+        setTimeout(syncAttachedImages, 100)
       }
     } catch (err: any) {
       alert(`이미지 업로드 실패: ${err.message || '스토리지 연결 오류'}`)
     } finally {
       setUploadingImage(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  // 에디터 내 특정 이미지 삭제 (URL 기준)
+  const handleRemoveImageBySrc = (src: string) => {
+    if (!editorRef.current) return
+    const imgElements = editorRef.current.querySelectorAll('img')
+    imgElements.forEach((img) => {
+      if (img.src === src) {
+        img.remove()
+      }
+    })
+    setSelectedEditorImg(null)
+    syncAttachedImages()
+  }
+
+  // 에디터 내부 클릭 감지 (이미지 선택 토글)
+  const handleEditorClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      setSelectedEditorImg(target as HTMLImageElement)
+    } else {
+      setSelectedEditorImg(null)
+    }
+  }
+
+  // 열람 모드 본문 클릭 시 이미지 확대 감지
+  const handleContentViewClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      setPreviewImageUrl((target as HTMLImageElement).src)
     }
   }
 
@@ -186,8 +237,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     } else {
       setPost((prev) => (prev ? { ...prev, title: editTitle.trim(), content: contentToSave } : null))
       setIsEditing(false)
+      setSelectedEditorImg(null)
       setSaving(false)
-      if (onDeleted) onDeleted() // 피드 목록 리프레시
+      if (onDeleted) onDeleted()
       router.refresh()
     }
   }
@@ -274,7 +326,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     <span>{saving ? '저장 중...' : '수정 완료'}</span>
                   </button>
                   <button
-                    onClick={() => setIsEditing(false)}
+                    onClick={() => {
+                      setIsEditing(false)
+                      setSelectedEditorImg(null)
+                    }}
                     disabled={saving}
                     className="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition"
                   >
@@ -304,7 +359,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 존재하지 않거나 삭제된 게시글입니다.
               </div>
             ) : isEditing ? (
-              /* --- [수정 편집 모드 뷰] --- */
+              /* --- [수정 편집 모드] --- */
               <div className="space-y-4">
                 {/* 제목 입력창 */}
                 <div>
@@ -320,7 +375,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   />
                 </div>
 
-                {/* 서식 서브 툴바 */}
+                {/* 서식 툴바 */}
                 <div className="flex flex-wrap items-center gap-1 p-2 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl">
                   <button
                     type="button"
@@ -349,7 +404,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
                   <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-1" />
 
-                  {/* 이미지 업로드 트리거 */}
+                  {/* 이미지 업로드 */}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
@@ -368,6 +423,78 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   />
                 </div>
 
+                {/* 첨부된 사진 관리 트레이 */}
+                {attachedImages.length > 0 && (
+                  <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+                      <span>삽입된 사진 관리 ({attachedImages.length}장)</span>
+                      <span className="text-[11px] text-zinc-400">클릭 시 미리보기 / 휴지통 클릭 시 삭제</span>
+                    </div>
+                    <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
+                      {attachedImages.map((src, index) => (
+                        <div
+                          key={index}
+                          className="relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800"
+                        >
+                          <img
+                            src={src}
+                            alt={`첨부 사진 ${index + 1}`}
+                            className="w-full h-full object-cover cursor-pointer"
+                            onClick={() => setPreviewImageUrl(src)}
+                          />
+                          {/* 호버 오버레이: 미리보기 & 삭제 버튼 */}
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImageUrl(src)}
+                              className="p-1 rounded-full bg-white/80 hover:bg-white text-zinc-900 transition"
+                              title="크게 보기"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImageBySrc(src)}
+                              className="p-1 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
+                              title="사진 삭제"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 에디터 내 이미지 직접 선택 시 퀵 액션 배너 */}
+                {selectedEditorImg && (
+                  <div className="flex items-center justify-between px-4 py-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs text-emerald-800 dark:text-emerald-300">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      선택된 사진
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImageUrl(selectedEditorImg.src)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition font-medium"
+                      >
+                        <ZoomIn className="w-3 h-3" />
+                        미리보기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImageBySrc(selectedEditorImg.src)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white transition font-medium"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        사진 삭제
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* 본문 WYSIWYG 에디터 */}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
@@ -377,12 +504,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    className="min-h-[300px] p-4 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 prose prose-zinc dark:prose-invert max-w-none leading-relaxed text-base [&_img]:rounded-xl [&_img]:my-4 [&_img]:max-w-full"
+                    onClick={handleEditorClick}
+                    onInput={syncAttachedImages}
+                    className="min-h-[300px] p-4 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 prose prose-zinc dark:prose-invert max-w-none leading-relaxed text-base [&_img]:rounded-xl [&_img]:my-4 [&_img]:max-w-full [&_img]:cursor-pointer [&_img:hover]:ring-2 [&_img:hover]:ring-emerald-400 transition"
                   />
                 </div>
               </div>
             ) : (
-              /* --- [일반 열람 모드 뷰] --- */
+              /* --- [일반 열람 모드] --- */
               <>
                 <header className="space-y-3 pb-4 border-b border-zinc-100 dark:border-zinc-800/60">
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-snug">
@@ -400,8 +529,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   </div>
                 </header>
 
+                {/* 본문 렌더링 (사진 클릭 시 라이트박스 오픈) */}
                 <div
-                  className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed text-base [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-6 [&_img]:max-w-full"
+                  onClick={handleContentViewClick}
+                  className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed text-base [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-6 [&_img]:max-w-full [&_img]:cursor-zoom-in [&_img:hover]:opacity-95 transition"
                   dangerouslySetInnerHTML={{ __html: post.content }}
                 />
               </>
@@ -410,7 +541,46 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       </div>
 
-      {/* 커스텀 삭제 확인 팝업 */}
+      {/* 사진 전체화면 확대 라이트박스 (미리보기 모달) */}
+      {previewImageUrl && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setPreviewImageUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewImageUrl(null)}
+            className="absolute top-5 right-5 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition z-10"
+            title="닫기 (ESC)"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          <div
+            className="relative max-w-5xl max-h-[90vh] flex flex-col items-center animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewImageUrl}
+              alt="사진 미리보기"
+              className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
+            />
+            <div className="mt-3 text-xs text-zinc-400 flex items-center gap-2">
+              <span>사진 미리보기</span>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => window.open(previewImageUrl, '_blank')}
+                className="underline hover:text-white transition"
+              >
+                원본 파일 열기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 커스텀 게시글 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
