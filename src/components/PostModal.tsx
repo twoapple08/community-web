@@ -27,7 +27,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [deleting, setDeleting] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // ESC 키 입력 감지 시 닫기
+  // ESC 키 입력 감지 시 모달 닫기
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -35,6 +35,15 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
+
+  // 모달 활성화 시 메인 피드 배경 스크롤 차단 (이중 스크롤 간섭 방지)
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [])
 
   // 현재 사용자 및 게시글 단건 조회
   useEffect(() => {
@@ -93,16 +102,18 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const isAuthor = currentUserId && post && currentUserId === post.author_id
 
   return (
+    // 외곽 오버레이: 배경 전체가 스크롤 영역으로 동작하며 카드 전체를 위아래로 이동시킴
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4 sm:p-6 py-8 sm:py-14 flex justify-center items-start animate-in fade-in duration-200"
       onClick={onClose}
     >
+      {/* 팝업 카드: 내부 스크롤바 및 고정 높이 제한 완전 제거 */}
       <div
-        className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-3xl my-auto sm:my-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 상단 툴바 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
+        {/* 상단 스티키 툴바: 본문 스크롤 시에도 최상단에 투명 블러로 유지 */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopyLink}
@@ -134,8 +145,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           </button>
         </div>
 
-        {/* 본문 스크롤 영역 */}
-        <div className="overflow-y-auto px-6 py-6 sm:px-8 space-y-6">
+        {/* 본문 전체 표시 영역: 높이 제한과 자체 스크롤바가 존재하지 않음 */}
+        <div className="px-6 py-6 sm:px-8 space-y-6">
           {loading ? (
             <div className="py-20 text-center text-zinc-400 dark:text-zinc-500">
               내용을 불러오는 중입니다...
@@ -163,7 +174,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </header>
 
               <div
-                className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed text-base [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-4 [&_img]:max-w-full"
+                className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed text-base [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-6 [&_img]:max-w-full"
                 dangerouslySetInnerHTML={{ __html: post.content }}
               />
             </>
