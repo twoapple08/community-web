@@ -1,6 +1,6 @@
-import { CrownIcon, RoleType } from "@/components/CrownIcon";
 'use client'
 
+import { CrownIcon, RoleType } from "@/components/CrownIcon";
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
