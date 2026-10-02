@@ -16,20 +16,21 @@ export function CrownIcon({ role, className = "w-4 h-4" }: { role: RoleType; cla
   }
 
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill={color}
-      stroke="#18181b"
-      strokeWidth="1.5"
-      className={`inline-block shrink-0 drop-shadow-sm ${className}`}
-      style={{ filter: role === "admin" ? "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" : undefined }}
-    >
-      <title>{title}</title>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3 18h18v2H3v-2zm1.5-3l2.5-7.5L12 12l5-4.5 2.5 7.5H4.5z"
-      />
-    </svg>
+    <span className="inline-flex items-center justify-center shrink-0 mr-1" title={title}>
+      <svg
+        viewBox="0 0 24 24"
+        fill={color}
+        stroke="#18181b"
+        strokeWidth="1.5"
+        className={`drop-shadow-sm ${className}`}
+        style={{ filter: role === "admin" ? "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" : undefined }}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3 18h18v2H3v-2zm1.5-3l2.5-7.5L12 12l5-4.5 2.5 7.5H4.5z"
+        />
+      </svg>
+    </span>
   );
 }

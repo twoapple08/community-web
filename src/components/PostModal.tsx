@@ -37,6 +37,21 @@ interface PostModalProps {
   onDeleted?: () => void
 }
 
+
+function renderFormattedContent(text: string) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.split(urlRegex).map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline break-all hover:text-blue-400">
+          {part}
+        </a>
+      );
+    }
+    return <span key={i} className="break-words break-all">{part}</span>;
+  });
+}
+
 export default function PostModal({ postId, onClose, onDeleted }: PostModalProps) {
   const router = useRouter()
   const [post, setPost] = useState<Post | null>(null)
@@ -310,7 +325,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900/50 transition"
                       >
                         <Pencil className="w-3.5 h-3.5" />
-                        <span>수정</span>
+                        <span>{isAuthor ? "수정" : "강제 편집"}</span>
                       </button>
 
                       <button
@@ -318,7 +333,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900/50 transition"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span>삭제</span>
+                        <span>{isAuthor ? "삭제" : "강제 삭제"}</span>
                       </button>
                     </>
                   )}
@@ -517,7 +532,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     suppressContentEditableWarning
                     onClick={handleEditorClick}
                     onInput={syncAttachedImages}
-                    className="min-h-[300px] p-4 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 prose prose-zinc dark:prose-invert max-w-none leading-relaxed text-base [&_img]:rounded-xl [&_img]:my-4 [&_img]:max-w-full [&_img]:cursor-pointer [&_img:hover]:ring-2 [&_img:hover]:ring-emerald-400 transition"
+                    className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap overflow-hidden"
                   />
                 </div>
               </div>
@@ -530,7 +545,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   </h2>
                   <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
                     <span className="flex items-center gap-1.5">
-                      <UserIcon className="w-3.5 h-3.5" />
+                      <CrownIcon role={authorRole} className="w-4 h-4" />
                       작성자
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -543,7 +558,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 {/* 본문 렌더링 (사진 클릭 시 라이트박스 오픈) */}
                 <div
                   onClick={handleContentViewClick}
-                  className="prose prose-zinc dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed text-base [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-6 [&_img]:max-w-full [&_img]:cursor-zoom-in [&_img:hover]:opacity-95 transition"
+                  className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap overflow-hidden"
                   dangerouslySetInnerHTML={{ __html: post.content }}
                 />
               </>
