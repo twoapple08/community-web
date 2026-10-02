@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { MessageSquare, Calendar, User as UserIcon } from 'lucide-react'
-import Link from 'next/link'
+import PostModal from '@/components/PostModal'
 
 interface Post {
   id: string
@@ -13,25 +14,39 @@ interface Post {
   author_id: string
 }
 
-export default function Home() {
+function FeedContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const activePostId = searchParams.get('post')
+
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const fetchPosts = async () => {
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*')
-        .order('created_at', { ascending: false })
+  const fetchPosts = async () => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-      if (!error && data) {
-        setPosts(data)
-      }
-      setLoading(false)
+    if (!error && data) {
+      setPosts(data)
     }
+    setLoading(false)
+  }
 
+  useEffect(() => {
     fetchPosts()
   }, [])
+
+  // 카드 클릭 시 URL을 ?post=아이디 로 변경 (새로고침 없이 팝업 오픈)
+  const handleOpenPost = (id: string) => {
+    router.push(`/?post=${id}`, { scroll: false })
+  }
+
+  // 닫을 때 URL에서 ?post 파라미터 제거
+  const handleClosePost = () => {
+    router.push('/', { scroll: false })
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -51,10 +66,10 @@ export default function Home() {
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <Link
+            <article
               key={post.id}
-              href={`/posts/${post.id}`}
-              className="block group p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700 rounded-2xl transition duration-200 shadow-sm dark:shadow-md space-y-3 cursor-pointer"
+              onClick={() => handleOpenPost(post.id)}
+              className="p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 rounded-2xl transition duration-200 shadow-sm dark:shadow-md space-y-3 cursor-pointer group select-none"
             >
               <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                 {post.title}
@@ -63,7 +78,7 @@ export default function Home() {
                 className="text-sm text-zinc-600 dark:text-zinc-300 line-clamp-3 prose prose-zinc dark:prose-invert max-w-none leading-relaxed pointer-events-none"
                 dangerouslySetInnerHTML={{ __html: post.content }}
               />
-              <div className="flex items-center gap-4 text-xs text-zinc-500 border-t border-zinc-100 dark:border-zinc-800/80 pt-3 mt-2">
+              <div className="flex items-center gap-4 text-xs text-zinc-500 border-t border-zinc-100 dark:border-zinc-800/80 pt-3 mt-2 pointer-events-none">
                 <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
                   <UserIcon className="w-3.5 h-3.5" />
                   작성자
@@ -73,10 +88,27 @@ export default function Home() {
                   {new Date(post.created_at).toLocaleDateString()}
                 </span>
               </div>
-            </Link>
+            </article>
           ))}
         </div>
       )}
+
+      {/* URL에 ?post=아이디 가 있을 경우 모달 팝업 표시 */}
+      {activePostId && (
+        <PostModal
+          postId={activePostId}
+          onClose={handleClosePost}
+          onDeleted={fetchPosts}
+        />
+      )}
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-zinc-400">로딩 중...</div>}>
+      <FeedContent />
+    </Suspense>
   )
 }
