@@ -97,12 +97,12 @@ function FeedContent() {
   const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  // 페이지네이션 및 드롭업(Dropup) 상태
+  // 페이지네이션 및 드롭업 상태
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [postsPerPage, setPostsPerPage] = useState<number>(10);
   const [isPageSizeDropupOpen, setIsPageSizeDropupOpen] = useState(false);
 
-  // 공지사항 상태 및 분기
+  // 공지사항 상태
   const [notice, setNotice] = useState<SiteNotice | null>(null);
   const [isNoticeDetailOpen, setIsNoticeDetailOpen] = useState(false);
   const [isNoticeAutoPopup, setIsNoticeAutoPopup] = useState(false);
@@ -112,9 +112,15 @@ function FeedContent() {
   const [savingNotice, setSavingNotice] = useState(false);
   const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
 
-  // 화면 상단 미니멀 텍스트+테두리 알림 토스트 상태
-  const [noticeToast, setNoticeToast] = useState<{ show: boolean; leaving: boolean; text: string }>({
+  // 창 없이 텍스트+테두리만 있는 플로팅 토스트 상태 (페이드인 & 위로 페이드아웃)
+  const [noticeToast, setNoticeToast] = useState<{
+    show: boolean;
+    entered: boolean;
+    leaving: boolean;
+    text: string;
+  }>({
     show: false,
+    entered: false,
     leaving: false,
     text: '',
   });
@@ -187,12 +193,17 @@ function FeedContent() {
     setIsNoticeDetailOpen(false);
   };
 
+  // 페이드인 후 일정 시간 뒤 위로 슬라이드되며 페이드아웃되는 토스트 트리거
   const showTopToast = (msg: string) => {
-    setNoticeToast({ show: true, leaving: false, text: msg });
+    setNoticeToast({ show: true, entered: false, leaving: false, text: msg });
     setTimeout(() => {
-      setNoticeToast((prev) => ({ ...prev, leaving: true }));
+      setNoticeToast((prev) => ({ ...prev, entered: true }));
+    }, 25);
+
+    setTimeout(() => {
+      setNoticeToast((prev) => ({ ...prev, leaving: true, entered: false }));
       setTimeout(() => {
-        setNoticeToast({ show: false, leaving: false, text: '' });
+        setNoticeToast({ show: false, entered: false, leaving: false, text: '' });
       }, 350);
     }, 2400);
   };
@@ -409,62 +420,68 @@ function FeedContent() {
 
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
-      {/* 화면 상단 미니멀 플로팅 토스트 (창 배경 없이 텍스트+테두리만 존재, 위로 페이드아웃) */}
+      {/* 화면 상단 미니멀 알림 (창 없음, 텍스트+테두리만 존재, 페이드인 & 위로 페이드아웃) */}
       {noticeToast.show && (
         <div
-          className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 border border-blue-500 text-blue-500 dark:text-blue-400 bg-white/80 dark:bg-black/80 backdrop-blur-md rounded-none text-xs font-bold tracking-wide shadow-lg pointer-events-none transition-all duration-300 ease-out ${
-            noticeToast.leaving
-              ? 'opacity-0 -translate-y-5'
-              : 'opacity-100 translate-y-0'
+          className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-3.5 py-1.5 border border-blue-500/80 text-blue-600 dark:text-blue-400 bg-transparent rounded-none text-xs font-bold tracking-wide pointer-events-none transition-all duration-300 ease-out shadow-sm ${
+            noticeToast.entered && !noticeToast.leaving
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 -translate-y-4'
           }`}
         >
           {noticeToast.text}
         </div>
       )}
 
-      {/* 헤더 */}
+      {/* 헤더 타이틀 및 새로고침 */}
       <div className="flex items-center justify-between gap-3 pb-3 mb-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
-          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">자유롭게 소통하고 게시글을 공유하세요.</p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white transition-colors duration-300">
+            커뮤니티 피드
+          </h1>
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 transition-colors duration-300">
+            자유롭게 소통하고 게시글을 공유하세요.
+          </p>
         </div>
 
         <button
           onClick={handleManualRefresh}
           disabled={isRefreshing}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition duration-300 shadow-sm disabled:opacity-50 shrink-0"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors duration-300 shadow-sm disabled:opacity-50 shrink-0"
           title="피드 새로고침"
         >
           <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
-          <span className="hidden sm:inline">{isRefreshing ? '갱신 중...' : '새로고침'}</span>
+          <span className="hidden sm:inline">새로고침</span>
         </button>
       </div>
 
-      {/* 파란색 계열 직각 사각형 공지 배너 (제목과 날짜 크기 일치, 날짜 흰색, [공지사항] 확대) */}
+      {/* 파란색 계열 직각 사각형 공지 배너 (가독성을 위해 배경 채움 해제 + X축 수직 중심선 완벽 정렬) */}
       {notice && (
         <div
           onClick={() => {
             setIsNoticeAutoPopup(false);
             setIsNoticeDetailOpen(true);
           }}
-          className="w-full rounded-none bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-650 border border-blue-700 dark:border-blue-600 px-4 py-3 flex items-center justify-between gap-3 cursor-pointer transition duration-300 group select-none mb-3 shadow-sm"
+          className="w-full rounded-none bg-blue-50/50 dark:bg-blue-950/20 border border-blue-500/40 dark:border-blue-500/40 hover:bg-blue-100/40 dark:hover:bg-blue-950/40 px-3.5 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-colors duration-300 group select-none mb-3"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 bg-white/20 text-white rounded-none shrink-0">
-              <Megaphone className="w-4 h-4" />
+          {/* 좌측: 확성기, [공지사항], 제목, 날짜가 모두 동일한 수직 중심선에 일치 */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 bg-blue-100/70 dark:bg-blue-900/30 border border-blue-500/30 rounded-none">
+              <Megaphone className="w-3.5 h-3.5" />
             </div>
-            <span className="text-sm font-black text-white shrink-0 tracking-wide">
+            <span className="text-sm font-black text-blue-600 dark:text-blue-400 shrink-0 leading-none flex items-center">
               [공지사항]
             </span>
-            <p className="text-xs font-semibold text-white truncate group-hover:underline">
+            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate leading-none flex items-center group-hover:underline">
               {notice.title}
-            </p>
-            <span className="text-xs font-semibold text-white shrink-0 hidden sm:inline">
+            </span>
+            <span className="text-xs font-semibold text-zinc-500 dark:text-white shrink-0 hidden sm:inline-flex items-center leading-none">
               ({new Date(notice.updated_at).toLocaleDateString()})
             </span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {/* 우측: [공지 수정] 버튼도 정확히 같은 높이의 중심선에 일치 */}
+          <div className="flex items-center shrink-0">
             {isAdmin && (
               <button
                 type="button"
@@ -472,7 +489,7 @@ function FeedContent() {
                   e.stopPropagation();
                   setIsNoticeEditOpen(true);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-none bg-white/20 hover:bg-white/30 text-white border border-white/30 transition duration-300 shadow-sm"
+                className="inline-flex items-center justify-center gap-1 h-7 px-2.5 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-500 text-white transition-colors duration-300 shadow-sm shrink-0 leading-none"
               >
                 <Pencil className="w-3 h-3" />
                 <span>공지 수정</span>
@@ -493,13 +510,13 @@ function FeedContent() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="제목, 작성자, 내용 검색 (공백 무시)"
-            className="w-full pl-9 pr-8 py-2.5 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition duration-300"
+            className="w-full pl-9 pr-8 py-2.5 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors duration-300"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition duration-300"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -509,7 +526,7 @@ function FeedContent() {
         <button
           type="button"
           onClick={handleOpenFilterModal}
-          className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border transition duration-300 shadow-sm shrink-0 ${
+          className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border transition-colors duration-300 shadow-sm shrink-0 ${
             selectedFilterTags.length > 0
               ? 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-500/20'
               : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -532,13 +549,13 @@ function FeedContent() {
           {selectedFilterTags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition duration-300"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors duration-300"
             >
               #{tag}
               <button
                 type="button"
                 onClick={() => setSelectedFilterTags((prev) => prev.filter((t) => t !== tag))}
-                className="hover:text-rose-500 transition duration-300"
+                className="hover:text-rose-500"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -547,7 +564,7 @@ function FeedContent() {
           <button
             type="button"
             onClick={() => setSelectedFilterTags([])}
-            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1 transition duration-300"
+            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1"
           >
             초기화
           </button>
@@ -556,10 +573,10 @@ function FeedContent() {
 
       {/* 필터 탭 바 */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-6">
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold transition duration-300">
+        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold transition-colors duration-300">
           <button
             onClick={() => setOfficialFilter('all')}
-            className={`px-3 py-1.5 rounded-lg transition duration-300 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
               officialFilter === 'all'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -569,7 +586,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setOfficialFilter('official')}
-            className={`px-3 py-1.5 rounded-lg transition duration-300 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
               officialFilter === 'official'
                 ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -579,7 +596,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setOfficialFilter('unofficial')}
-            className={`px-3 py-1.5 rounded-lg transition duration-300 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
               officialFilter === 'unofficial'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -589,10 +606,10 @@ function FeedContent() {
           </button>
         </div>
 
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold transition duration-300">
+        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold transition-colors duration-300">
           <button
             onClick={() => setSortType('latest')}
-            className={`px-3 py-1.5 rounded-lg transition duration-300 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
               sortType === 'latest'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -602,7 +619,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setSortType('popular')}
-            className={`px-3 py-1.5 rounded-lg transition duration-300 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
               sortType === 'popular'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -612,7 +629,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setSortType('oldest')}
-            className={`px-3 py-1.5 rounded-lg transition duration-300 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
               sortType === 'oldest'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -675,7 +692,7 @@ function FeedContent() {
                         {post.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50 transition duration-300"
+                            className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50 transition-colors duration-300"
                           >
                             #{tag}
                           </span>
@@ -683,39 +700,40 @@ function FeedContent() {
                       </div>
                     )}
 
-                    <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed transition-colors duration-300">
                       {plainText || '내용이 없습니다.'}
                     </p>
 
+                    {/* 피드 하단 메타 정보 (X축 수직 중심선 완벽 정렬: leading-none 및 inline-flex 적용) */}
                     <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs text-zinc-500 pt-1">
-                      <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
+                      <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium leading-none transition-colors duration-300">
                         <CrownIcon role={post.author_role} className="w-4 h-4 shrink-0" />
-                        <span>{post.author_nickname}</span>
+                        <span className="leading-none">{post.author_nickname}</span>
                       </span>
-                      <span className="flex items-center gap-1 text-zinc-400 dark:text-zinc-500">
+                      <span className="inline-flex items-center gap-1 text-zinc-400 dark:text-zinc-500 leading-none transition-colors duration-300">
                         <Calendar className="w-3.5 h-3.5" />
-                        {new Date(post.created_at).toLocaleDateString()}
+                        <span className="leading-none">{new Date(post.created_at).toLocaleDateString()}</span>
                       </span>
-                      <span className="flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium">
+                      <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium leading-none transition-colors duration-300">
                         <Heart className="w-3.5 h-3.5 fill-rose-500/20" />
-                        {post.likes_count ?? 0}
+                        <span className="leading-none">{post.likes_count ?? 0}</span>
                       </span>
                       {imageCount > 1 && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50 leading-none transition-colors duration-300">
                           <ImageIcon className="w-3 h-3" />
-                          +{imageCount}
+                          <span className="leading-none">+{imageCount}</span>
                         </span>
                       )}
                     </div>
                   </div>
 
                   {post.is_preview_hidden ? (
-                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none">
+                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none transition-colors duration-300">
                       <EyeOff className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400 dark:text-zinc-500" />
                       <span className="text-[9px] sm:text-[10px] font-medium text-zinc-500 dark:text-zinc-400">미리보기 가림</span>
                     </div>
                   ) : thumbnail ? (
-                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80">
+                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80 transition-colors duration-300">
                       <img
                         src={thumbnail}
                         alt={post.title}
@@ -765,7 +783,7 @@ function FeedContent() {
       {/* 하단 페이지네이션 및 우측 드롭업 */}
       {filteredPosts.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors duration-300">
-          <div className="hidden sm:block text-xs text-zinc-400 w-32">
+          <div className="hidden sm:block text-xs text-zinc-400 w-32 transition-colors duration-300">
             전체 {filteredPosts.length}개
           </div>
 
@@ -854,7 +872,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 공지 상세 모달 (자동 팝업일 때만 체크박스 노출, 수동 클릭 시 체크박스 미노출) */}
+      {/* 공지 상세 모달 (자동 팝업일 때만 체크박스 노출 / 수동 클릭 시 체크박스 미노출) */}
       {isNoticeDetailOpen && notice && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300"
