@@ -2,6 +2,7 @@
 
 import { CrownIcon, RoleType } from "./CrownIcon";
 import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import ReportModal from './ReportModal';
@@ -48,6 +49,7 @@ interface PostModalProps {
 
 export default function PostModal({ postId, onClose, onDeleted }: PostModalProps) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [post, setPost] = useState<Post | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
@@ -83,6 +85,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [linkConfirmUrl, setLinkConfirmUrl] = useState<string | null>(null);
 
   const contentContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -219,14 +225,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setLoading(false);
   };
 
-  // 임베드 카드 메타데이터 비동기 바인딩
   useEffect(() => {
     if (!post?.content || !contentContainerRef.current) return;
 
     const embedElements = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
     embedElements.forEach(async (el) => {
       const url = el.getAttribute('data-embed-url');
-      const type = el.getAttribute('data-embed-type');
       if (!url) return;
 
       try {
@@ -343,7 +347,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
 
-    // 임베드 카드 액션 버튼 또는 카드 클릭 처리
     const embedCard = target.closest<HTMLElement>('[data-embed-url]');
     if (embedCard) {
       const href = embedCard.getAttribute('data-embed-url');
@@ -507,22 +510,28 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     anchors.forEach((a) => {
       const href = a.getAttribute('href') || '';
 
-      // 1. 유튜브: 레터박스 및 부가 설명 없이 16:9 순수 플레이어 (나무위키 스타일)
+      // 1. 유튜브: 레터박스 0% 나무위키 16:9 반응형 단독 플레이어
       const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch) {
         const videoId = ytMatch[1];
         const wrapper = doc.createElement('div');
-        wrapper.className = 'my-3 w-full max-w-2xl mx-auto rounded-none overflow-hidden shadow-md bg-black not-prose';
+        wrapper.className = 'my-3 w-full max-w-2xl mx-auto not-prose';
         wrapper.innerHTML = `
-          <div class="aspect-video w-full bg-black">
-            <iframe src="https://www.youtube.com/embed/${videoId}?rel=0" class="w-full h-full border-0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          <div style="position: relative; width: 100%; padding-top: 56.25%; height: 0; overflow: hidden; background: transparent; border-radius: 0;">
+            <iframe
+              src="https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0"
+              style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; margin: 0; padding: 0; display: block;"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen>
+            </iframe>
           </div>
         `;
         a.replaceWith(wrapper);
         return;
       }
 
-      // 2. 카카오톡: 노란색 바 형태 (라운드 스퀘어 배제, 링크 텍스트 미표기)
+      // 2. 카카오톡: 노란색 바 형태 (링크 텍스트 미표기)
       const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
       if (kakaoMatch) {
         const bar = doc.createElement('div');
@@ -546,7 +555,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         return;
       }
 
-      // 3. 디스코드: 파란색 바 형태 (라운드 스퀘어 배제, 링크 텍스트 미표기)
+      // 3. 디스코드: 파란색 바 형태 (링크 텍스트 미표기)
       const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i);
       if (discordMatch) {
         const bar = doc.createElement('div');
@@ -845,7 +854,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         )}
       </div>
 
-      {linkConfirmUrl && (
+      {/* 외부 링크 접속 확인 팝업 (document.body 포털 마운트로 스크롤 위치 무관 뷰포트 센터링) */}
+      {mounted && linkConfirmUrl && createPortal(
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
           onClick={() => setLinkConfirmUrl(null)}
@@ -894,9 +904,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
+      {/* 세분화 신고 모달 */}
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
@@ -904,9 +916,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         currentUserId={currentUserId}
       />
 
-      {showRequestDeleteModal && (
+      {/* 삭제 신청 모달 (포털 마운트) */}
+      {mounted && showRequestDeleteModal && createPortal(
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => !requestSubmitting && setShowRequestDeleteModal(false)}
         >
           <div
@@ -960,12 +973,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {previewImageUrl && (
+      {/* 사진 전체보기 팝업 (포털 마운트) */}
+      {mounted && previewImageUrl && createPortal(
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setPreviewImageUrl(null)}
         >
           <button
@@ -986,12 +1001,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
             />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {showDeleteConfirm && (
+      {/* 영구 삭제 확인 팝업 (포털 마운트) */}
+      {mounted && showDeleteConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setShowDeleteConfirm(false)}
         >
           <div
@@ -1033,7 +1050,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

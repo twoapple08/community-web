@@ -26,34 +26,40 @@ export default function RootLayout({
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
-  // 실버 팰리스 스타일: 데스크톱 브라우저 줌 상쇄 처리 (모바일 핀치 줌은 100% 보존)
+  // 실버 팰리스 스타일: 모바일 및 PC 브라우저 확대/축소(50%~200%) 역보정 스케일러
   const initialDprRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-    if (isTouch) return; // 모바일 터치 환경은 브라우저 줌 간섭 배제
+    // 모바일 브라우저의 텍스트 강제 비대화 방지
+    document.documentElement.style.webkitTextSizeAdjust = '100%';
+    (document.documentElement.style as any).textSizeAdjust = '100%';
 
     if (!initialDprRef.current) {
-      const saved = sessionStorage.getItem('base_desktop_dpr');
+      const saved = sessionStorage.getItem('base_app_dpr');
       if (saved) {
         initialDprRef.current = parseFloat(saved);
       } else {
         initialDprRef.current = window.devicePixelRatio || 1;
-        sessionStorage.setItem('base_desktop_dpr', String(initialDprRef.current));
+        sessionStorage.setItem('base_app_dpr', String(initialDprRef.current));
       }
     }
 
-    const adjustDesktopZoom = () => {
+    // 마스터께서 최적으로 지정하신 75% 수준의 밀도 높은 콤팩트 스케일 기준 계수
+    const OPTIMAL_DENSITY = 0.85;
+
+    const adjustResponsiveZoom = () => {
       const baseDpr = initialDprRef.current || 1;
       const currentDpr = window.devicePixelRatio || 1;
-      const zoomFactor = currentDpr / baseDpr;
-      const counterZoom = Math.max(0.5, Math.min(2.5, 1 / zoomFactor));
-      (document.body.style as any).zoom = counterZoom;
+      const zoomRatio = currentDpr / baseDpr;
+      // 브라우저 줌 배율의 역수를 취하여 확대/축소 영향을 상쇄하고 최적 비율 유지
+      const effectiveZoom = (1 / (zoomRatio || 1)) * OPTIMAL_DENSITY;
+      const clampedZoom = Math.max(0.4, Math.min(2.0, effectiveZoom));
+      (document.body.style as any).zoom = clampedZoom;
     };
 
-    window.addEventListener('resize', adjustDesktopZoom);
-    adjustDesktopZoom();
-    return () => window.removeEventListener('resize', adjustDesktopZoom);
+    window.addEventListener('resize', adjustResponsiveZoom);
+    adjustResponsiveZoom();
+    return () => window.removeEventListener('resize', adjustResponsiveZoom);
   }, []);
 
   useEffect(() => {

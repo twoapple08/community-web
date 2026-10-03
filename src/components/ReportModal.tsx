@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { Siren, X, Check } from 'lucide-react'
 
@@ -15,12 +16,12 @@ const IMAGE_REASONS = ['선정성 이미지 사용', '폭력적인 이미지 사
 const CONTENT_REASONS = ['욕설', '혐오 발언', '같은 내용 반복 게시'] as const;
 
 export default function ReportModal({ isOpen, onClose, postId, currentUserId }: ReportModalProps) {
+  const [mounted, setMounted] = useState(false)
   const [selectedReasons, setSelectedReasons] = useState<string[]>([])
   const [isOtherSelected, setIsOtherSelected] = useState(false)
   const [customReasonText, setCustomReasonText] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // 신고창 전용 커스텀 완료/오류 팝업
   const [resultPopup, setResultPopup] = useState<{
     show: boolean;
     title: string;
@@ -28,7 +29,11 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
     isSuccess?: boolean;
   } | null>(null);
 
-  if (!isOpen) return null
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!isOpen || !mounted) return null
 
   const toggleReason = (r: string) => {
     setSelectedReasons((prev) =>
@@ -95,7 +100,6 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
         })
       }
     } else {
-      // 요청 문구 정확 반영
       setResultPopup({
         show: true,
         title: '접수 완료',
@@ -106,9 +110,9 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
     setSubmitting(false)
   }
 
-  return (
+  const modalNode = (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
@@ -216,10 +220,9 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
         </form>
       </div>
 
-      {/* 신고창 디자인 일치 커스텀 접수 결과 팝업 */}
       {resultPopup && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/85"
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85"
           onClick={() => {
             if (resultPopup.isSuccess) onClose();
             setResultPopup(null);
@@ -252,4 +255,6 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
       )}
     </div>
   )
+
+  return createPortal(modalNode, document.body)
 }
