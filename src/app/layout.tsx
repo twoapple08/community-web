@@ -3,11 +3,13 @@
 import { CrownIcon } from "@/components/CrownIcon";
 import AdminModal from "@/components/AdminModal";
 import UserHubModal from "@/components/UserHubModal";
+import BlacklistModal from "@/components/BlacklistModal";
+import TermsModal from "@/components/TermsModal";
 import './globals.css'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Moon, Sun, PenSquare, LogOut, LogIn, Crown } from 'lucide-react'
+import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
 
 export default function RootLayout({
   children,
@@ -18,8 +20,42 @@ export default function RootLayout({
   const [user, setUser] = useState<any>(null)
   const [nickname, setNickname] = useState<string>("");
   const [userRole, setUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null);
+
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+
+  // 1. 화면 확대 및 축소(Ctrl+휠, Ctrl++, 모바일 제스처 줌) 완벽 차단
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) {
+        e.preventDefault()
+      }
+    }
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault()
+      }
+    }
+
+    window.addEventListener('wheel', handleWheel, { passive: false })
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('touchstart', handleTouchStart, { passive: false })
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('touchstart', handleTouchStart)
+    }
+  }, [])
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null
@@ -46,7 +82,7 @@ export default function RootLayout({
   const loadUserProfile = async (userId: string, email?: string) => {
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('nickname')
+      .select('nickname, terms_agreed')
       .eq('id', userId)
       .maybeSingle()
 
@@ -54,6 +90,13 @@ export default function RootLayout({
       setNickname(profileData.nickname)
     } else {
       setNickname('익명사용자')
+    }
+
+    // 약관 미동의 시 모달 자동 강제 호출
+    if (!profileData?.terms_agreed) {
+      setIsTermsModalOpen(true)
+    } else {
+      setIsTermsModalOpen(false)
     }
 
     if (email?.toLowerCase() === "iwsamuel08@gmail.com") {
@@ -92,6 +135,7 @@ export default function RootLayout({
       } else {
         setNickname('')
         setUserRole(null)
+        setIsTermsModalOpen(false)
       }
     })
 
@@ -119,6 +163,8 @@ export default function RootLayout({
     user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ||
     userRole === "creator" ||
     userRole === "super_admin"
+
+  const isAdminGroup = Boolean(userRole === "creator" || userRole === "super_admin" || userRole === "admin")
 
   return (
     <html lang="ko" className="dark">
@@ -176,6 +222,7 @@ export default function RootLayout({
                     <span className="max-w-[55px] sm:max-w-[110px] truncate">{nickname || "닉네임"}</span>
                   </button>
 
+                  {/* 관리자 지정 버튼 */}
                   {isCreatorOrSuperAdmin && (
                     <button
                       type="button"
@@ -188,6 +235,20 @@ export default function RootLayout({
                     </button>
                   )}
 
+                  {/* 관리자 지정과 로그아웃 사이: 테마 무관 무조건 흰색 테두리 검은색 박스에 흰색 글씨 블랙리스트 버튼 */}
+                  {isAdminGroup && (
+                    <button
+                      type="button"
+                      onClick={() => setIsBlacklistModalOpen(true)}
+                      className="!bg-black !text-white !border !border-white hover:!bg-zinc-900 inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 text-xs font-bold rounded-none transition whitespace-nowrap shrink-0 shadow-sm"
+                      title="블랙리스트 관리"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5 !text-white shrink-0" />
+                      <span>블랙리스트</span>
+                    </button>
+                  )}
+
+                  {/* 로그아웃 버튼 */}
                   <button
                     onClick={handleLogout}
                     className="inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-xs sm:text-sm font-medium transition duration-300 shrink-0"
@@ -229,6 +290,21 @@ export default function RootLayout({
           onClose={() => setIsAdminModalOpen(false)}
           currentUserRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}
         />
+
+        {/* 블랙리스트 관리 모달 */}
+        <BlacklistModal
+          isOpen={isBlacklistModalOpen}
+          onClose={() => setIsBlacklistModalOpen(false)}
+        />
+
+        {/* 로그인 시 필수 약관 동의 모달 (미동의 시 화면 이동 불가) */}
+        {user && (
+          <TermsModal
+            isOpen={isTermsModalOpen}
+            userId={user.id}
+            onAgreed={() => setIsTermsModalOpen(false)}
+          />
+        )}
       </body>
     </html>
   )

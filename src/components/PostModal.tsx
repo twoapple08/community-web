@@ -4,6 +4,7 @@ import { CrownIcon, RoleType } from "./CrownIcon";
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import ReportModal from './ReportModal';
 import {
   X,
   Calendar,
@@ -22,7 +23,10 @@ import {
   ShieldCheck,
   Send,
   EyeOff,
-  FileDown
+  FileDown,
+  Siren,
+  ExternalLink,
+  MessageCircle
 } from 'lucide-react';
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -54,7 +58,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const [isLiked, setIsLiked] = useState(false);
@@ -63,7 +66,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  // 편집 모드 상태
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
@@ -89,6 +91,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [hasDraft, setHasDraft] = useState(false);
+
+  // 신고 모달 상태
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const [customPopup, setCustomPopup] = useState<{
     isOpen: boolean;
@@ -167,7 +172,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (previewImageUrl) {
+        if (isReportModalOpen) {
+          setIsReportModalOpen(false);
+        } else if (previewImageUrl) {
           setPreviewImageUrl(null);
         } else if (showRequestDeleteModal) {
           setShowRequestDeleteModal(false);
@@ -191,7 +198,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl]);
+  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl, isReportModalOpen]);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -253,12 +260,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      setCustomPopup({
-        isOpen: true,
-        title: '상태 변경 실패',
-        message: `공식 상태 변경 실패: ${error.message}`,
-        type: 'alert'
-      });
+      alert(`공식 상태 변경 실패: ${error.message}`);
     } else {
       setPost({ ...post, is_official: nextStatus });
       if (onDeleted) onDeleted();
@@ -277,37 +279,20 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      setCustomPopup({
-        isOpen: true,
-        title: '신청 실패',
-        message: `삭제 신청 실패: ${error.message}`,
-        type: 'alert'
-      });
+      alert(`신청 실패: ${error.message}`);
       setRequestSubmitting(false);
     } else {
-      setCustomPopup({
-        isOpen: true,
-        title: '신청 접수',
-        message: '관리자에게 삭제 신청이 접수되었습니다. 검토 전까지 비공개 상태로 전환됩니다.',
-        type: 'alert',
-        onConfirm: () => {
-          setShowRequestDeleteModal(false);
-          onClose();
-          if (onDeleted) onDeleted();
-          router.refresh();
-        }
-      });
+      alert('관리자에게 삭제 신청이 접수되었습니다. 검토 전까지 비공개 상태로 전환됩니다.');
+      setShowRequestDeleteModal(false);
+      onClose();
+      if (onDeleted) onDeleted();
+      router.refresh();
     }
   };
 
   const handleToggleLike = async () => {
     if (!currentUserId) {
-      setCustomPopup({
-        isOpen: true,
-        title: '로그인 필요',
-        message: '좋아요 기능은 로그인이 필요합니다.',
-        type: 'alert'
-      });
+      alert('좋아요 기능은 로그인이 필요합니다.');
       return;
     }
     if (likeLoading) return;
@@ -405,12 +390,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       }
       setTimeout(syncAttachedImages, 100);
     } catch (err: any) {
-      setCustomPopup({
-        isOpen: true,
-        title: '이미지 업로드 오류',
-        message: err.message || '스토리지 연결 오류',
-        type: 'alert'
-      });
+      alert(`이미지 업로드 오류: ${err.message}`);
     } finally {
       setUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -452,12 +432,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     if (!currentUserId) return;
     const contentToSave = editorRef.current?.innerHTML || '';
     if (!editTitle.trim() && !contentToSave.trim()) {
-      setCustomPopup({
-        isOpen: true,
-        title: '임시보관 불가',
-        message: '제목 또는 본문 내용이 비어있어 보관할 수 없습니다.',
-        type: 'alert'
-      });
+      alert('제목 또는 내용이 비어있어 보관할 수 없습니다.');
       return;
     }
 
@@ -476,20 +451,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     );
 
     if (error) {
-      setCustomPopup({
-        isOpen: true,
-        title: '보관 실패',
-        message: `임시보관 실패: ${error.message}`,
-        type: 'alert'
-      });
+      alert(`임시보관 실패: ${error.message}`);
     } else {
       setHasDraft(true);
-      setCustomPopup({
-        isOpen: true,
-        title: '임시보관 완료',
-        message: '현재 수정 내용이 임시보관되었습니다. (최대 1개 유지)',
-        type: 'alert'
-      });
+      alert('현재 수정 내용이 임시보관되었습니다. (최대 1개 유지)');
     }
     setIsSavingDraft(false);
   };
@@ -503,46 +468,22 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .maybeSingle();
 
     if (!data) return;
-
-    setCustomPopup({
-      isOpen: true,
-      title: '임시보관 불러오기',
-      message: '보관된 임시글을 불러오시겠습니까? 현재 편집 중인 내용이 대체됩니다.',
-      type: 'confirm',
-      onConfirm: () => {
-        setEditTitle(data.title || '');
-        setEditTags(data.tags || []);
-        setEditThumbnailUrl(data.thumbnail_url || null);
-        setEditIsPreviewHidden(Boolean(data.is_preview_hidden));
-        if (editorRef.current) {
-          editorRef.current.innerHTML = data.content || '';
-          syncAttachedImages();
-        }
+    if (window.confirm('보관된 임시글을 불러오시겠습니까? 현재 편집 중인 내용이 대체됩니다.')) {
+      setEditTitle(data.title || '');
+      setEditTags(data.tags || []);
+      setEditThumbnailUrl(data.thumbnail_url || null);
+      setEditIsPreviewHidden(Boolean(data.is_preview_hidden));
+      if (editorRef.current) {
+        editorRef.current.innerHTML = data.content || '';
+        syncAttachedImages();
       }
-    });
+    }
   };
 
   const handleSaveEdit = async () => {
-    if (!editTitle.trim()) {
-      setCustomPopup({
-        isOpen: true,
-        title: '제목 입력',
-        message: '제목을 입력해 주십시오.',
-        type: 'alert'
-      });
-      return;
-    }
-
+    if (!editTitle.trim()) return alert('제목을 입력해 주십시오.');
     const contentToSave = editorRef.current?.innerHTML || '';
-    if (!contentToSave.trim() || contentToSave === '<p><br></p>') {
-      setCustomPopup({
-        isOpen: true,
-        title: '내용 입력',
-        message: '내용을 입력해 주십시오.',
-        type: 'alert'
-      });
-      return;
-    }
+    if (!contentToSave.trim() || contentToSave === '<p><br></p>') return alert('내용을 입력해 주십시오.');
 
     setSaving(true);
     const { error } = await supabase
@@ -557,12 +498,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      setCustomPopup({
-        isOpen: true,
-        title: '수정 실패',
-        message: `게시글 수정 실패: ${error.message}`,
-        type: 'alert'
-      });
+      alert(`수정 실패: ${error.message}`);
       setSaving(false);
     } else {
       if (currentUserId) {
@@ -589,14 +525,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   const handleExecuteDelete = async () => {
-    setDeleting(true);
-    setDeleteError(null);
-
     const { error } = await supabase.from('posts').delete().eq('id', postId);
-
     if (error) {
       setDeleteError(error.message);
-      setDeleting(false);
     } else {
       setShowDeleteConfirm(false);
       onClose();
@@ -605,26 +536,61 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 계층형 수정/삭제 권한 통제 로직 (IIFE 괄호 문법 보정 완료)
+  // 계층형 수정/삭제 권한 통제
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
-
   const canForceManage = Boolean((() => {
     if (!post || isAuthor) return false;
-    // 1. 작성자가 제작자인 경우 -> 누구도 강제 제어 불가
     if (authorRole === 'creator') return false;
-    // 2. 작성자가 최고관리자인 경우 -> 제작자만 가능
-    if (authorRole === 'super_admin') {
-      return currentUserRole === 'creator';
-    }
-    // 3. 작성자가 일반관리자인 경우 -> 제작자, 최고관리자만 가능
-    if (authorRole === 'admin') {
-      return currentUserRole === 'creator' || currentUserRole === 'super_admin';
-    }
-    // 4. 작성자가 일반 유저인 경우 -> 모든 관리자 가능
+    if (authorRole === 'super_admin') return currentUserRole === 'creator';
+    if (authorRole === 'admin') return currentUserRole === 'creator' || currentUserRole === 'super_admin';
     return currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
   })());
-
   const canManage = isAuthor || canForceManage;
+
+  // 하이퍼링크 및 유튜브/디스코드/카카오톡 전용 리치 임베드 변환 렌더링
+  const renderRichContent = (html: string) => {
+    // 1. 유튜브 URL 감지 및 임베드 변환
+    let processed = html.replace(
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s<]*)/g,
+      (_match, videoId) => {
+        return `<div class="my-4 aspect-video w-full max-w-xl mx-auto rounded-none overflow-hidden border border-zinc-800 shadow-lg">
+          <iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>`;
+      }
+    );
+
+    // 2. 디스코드 초대 링크 감지 및 카드 임베드
+    processed = processed.replace(
+      /(https?:\/\/(?:www\.)?(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+)/g,
+      (match) => {
+        return `<a href="${match}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3.5 py-2 my-2 rounded-none bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs no-underline transition shadow">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+          <span>디스코드 서버 참가하기</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+        </a>`;
+      }
+    );
+
+    // 3. 카카오톡 오픈채팅 링크 감지 및 카드 임베드
+    processed = processed.replace(
+      /(https?:\/\/(?:open\.kakao\.com)\/[a-zA-Z0-9_\/]+)/g,
+      (match) => {
+        return `<a href="${match}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3.5 py-2 my-2 rounded-none bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-bold text-xs no-underline transition shadow">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
+          <span>카카오톡 오픈채팅 입장하기</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+        </a>`;
+      }
+    );
+
+    // 4. 일반 하이퍼링크 클릭 상호작용 보장
+    processed = processed.replace(
+      /(<a\s+[^>]*href="[^"]*")/gi,
+      `$1 target="_blank" rel="noopener noreferrer" class="text-blue-500 underline font-semibold hover:text-blue-400"`
+    );
+
+    return processed;
+  };
 
   return (
     <div
@@ -632,7 +598,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-3xl my-auto sm:my-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-3xl my-auto sm:my-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 pb-16"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800">
@@ -709,7 +675,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     type="button"
                     onClick={handleLoadEditDraft}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-500/40 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-950/60 transition"
-                    title="임시보관 불러오기"
                   >
                     <FileDown className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">불러오기</span>
@@ -721,7 +686,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   onClick={handleSaveEditDraft}
                   disabled={isSavingDraft}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition disabled:opacity-50"
-                  title="수정 내용 임시보관"
                 >
                   {isSavingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   <span>임시보관</span>
@@ -736,18 +700,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <span>{saving ? '저장 중...' : '수정 완료'}</span>
                 </button>
                 <button
-                  onClick={() => {
-                    setCustomPopup({
-                      isOpen: true,
-                      title: '수정 취소',
-                      message: '수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.',
-                      type: 'confirm',
-                      onConfirm: () => {
-                        setIsEditing(false);
-                        setSelectedEditorImg(null);
-                      }
-                    });
-                  }}
+                  onClick={() => setIsEditing(false)}
                   disabled={saving}
                   className="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition"
                 >
@@ -827,7 +780,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   type="button"
                   onClick={() => executeCommand('bold')}
                   className="p-1.5 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition"
-                  title="굵게"
                 >
                   <Bold className="w-4 h-4" />
                 </button>
@@ -835,7 +787,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   type="button"
                   onClick={() => executeCommand('italic')}
                   className="p-1.5 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition"
-                  title="기울임"
                 >
                   <Italic className="w-4 h-4" />
                 </button>
@@ -843,7 +794,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   type="button"
                   onClick={() => executeCommand('underline')}
                   className="p-1.5 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition"
-                  title="밑줄"
                 >
                   <Underline className="w-4 h-4" />
                 </button>
@@ -989,10 +939,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </div>
               </header>
 
+              {/* 하이퍼링크 및 유튜브/디스코드/카톡 임베드 렌더링 영역 */}
               <div
                 onClick={handleContentViewClick}
-                className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap overflow-hidden leading-relaxed text-zinc-800 dark:text-zinc-200"
-                dangerouslySetInnerHTML={{ __html: post.content }}
+                className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap overflow-hidden leading-relaxed text-zinc-800 dark:text-zinc-200 [&_iframe]:rounded-xl [&_iframe]:shadow-md"
+                dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
               />
 
               <div className="pt-6 pb-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-center">
@@ -1013,8 +964,32 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             </div>
           )}
         </div>
+
+        {/* 상세창 맨 우측 하단: 빨간색 선 사이렌 아이콘과 신고 로 이루어진 빨간 테두리 버튼 */}
+        {!isEditing && post && (
+          <div className="absolute bottom-4 right-6 z-20">
+            <button
+              type="button"
+              onClick={() => setIsReportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-rose-600 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-none text-xs font-bold transition shadow-sm"
+              title="게시글 신고"
+            >
+              <Siren className="w-4 h-4 stroke-rose-600" />
+              <span>신고</span>
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* 세분화 신고 모달 */}
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        postId={postId}
+        currentUserId={currentUserId}
+      />
+
+      {/* 공식 게시글 삭제 신청 팝업 */}
       {showRequestDeleteModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -1074,6 +1049,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
+      {/* 사진 전체보기 팝업 */}
       {previewImageUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
@@ -1096,24 +1072,15 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               alt="사진 미리보기"
               className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
             />
-            <div className="mt-3 text-xs text-zinc-400 flex items-center gap-2">
-              <span>사진 미리보기</span>
-              <button
-                type="button"
-                onClick={() => window.open(previewImageUrl, '_blank')}
-                className="underline hover:text-white transition"
-              >
-                원본 파일 열기
-              </button>
-            </div>
           </div>
         </div>
       )}
 
+      {/* 영구 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
-          onClick={() => !deleting && setShowDeleteConfirm(false)}
+          onClick={() => setShowDeleteConfirm(false)}
         >
           <div
             className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
@@ -1140,59 +1107,17 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
               >
                 취소
               </button>
               <button
                 type="button"
                 onClick={handleExecuteDelete}
-                disabled={deleting}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition flex items-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>{deleting ? '삭제 진행 중...' : '삭제'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {customPopup.isOpen && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
-        >
-          <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-base font-bold text-zinc-900 dark:text-white">
-              {customPopup.title}
-            </h3>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-              {customPopup.message}
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              {customPopup.type === 'confirm' && (
-                <button
-                  type="button"
-                  onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
-                >
-                  취소
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomPopup((prev) => ({ ...prev, isOpen: false }));
-                  if (customPopup.onConfirm) customPopup.onConfirm();
-                }}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
-              >
-                확인
+                <span>삭제</span>
               </button>
             </div>
           </div>

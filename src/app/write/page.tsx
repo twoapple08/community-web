@@ -30,11 +30,8 @@ export default function WritePage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
-
-  // 임시보관 확인
   const [existingDraft, setExistingDraft] = useState<DraftData | null>(null)
 
-  // 사이트 맞춤 커스텀 알림/확인 팝업 상태
   const [customPopup, setCustomPopup] = useState<{
     isOpen: boolean;
     title: string;
@@ -44,7 +41,7 @@ export default function WritePage() {
   }>({ isOpen: false, title: '', message: '' })
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
         setCustomPopup({
           isOpen: true,
@@ -56,6 +53,20 @@ export default function WritePage() {
       } else {
         const uid = session.user.id
         setUserId(uid)
+
+        // 블랙리스트 여부 검사
+        const { data: blackRecord } = await supabase
+          .from('blacklists')
+          .select('reason')
+          .eq('user_id', uid)
+          .maybeSingle()
+
+        if (blackRecord) {
+          alert(`귀하는 블랙리스트로 등록되어 있어 게시글 작성이 금지되었습니다.\n사유: ${blackRecord.reason}`)
+          router.push('/')
+          return
+        }
+
         checkExistingDraft(uid)
       }
     })
@@ -73,7 +84,6 @@ export default function WritePage() {
     }
   }
 
-  // 본문 내 삽입된 이미지 목록 실시간 추출
   const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map(
     (m) => m[1]
   );
@@ -84,7 +94,6 @@ export default function WritePage() {
     }
   }, [content]);
 
-  // 임시보관 저장 (유저당 최대 1개)
   const handleSaveDraft = async () => {
     if (!userId) return
     if (!title.trim() && (!content.trim() || content === '<p></p>')) {
@@ -138,7 +147,6 @@ export default function WritePage() {
     setIsSavingDraft(false)
   }
 
-  // 임시보관 불러오기 실행
   const executeLoadDraft = () => {
     if (!existingDraft) return
     setTitle(existingDraft.title || '')
@@ -164,7 +172,6 @@ export default function WritePage() {
     }
   }
 
-  // 임시보관 삭제
   const handleDeleteDraft = () => {
     if (!userId) return
     setCustomPopup({
@@ -179,7 +186,6 @@ export default function WritePage() {
     })
   }
 
-  // 최종 등록
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
@@ -219,7 +225,9 @@ export default function WritePage() {
       setCustomPopup({
         isOpen: true,
         title: '등록 실패',
-        message: `게시글 등록 실패: ${error.message}`,
+        message: error.message.includes('policy')
+          ? '블랙리스트로 등록되어 있거나 권한이 없어 게시글을 작성할 수 없습니다.'
+          : `게시글 등록 실패: ${error.message}`,
         type: 'alert'
       })
       setIsSubmitting(false)
@@ -232,7 +240,6 @@ export default function WritePage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* 상단 네비게이션 및 임시보관 헤더 컨트롤 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <Link
           href="/"
@@ -267,7 +274,6 @@ export default function WritePage() {
         </div>
       </div>
 
-      {/* 임시보관 안내 배너 */}
       {existingDraft && (
         <div className="flex items-center justify-between p-3.5 mb-5 rounded-2xl bg-emerald-950/30 border border-emerald-800/60 text-xs">
           <div className="flex items-center gap-2 text-emerald-300">
@@ -307,7 +313,6 @@ export default function WritePage() {
           />
         </div>
 
-        {/* 7종 고정 태그 선택기 */}
         <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-2">
           <label className="block text-xs font-semibold text-zinc-400">
             해시태그 선택 (중복 선택 가능)
@@ -333,14 +338,13 @@ export default function WritePage() {
                   }`}
                 >
                   <span>#{tag}</span>
-                  {isSelected && <Check className="w-3 h-3" />}
+                  {isSelected && <Check className="w-3.5 h-3.5" />}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* 미리보기 썸네일 설정 박스 (수정 모드와 동일한 상단 위치로 이동 + 이미지가 있을 때만 노출) */}
         {detectedImages.length > 0 && (
           <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
@@ -362,7 +366,6 @@ export default function WritePage() {
               </label>
             </div>
 
-            {/* 미리보기 가리기가 활성화되면 대표사진 옵션 정지 및 '대표 사진' 뱃지 미노출 */}
             <div>
               <span className="text-[11px] text-zinc-400 block mb-1.5">
                 {isPreviewHidden
@@ -389,7 +392,6 @@ export default function WritePage() {
                       }`}
                     >
                       <img src={src} alt="사진" className="w-full h-full object-cover" />
-                      {/* 가리기 시 '대표 사진' 라벨 숨김 */}
                       {isMain && (
                         <span className="absolute bottom-1 left-1 right-1 bg-emerald-600 text-white text-[9px] font-bold text-center py-0.5 rounded">
                           대표 사진
@@ -403,7 +405,6 @@ export default function WritePage() {
           </div>
         )}
 
-        {/* 에디터 */}
         <Editor key={editorKey} content={content} onChange={setContent} />
 
         <div className="flex justify-end gap-2 pt-2">
@@ -427,7 +428,6 @@ export default function WritePage() {
         </div>
       </form>
 
-      {/* 사이트 UI 맞춤 커스텀 알림/확인 팝업 */}
       {customPopup.isOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
@@ -441,27 +441,14 @@ export default function WritePage() {
               <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
                 <AlertCircle className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
-                  {customPopup.title}
-                </h3>
-              </div>
+              <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                {customPopup.title}
+              </h3>
             </div>
-
             <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
               {customPopup.message}
             </p>
-
             <div className="flex items-center justify-end gap-2 pt-2">
-              {customPopup.type === 'confirm' && (
-                <button
-                  type="button"
-                  onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
-                >
-                  취소
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => {
