@@ -22,8 +22,7 @@ import {
   ShieldCheck,
   Send,
   EyeOff,
-  FileDown,
-  AlertCircle
+  FileDown
 } from 'lucide-react';
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -89,11 +88,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  // 수정 모드 임시보관 상태
   const [hasDraft, setHasDraft] = useState(false);
 
-  // 사이트 맞춤 커스텀 알림/확인 팝업 상태
   const [customPopup, setCustomPopup] = useState<{
     isOpen: boolean;
     title: string;
@@ -158,7 +154,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 임시보관 확인
   const checkDraft = async () => {
     if (!currentUserId) return;
     const { data } = await supabase
@@ -384,13 +379,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
         const { error: uploaderError } = await supabase.storage.from('posts').upload(fileName, file);
         if (!uploaderError) {
-          const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
-          if (publicUrl) finalUrl = publicUrl;
+          const { data } = supabase.storage.from('posts').getPublicUrl(fileName);
+          if (data?.publicUrl) finalUrl = data.publicUrl;
         } else {
           const { error: uploaderError2 } = await supabase.storage.from('post-images').upload(fileName, file);
           if (!uploaderError2) {
-            const { data: { publicUrl } } = supabase.storage.from('post-images').getPublicUrl(fileName);
-            if (publicUrl) finalUrl = publicUrl;
+            const { data } = supabase.storage.from('post-images').getPublicUrl(fileName);
+            if (data?.publicUrl) finalUrl = data.publicUrl;
           }
         }
 
@@ -453,7 +448,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 수정 모드 임시보관 저장
   const handleSaveEditDraft = async () => {
     if (!currentUserId) return;
     const contentToSave = editorRef.current?.innerHTML || '';
@@ -500,7 +494,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setIsSavingDraft(false);
   };
 
-  // 수정 모드 임시보관 불러오기
   const handleLoadEditDraft = async () => {
     if (!currentUserId) return;
     const { data } = await supabase
@@ -529,7 +522,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   };
 
-  // 수정 완료 저장
   const handleSaveEdit = async () => {
     if (!editTitle.trim()) {
       setCustomPopup({
@@ -613,9 +605,26 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
+  // 계층형 수정/삭제 권한 통제 로직 (IIFE 괄호 문법 보정 완료)
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
-  const isAdmin = Boolean(currentUserRole === "creator" || currentUserRole === "super_admin" || currentUserRole === "admin");
-  const canManage = Boolean(post && (isAuthor || isAdmin));
+
+  const canForceManage = Boolean((() => {
+    if (!post || isAuthor) return false;
+    // 1. 작성자가 제작자인 경우 -> 누구도 강제 제어 불가
+    if (authorRole === 'creator') return false;
+    // 2. 작성자가 최고관리자인 경우 -> 제작자만 가능
+    if (authorRole === 'super_admin') {
+      return currentUserRole === 'creator';
+    }
+    // 3. 작성자가 일반관리자인 경우 -> 제작자, 최고관리자만 가능
+    if (authorRole === 'admin') {
+      return currentUserRole === 'creator' || currentUserRole === 'super_admin';
+    }
+    // 4. 작성자가 일반 유저인 경우 -> 모든 관리자 가능
+    return currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
+  })());
+
+  const canManage = isAuthor || canForceManage;
 
   return (
     <div
@@ -639,7 +648,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <span>{copied ? '링크 복사됨' : '공유'}</span>
                 </button>
 
-                {isAdmin && post && (
+                {(currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin') && post && (
                   <button
                     onClick={handleToggleOfficial}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
@@ -653,7 +662,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   </button>
                 )}
 
-                {Boolean(canManage && post) && (
+                {canManage && post && (
                   <>
                     <button
                       onClick={() => {
@@ -669,7 +678,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                       <span>{isAuthor ? "수정" : "강제 수정"}</span>
                     </button>
 
-                    {post?.is_official && isAuthor && !isAdmin ? (
+                    {post?.is_official && isAuthor && !canForceManage ? (
                       <button
                         onClick={() => setShowRequestDeleteModal(true)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900/50 transition"
@@ -695,7 +704,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   편집 모드
                 </span>
 
-                {/* 수정 모드 전용 임시보관 및 불러오기 버튼 */}
                 {hasDraft && (
                   <button
                     type="button"
@@ -859,7 +867,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 />
               </div>
 
-              {/* 썸네일 대표 사진 지정 (본문에 이미지가 삽입되어 있을 때만 노출) */}
               {attachedImages.length > 0 && (
                 <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
@@ -881,7 +888,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     </label>
                   </div>
 
-                  {/* 가리기 활성화 시 대표사진 선택 비활성화 및 뱃지 미노출 */}
                   <div>
                     <span className="text-[11px] text-zinc-400 block mb-1.5">
                       {editIsPreviewHidden
@@ -922,7 +928,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                               className="absolute top-1 right-1 p-1 rounded-full bg-red-600 hover:bg-red-700 text-white transition opacity-0 group-hover:opacity-100"
                               title="삭제"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         );
@@ -1009,7 +1015,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       </div>
 
-      {/* 공식 게시글 삭제 신청 팝업 */}
       {showRequestDeleteModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -1069,7 +1074,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 사진 전체보기 팝업 */}
       {previewImageUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
@@ -1106,7 +1110,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 영구 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -1156,7 +1159,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 사이트 UI 맞춤 커스텀 알림/확인 팝업 */}
       {customPopup.isOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
@@ -1166,21 +1168,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
-                  {customPopup.title}
-                </h3>
-              </div>
-            </div>
-
+            <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+              {customPopup.title}
+            </h3>
             <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
               {customPopup.message}
             </p>
-
             <div className="flex items-center justify-end gap-2 pt-2">
               {customPopup.type === 'confirm' && (
                 <button

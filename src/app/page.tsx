@@ -20,8 +20,9 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  Layers
+  ChevronUp,
+  Megaphone,
+  Pencil
 } from 'lucide-react';
 import PostModal from '@/components/PostModal';
 
@@ -46,6 +47,13 @@ interface Post {
   tags?: string[];
   thumbnail_url?: string | null;
   is_preview_hidden?: boolean;
+}
+
+interface SiteNotice {
+  id: number;
+  title: string;
+  content: string;
+  updated_at: string;
 }
 
 const extractFirstImage = (html: string): string | null => {
@@ -89,10 +97,19 @@ function FeedContent() {
   const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  // 페이지네이션 및 커스텀 개수 팝업 상태
+  // 페이지네이션 및 드롭업(Dropup) 상태
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [postsPerPage, setPostsPerPage] = useState<number>(10);
-  const [isPageSizeModalOpen, setIsPageSizeModalOpen] = useState(false);
+  const [isPageSizeDropupOpen, setIsPageSizeDropupOpen] = useState(false);
+
+  // 공지사항 시스템 상태
+  const [notice, setNotice] = useState<SiteNotice | null>(null);
+  const [isNoticeDetailOpen, setIsNoticeDetailOpen] = useState(false);
+  const [isNoticeEditOpen, setIsNoticeEditOpen] = useState(false);
+  const [editNoticeTitle, setEditNoticeTitle] = useState('');
+  const [editNoticeContent, setEditNoticeContent] = useState('');
+  const [savingNotice, setSavingNotice] = useState(false);
+  const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -113,7 +130,7 @@ function FeedContent() {
   const handlePageSizeChange = (newSize: number) => {
     setPostsPerPage(newSize);
     setCurrentPage(1);
-    setIsPageSizeModalOpen(false);
+    setIsPageSizeDropupOpen(false);
     localStorage.setItem('user_posts_per_page', String(newSize));
   };
 
@@ -131,7 +148,70 @@ function FeedContent() {
         });
       }
     });
+
+    fetchNotice();
   }, []);
+
+  // 공지사항 로드 및 첫 접속 자동 팝업 체크
+  const fetchNotice = async () => {
+    const { data } = await supabase
+      .from('site_notices')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (data) {
+      setNotice(data as SiteNotice);
+      setEditNoticeTitle(data.title);
+      setEditNoticeContent(data.content);
+
+      // 다음 갱신까지 보지 않기 검사
+      const hiddenTimestamp = localStorage.getItem('hide_notice_until');
+      if (!hiddenTimestamp || new Date(hiddenTimestamp) < new Date(data.updated_at)) {
+        setIsNoticeDetailOpen(true);
+      }
+    }
+  };
+
+  const handleCloseNoticePopup = () => {
+    if (dontShowAgainChecked && notice) {
+      localStorage.setItem('hide_notice_until', notice.updated_at);
+    }
+    setIsNoticeDetailOpen(false);
+  };
+
+  const handleSaveNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editNoticeTitle.trim() || !editNoticeContent.trim()) {
+      alert('제목과 내용을 모두 입력해 주십시오.');
+      return;
+    }
+
+    setSavingNotice(true);
+    const nowIso = new Date().toISOString();
+    const { error } = await supabase
+      .from('site_notices')
+      .upsert({
+        id: 1,
+        title: editNoticeTitle.trim(),
+        content: editNoticeContent.trim(),
+        updated_at: nowIso,
+      });
+
+    if (error) {
+      alert(`공지사항 수정 실패: ${error.message}`);
+    } else {
+      setNotice({
+        id: 1,
+        title: editNoticeTitle.trim(),
+        content: editNoticeContent.trim(),
+        updated_at: nowIso,
+      });
+      setIsNoticeEditOpen(false);
+      alert('공지사항이 성공적으로 갱신되었습니다.');
+    }
+    setSavingNotice(false);
+  };
 
   const isAdmin = Boolean(currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin');
 
@@ -204,6 +284,7 @@ function FeedContent() {
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     await fetchPosts();
+    await fetchNotice();
     setTimeout(() => {
       setIsRefreshing(false);
     }, 400);
@@ -312,7 +393,7 @@ function FeedContent() {
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
       {/* 타이틀 및 새로고침 헤더 */}
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-5">
+      <div className="flex items-center justify-between gap-3 pb-3 mb-2">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
           <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">자유롭게 소통하고 게시글을 공유하세요.</p>
@@ -329,7 +410,50 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 검색창 및 깔때기 필터 */}
+      {/* 파란색 계열 직각 사각형 공지사항 배너 (w-full, rounded-none) */}
+      {notice && (
+        <div
+          onClick={() => setIsNoticeDetailOpen(true)}
+          className="w-full rounded-none bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/80 px-4 py-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-blue-100/90 dark:hover:bg-blue-950/60 transition group select-none mb-3"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 bg-blue-600 text-white rounded-none shrink-0">
+              <Megaphone className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-black text-blue-700 dark:text-blue-400 shrink-0">
+              [공지사항]
+            </span>
+            <p className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate group-hover:underline">
+              {notice.title}
+            </p>
+            <span className="text-[10px] text-zinc-400 shrink-0 hidden sm:inline">
+              ({new Date(notice.updated_at).toLocaleDateString()})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* 관리자 3등급 전용 [공지 수정] 버튼 */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsNoticeEditOpen(true);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm"
+              >
+                <Pencil className="w-3 h-3" />
+                <span>공지 수정</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 공지사항 아래 구분선 */}
+      <hr className="border-zinc-200 dark:border-zinc-800 mb-5" />
+
+      {/* 검색창 및 필터 바 */}
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -371,7 +495,6 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 활성화된 필터 뱃지 */}
       {selectedFilterTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
           <span className="text-[11px] text-zinc-400 font-medium">선택된 태그:</span>
@@ -608,14 +731,13 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 하단 페이지네이션 및 맨 아래쪽 우측 사이트 맞춤 개수 선택기 */}
+      {/* 하단 페이지네이션 및 맨 아래쪽 우측 드롭업(Dropup) 선택기 */}
       {filteredPosts.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="hidden sm:block text-xs text-zinc-400 w-32">
             전체 {filteredPosts.length}개
           </div>
 
-          {/* 중앙: 페이지 번호 바 */}
           <div className="flex items-center gap-1 justify-center">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -665,65 +787,175 @@ function FeedContent() {
             </button>
           </div>
 
-          {/* 맨 아래쪽 우측: 네이티브 select를 완전히 대체한 사이트 맞춤 팝업 버튼 */}
-          <div className="flex items-center gap-1.5 self-end sm:self-auto">
+          {/* 위로 솟아오르는 드롭업(Dropup) 메뉴 (UI 밀림 방지) */}
+          <div className="relative self-end sm:self-auto">
+            {isPageSizeDropupOpen && (
+              <div className="absolute bottom-full mb-1.5 right-0 z-30 w-36 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                {PAGE_SIZE_OPTIONS.map((size) => {
+                  const isSelected = postsPerPage === size;
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => handlePageSizeChange(size)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition ${
+                        isSelected
+                          ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                          : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                      }`}
+                    >
+                      <span>{size}개씩 보기</span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => setIsPageSizeModalOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold transition shadow-sm"
+              onClick={() => setIsPageSizeDropupOpen(!isPageSizeDropupOpen)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold transition shadow-sm"
             >
-              <Layers className="w-3.5 h-3.5 text-emerald-500" />
               <span>{postsPerPage}개씩 보기</span>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+              <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
             </button>
           </div>
         </div>
       )}
 
-      {/* 사이트 UI 맞춤 게시글 표시 개수 선택 팝업 (1번 이미지 네이티브 창 완전 대체) */}
-      {isPageSizeModalOpen && (
+      {/* 직각 사각형 공지사항 상세/첫 접속 팝업 (rounded-none) */}
+      {isNoticeDetailOpen && notice && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setIsPageSizeModalOpen(false)}
+          onClick={handleCloseNoticePopup}
         >
           <div
-            className="w-full max-w-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+            <div className="flex items-center justify-between border-b border-blue-100 dark:border-blue-900/60 pb-3">
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-500" />
-                <h3 className="text-sm font-bold text-zinc-900 dark:text-white">페이지당 게시글 수</h3>
+                <div className="p-1.5 bg-blue-600 text-white rounded-none">
+                  <Megaphone className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                  공지사항
+                </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setIsPageSizeModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                onClick={handleCloseNoticePopup}
+                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-1.5">
-              {PAGE_SIZE_OPTIONS.map((size) => {
-                const isSelected = postsPerPage === size;
-                return (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => handlePageSizeChange(size)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
-                      isSelected
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/80 shadow-sm'
-                        : 'bg-zinc-50 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-transparent'
-                    }`}
-                  >
-                    <span>{size}개씩 보기</span>
-                    {isSelected && <Check className="w-4 h-4 text-emerald-500" />}
-                  </button>
-                );
-              })}
+            <div className="space-y-2">
+              <h4 className="text-sm font-extrabold text-blue-700 dark:text-blue-400">
+                {notice.title}
+              </h4>
+              <p className="text-[11px] text-zinc-400">
+                최종 갱신일: {new Date(notice.updated_at).toLocaleString()}
+              </p>
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto rounded-none">
+                {notice.content}
+              </div>
             </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={dontShowAgainChecked}
+                  onChange={(e) => setDontShowAgainChecked(e.target.checked)}
+                  className="rounded-none border-zinc-400 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                />
+                <span>다음 공지사항 갱신 까지 보지 않기</span>
+              </label>
+
+              <button
+                type="button"
+                onClick={handleCloseNoticePopup}
+                className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-none transition shadow-sm"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 전용 직각 사각형 공지 수정 팝업 (rounded-none) */}
+      {isNoticeEditOpen && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => !savingNotice && setIsNoticeEditOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-blue-100 dark:border-blue-900/60 pb-3">
+              <div className="flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-blue-500" />
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">공지사항 수정</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNoticeEditOpen(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNotice} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">
+                  공지 제목
+                </label>
+                <input
+                  type="text"
+                  value={editNoticeTitle}
+                  onChange={(e) => setEditNoticeTitle(e.target.value)}
+                  placeholder="공지사항 제목을 입력하세요"
+                  className="w-full px-3.5 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">
+                  공지 내용
+                </label>
+                <textarea
+                  value={editNoticeContent}
+                  onChange={(e) => setEditNoticeContent(e.target.value)}
+                  placeholder="상세 공지 내용을 입력하세요"
+                  rows={6}
+                  className="w-full px-3.5 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsNoticeEditOpen(false)}
+                  disabled={savingNotice}
+                  className="px-4 py-2 text-xs font-semibold rounded-none border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingNotice}
+                  className="px-5 py-2 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50"
+                >
+                  {savingNotice ? '갱신 중...' : '공지 갱신 완료'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -812,7 +1044,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 관리자 삭제 승인/거절 확인 팝업 */}
+      {/* 관리자 확인 팝업 */}
       {confirmModal && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"

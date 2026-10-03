@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { X, Shield, UserX, AlertTriangle, Search, Check, Crown } from 'lucide-react'
+import { X, UserX, AlertTriangle, Search, Check, Crown, ChevronDown } from 'lucide-react'
 import { CrownIcon, RoleType } from './CrownIcon'
 
 interface AdminUser {
@@ -29,6 +29,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
   const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [searchNickname, setSearchNickname] = useState<string>('')
   const [targetRole, setTargetRole] = useState<'super_admin' | 'admin'>('admin')
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
 
@@ -39,18 +40,17 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
   useEffect(() => {
     if (isOpen) {
       loadData()
+      setIsRoleDropdownOpen(false)
     }
   }, [isOpen])
 
   const loadData = async () => {
     setFetching(true)
 
-    // 1. 등록된 관리자 목록 로드
     const { data: rolesData } = await supabase
       .from('user_roles')
       .select('email, role, user_id')
 
-    // 2. 전체 유저 프로필 목록 로드
     const { data: profilesData } = await supabase
       .from('profiles')
       .select('id, nickname')
@@ -75,7 +75,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
     setFetching(false)
   }
 
-  // 닉네임 선택을 통한 관리자 임명
   const handleAssignAdmin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedUserId) {
@@ -84,8 +83,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
     }
 
     setLoading(true)
-
-    // 선택된 유저 정보 확보
     const targetProfile = profiles.find((p) => p.id === selectedUserId)
     if (!targetProfile) {
       alert('유저 정보를 찾을 수 없습니다.')
@@ -93,18 +90,16 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
       return
     }
 
-    // auth.users 이메일 조회가 불가할 경우 대비하여 user_id 기반 단일 등록 처리
     const { error } = await supabase.from('user_roles').upsert(
       {
         user_id: selectedUserId,
-        email: `${targetProfile.nickname}@community.local`, // 식별용 fallback
+        email: `${targetProfile.nickname}@community.local`,
         role: targetRole,
       },
       { onConflict: 'email' }
     )
 
     if (error) {
-      // PK가 email인 경우를 대비한 2차 핸들링
       const { data: existing } = await supabase
         .from('user_roles')
         .select('*')
@@ -127,7 +122,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
     setLoading(false)
   }
 
-  // 커스텀 팝업에서 최종 해제 실행
   const handleConfirmRevoke = async () => {
     if (!deletingAdmin) return
     setIsDeleting(true)
@@ -148,7 +142,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
 
   if (!isOpen) return null
 
-  // 닉네임 검색 필터링된 프로필 목록
   const filteredProfiles = profiles.filter((p) =>
     p.nickname.toLowerCase().includes(searchNickname.toLowerCase())
   )
@@ -159,10 +152,10 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-visible animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 모달 상단 헤더 */}
+        {/* 모달 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <Crown className="w-5 h-5 text-amber-500" />
@@ -176,8 +169,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
           </button>
         </div>
 
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-          {/* 닉네임 선택을 통한 관리자 임명 양식 */}
+        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
           <form onSubmit={handleAssignAdmin} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">
@@ -194,7 +186,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                 />
               </div>
 
-              {/* 검색된 유저 닉네임 선택 목록 */}
               <div className="max-h-32 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 divide-y divide-zinc-100 dark:divide-zinc-800">
                 {filteredProfiles.length === 0 ? (
                   <div className="p-3 text-center text-xs text-zinc-400">일치하는 유저가 없습니다.</div>
@@ -220,24 +211,63 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+            {/* 권한 선택 (절대 좌표 드롭다운으로 UI 밀림 완전 차단) */}
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="relative">
                 <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">
                   부여할 권한
                 </label>
-                <select
-                  value={targetRole}
-                  onChange={(e) => setTargetRole(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                <button
+                  type="button"
+                  onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-medium shadow-sm transition"
                 >
-                  {currentUserRole === 'creator' && (
-                    <option value="super_admin">최고관리자 (황금왕관)</option>
-                  )}
-                  <option value="admin">일반관리자 (순백왕관)</option>
-                </select>
+                  <span className="truncate">
+                    {targetRole === 'super_admin' ? '최고관리자 (황금왕관)' : '일반관리자 (순백왕관)'}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0 ml-1" />
+                </button>
+
+                {/* 드롭다운 리스트 (absolute로 공중에 띄워 밀림 없음) */}
+                {isRoleDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                    {currentUserRole === 'creator' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetRole('super_admin')
+                          setIsRoleDropdownOpen(false)
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition ${
+                          targetRole === 'super_admin'
+                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-bold'
+                            : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/60 text-zinc-800 dark:text-zinc-200'
+                        }`}
+                      >
+                        <span>최고관리자 (황금왕관)</span>
+                        {targetRole === 'super_admin' && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetRole('admin')
+                        setIsRoleDropdownOpen(false)
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition ${
+                        targetRole === 'admin'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold'
+                          : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/60 text-zinc-800 dark:text-zinc-200'
+                      }`}
+                    >
+                      <span>일반관리자 (순백왕관)</span>
+                      {targetRole === 'admin' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-end">
+              <div>
                 <button
                   type="submit"
                   disabled={loading || !selectedUserId}
@@ -305,7 +335,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
         </div>
       </div>
 
-      {/* 사이트 UI 맞춤형 관리자 권한 해제 커스텀 경고 팝업 */}
+      {/* 커스텀 해제 경고 팝업 */}
       {deletingAdmin && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
@@ -354,4 +384,4 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
       )}
     </div>
   )
-} 
+}
