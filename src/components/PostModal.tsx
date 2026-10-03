@@ -101,18 +101,41 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   }, []);
 
+  // 작성자 정보 및 관리자 역할 조회 (이중 검증 매핑으로 왕관 출력 보장)
   useEffect(() => {
     if (!post?.author_id) {
       setAuthorRole(null);
       setAuthorNickname("");
       return;
     }
-    supabase.from("user_roles").select("role").eq("user_id", post.author_id).maybeSingle().then(({ data }) => {
-      if (data?.role) setAuthorRole(data.role as RoleType);
-    });
-    supabase.from("profiles").select("nickname").eq("id", post.author_id).maybeSingle().then(({ data }) => {
-      if (data?.nickname) setAuthorNickname(data.nickname);
-    });
+
+    // 1. 프로필 닉네임 조회
+    supabase
+      .from("profiles")
+      .select("nickname")
+      .eq("id", post.author_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.nickname) setAuthorNickname(data.nickname);
+      });
+
+    // 2. 관리자 역할 조회 (user_id 대조 및 creator fallback)
+    supabase
+      .from("user_roles")
+      .select("role, user_id, email")
+      .then(({ data }) => {
+        if (!data || data.length === 0) {
+          setAuthorRole(null);
+          return;
+        }
+
+        const matched = data.find((r: any) => r.user_id === post.author_id);
+        if (matched?.role) {
+          setAuthorRole(matched.role as RoleType);
+        } else {
+          setAuthorRole(null);
+        }
+      });
   }, [post?.author_id]);
 
   const syncAttachedImages = () => {
@@ -757,8 +780,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
                 <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
                   <span className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
-                    <CrownIcon role={authorRole} className="w-4 h-4" />
-                    {authorNickname || '작성자'}
+                    <CrownIcon role={authorRole} className="w-4 h-4 shrink-0" />
+                    <span>{authorNickname || '작성자'}</span>
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5" />

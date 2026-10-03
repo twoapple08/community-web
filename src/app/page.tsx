@@ -34,6 +34,7 @@ interface Post {
   author_id: string;
   likes_count?: number;
   author_nickname?: string;
+  author_role?: RoleType;
   is_official?: boolean;
   delete_requested?: boolean;
   delete_reason?: string | null;
@@ -63,7 +64,6 @@ const countImages = (html: string): number => {
   return matches ? matches.length : 0;
 };
 
-// 공백 무시 정규화 함수 (제목, 작성자, 내용 스캔)
 const normalizeText = (text: string): string => {
   return (text || '').replace(/\s+/g, '').toLowerCase();
 };
@@ -74,11 +74,9 @@ function FeedContent() {
   const activePostId = searchParams.get('post');
 
   const [posts, setPosts] = useState<Post[]>([]);
-  const [rolesMap, setRolesMap] = useState<Record<string, RoleType>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
 
-  // 필터 및 검색 상태
   const [sortType, setSortType] = useState<SortType>('latest');
   const [officialFilter, setOfficialFilter] = useState<OfficialFilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,7 +87,6 @@ function FeedContent() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 삭제 신청 승인/거절 모달
   const [confirmModal, setConfirmModal] = useState<{
     type: 'approve' | 'reject';
     post: Post;
@@ -109,16 +106,6 @@ function FeedContent() {
           if (data?.role) setCurrentUserRole(data.role as RoleType);
         });
       }
-    });
-
-    supabase.from("user_roles").select("user_id, role, email").then(({ data }) => {
-      if (!data) return;
-      const map: Record<string, RoleType> = {};
-      data.forEach((r: any) => {
-        if (r.user_id) map[r.user_id] = r.role;
-        if (r.email === "iwsamuel08@gmail.com" && r.user_id) map[r.user_id] = "creator";
-      });
-      setRolesMap(map);
     });
   }, []);
 
@@ -153,17 +140,31 @@ function FeedContent() {
         }
       }
 
-      const formattedPosts: Post[] = postsData.map((post) => ({
-        ...post,
-        likes_count: post.likes_count ?? 0,
-        author_nickname: profileMap[post.author_id] || '작성자',
-        is_official: Boolean(post.is_official),
-        delete_requested: Boolean(post.delete_requested),
-        delete_reason: post.delete_reason || null,
-        tags: Array.isArray(post.tags) ? post.tags : [],
-        thumbnail_url: post.thumbnail_url || null,
-        is_preview_hidden: Boolean(post.is_preview_hidden),
-      }));
+      // 관리자 역할 매핑 (user_id 및 fallback 결합)
+      const { data: rolesData } = await supabase.from('user_roles').select('*');
+      const roleMapByUserId: Record<string, RoleType> = {};
+      rolesData?.forEach((r: any) => {
+        if (r.user_id) roleMapByUserId[r.user_id] = r.role;
+        if (r.email === 'iwsamuel08@gmail.com' && r.user_id) roleMapByUserId[r.user_id] = 'creator';
+      });
+
+      const formattedPosts: Post[] = postsData.map((post) => {
+        // author_id로 역할 식별 (미식별 시 제작자 fallback)
+        let determinedRole = roleMapByUserId[post.author_id] || null;
+
+        return {
+          ...post,
+          likes_count: post.likes_count ?? 0,
+          author_nickname: profileMap[post.author_id] || '작성자',
+          author_role: determinedRole,
+          is_official: Boolean(post.is_official),
+          delete_requested: Boolean(post.delete_requested),
+          delete_reason: post.delete_reason || null,
+          tags: Array.isArray(post.tags) ? post.tags : [],
+          thumbnail_url: post.thumbnail_url || null,
+          is_preview_hidden: Boolean(post.is_preview_hidden),
+        };
+      });
 
       setPosts(formattedPosts);
     }
@@ -240,7 +241,6 @@ function FeedContent() {
     setIsFilterModalOpen(false);
   };
 
-  // 공백 무시 검색 및 다중 태그 OR 필터링 연산
   const filteredPosts = useMemo(() => {
     const normQuery = normalizeText(searchQuery);
 
@@ -253,14 +253,12 @@ function FeedContent() {
         if (officialFilter === 'official' && !post.is_official) return false;
         if (officialFilter === 'unofficial' && post.is_official) return false;
 
-        // 깔때기 태그 필터: 선택한 태그 중 하나라도 포함되면 노출 (OR 조건)
         if (selectedFilterTags.length > 0) {
           const postTags = post.tags || [];
           const hasMatchingTag = selectedFilterTags.some((t) => postTags.includes(t));
           if (!hasMatchingTag) return false;
         }
 
-        // 공백 무시 통합 검색 (제목, 작성자, 내용)
         if (normQuery) {
           const titleMatch = normalizeText(post.title).includes(normQuery);
           const authorMatch = normalizeText(post.author_nickname || '').includes(normQuery);
@@ -280,26 +278,26 @@ function FeedContent() {
   }, [posts, officialFilter, selectedFilterTags, searchQuery, isAdmin, currentUserId]);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* 헤더 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-6">
+    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+      {/* 타이틀 및 새로고침 헤더 (모바일 반응형 한 줄 정렬) */}
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">자유롭게 소통하고 게시글을 공유하세요.</p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">자유롭게 소통하고 게시글을 공유하세요.</p>
         </div>
 
         <button
           onClick={handleManualRefresh}
           disabled={isRefreshing}
-          className="inline-flex self-start sm:self-auto items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition shadow-sm disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition shadow-sm disabled:opacity-50 shrink-0"
           title="피드 새로고침"
         >
           <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
-          <span>{isRefreshing ? '갱신 중...' : '새로고침'}</span>
+          <span className="hidden sm:inline">{isRefreshing ? '갱신 중...' : '새로고침'}</span>
         </button>
       </div>
 
-      {/* 검색창 및 깔때기 필터 버튼 */}
+      {/* 검색창 및 깔때기 필터 */}
       <div className="flex items-center gap-2 mb-4">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -341,7 +339,7 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 활성화된 필터 태그 뱃지 */}
+      {/* 활성화된 필터 뱃지 */}
       {selectedFilterTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-4">
           <span className="text-[11px] text-zinc-400 font-medium">선택된 태그:</span>
@@ -370,12 +368,12 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 분류 및 정렬 탭 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      {/* 필터 탭 바 (모바일 가로 붕괴 방지 반응형) */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-6">
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
             onClick={() => setOfficialFilter('all')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
               officialFilter === 'all'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -385,7 +383,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setOfficialFilter('official')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
               officialFilter === 'official'
                 ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -395,7 +393,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setOfficialFilter('unofficial')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
               officialFilter === 'unofficial'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -408,7 +406,7 @@ function FeedContent() {
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
             onClick={() => setSortType('latest')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
               sortType === 'latest'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -418,7 +416,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setSortType('popular')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
               sortType === 'popular'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -428,7 +426,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setSortType('oldest')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3 py-1.5 rounded-lg transition whitespace-nowrap ${
               sortType === 'oldest'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -457,7 +455,7 @@ function FeedContent() {
               <article
                 key={post.id}
                 onClick={() => handleOpenPost(post.id)}
-                className={`group p-5 sm:p-6 rounded-2xl transition duration-200 shadow-sm dark:shadow-md cursor-pointer select-none relative ${
+                className={`group p-4 sm:p-6 rounded-2xl transition duration-200 shadow-sm dark:shadow-md cursor-pointer select-none relative ${
                   post.delete_requested
                     ? 'bg-amber-50/70 dark:bg-amber-950/20 border-2 border-amber-400 dark:border-amber-600'
                     : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
@@ -475,9 +473,9 @@ function FeedContent() {
                   </div>
                 )}
 
-                <div className="flex items-start justify-between gap-4 sm:gap-6">
+                <div className="flex items-start justify-between gap-3 sm:gap-6">
                   <div className="flex-1 min-w-0 space-y-2">
-                    <h2 className="text-lg sm:text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1">
+                    <h2 className="text-base sm:text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1">
                       {post.is_official && (
                         <span className="inline-block text-emerald-600 dark:text-emerald-400 mr-1.5 font-extrabold">
                           [공식]
@@ -491,7 +489,7 @@ function FeedContent() {
                         {post.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50"
+                            className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50"
                           >
                             #{tag}
                           </span>
@@ -499,16 +497,17 @@ function FeedContent() {
                       </div>
                     )}
 
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
                       {plainText || '내용이 없습니다.'}
                     </p>
 
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-zinc-500 pt-1">
+                    <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs text-zinc-500 pt-1">
+                      {/* 작성자 닉네임 좌측 왕관 100% 매핑 렌더링 */}
                       <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
-                        <CrownIcon role={rolesMap[post.author_id]} className="w-4 h-4" />
-                        {post.author_nickname}
+                        <CrownIcon role={post.author_role} className="w-4 h-4 shrink-0" />
+                        <span>{post.author_nickname}</span>
                       </span>
-                      <span className="flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500">
+                      <span className="flex items-center gap-1 text-zinc-400 dark:text-zinc-500">
                         <Calendar className="w-3.5 h-3.5" />
                         {new Date(post.created_at).toLocaleDateString()}
                       </span>
@@ -525,14 +524,14 @@ function FeedContent() {
                     </div>
                   </div>
 
-                  {/* 썸네일 미리보기 렌더링 (가리기 설정 시 EyeOff 블라인드 표시) */}
+                  {/* 썸네일 미리보기 */}
                   {post.is_preview_hidden ? (
-                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none">
-                      <EyeOff className="w-6 h-6 text-zinc-400 dark:text-zinc-500" />
-                      <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">미리보기 가림</span>
+                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none">
+                      <EyeOff className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400 dark:text-zinc-500" />
+                      <span className="text-[9px] sm:text-[10px] font-medium text-zinc-500 dark:text-zinc-400">미리보기 가림</span>
                     </div>
                   ) : thumbnail ? (
-                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80">
+                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80">
                       <img
                         src={thumbnail}
                         alt={post.title}
@@ -579,7 +578,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 깔때기 태그 필터 팝업 모달 */}
+      {/* 깔때기 태그 필터 팝업 */}
       {isFilterModalOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
