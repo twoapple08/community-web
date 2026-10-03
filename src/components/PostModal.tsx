@@ -61,12 +61,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
 
-  // 공식 게시글 삭제 신청 팝업 상태
   const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
   const [deleteReasonText, setDeleteReasonText] = useState("");
   const [requestSubmitting, setRequestSubmitting] = useState(false);
 
-  // 일반 게시글 영구 삭제 확인 팝업 상태
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -183,7 +181,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setLoading(false);
   };
 
-  // 관리자 전용 공식 지정 토글
   const handleToggleOfficial = async () => {
     if (!post) return;
     const nextStatus = !post.is_official;
@@ -200,7 +197,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 공식 게시글 삭제 신청 전송
   const handleSubmitDeleteRequest = async () => {
     if (!post) return;
     setRequestSubmitting(true);
@@ -224,7 +220,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 좋아요 토글 핸들러
   const handleToggleLike = async () => {
     if (!currentUserId) {
       alert('좋아요 기능은 로그인이 필요합니다.');
@@ -286,26 +281,45 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploadingImage(true);
     try {
-      const ext = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
+      for (const file of Array.from(files)) {
+        const ext = file.name.split('.').pop() || 'png';
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
+        let finalUrl: string | null = null;
 
-      const { error: uploaderError } = await supabase.storage.from('posts').upload(fileName, file);
-      if (uploaderError) throw uploaderError;
+        const { error: uploaderError } = await supabase.storage.from('posts').upload(fileName, file);
+        if (!uploaderError) {
+          const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+          if (publicUrl) finalUrl = publicUrl;
+        } else {
+          const { error: uploaderError2 } = await supabase.storage.from('post-images').upload(fileName, file);
+          if (!uploaderError2) {
+            const { data: { publicUrl } } = supabase.storage.from('post-images').getPublicUrl(fileName);
+            if (publicUrl) finalUrl = publicUrl;
+          }
+        }
 
-      const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName);
+        if (!finalUrl) {
+          finalUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string) || '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(file);
+          });
+        }
 
-      if (editorRef.current) {
-        editorRef.current.focus();
-        document.execCommand('insertImage', false, publicUrl);
-        setTimeout(syncAttachedImages, 100);
+        if (finalUrl && editorRef.current) {
+          editorRef.current.focus();
+          document.execCommand('insertImage', false, finalUrl);
+        }
       }
+      setTimeout(syncAttachedImages, 100);
     } catch (err: any) {
-      alert(`이미지 업로드 실패: ${err.message || '스토리지 연결 오류'}`);
+      alert(`이미지 업로드 중 오류: ${err.message || '스토리지 연결 오류'}`);
     } finally {
       setUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -417,7 +431,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <span>{copied ? '링크 복사됨' : '공유'}</span>
                 </button>
 
-                {/* 관리자 전용: 공식 지정 / 해제 토글 버튼 */}
                 {isAdmin && post && (
                   <button
                     onClick={handleToggleOfficial}
@@ -428,7 +441,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     }`}
                   >
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>{post?.is_official ? '공식 해제' : '공식 지정'}</span>
+                    <span>{post.is_official ? '공식 해제' : '공식 지정'}</span>
                   </button>
                 )}
 
@@ -445,7 +458,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                       <span>{isAuthor ? "수정" : "강제 편집"}</span>
                     </button>
 
-                    {/* 공식 게시글이면서 일반 작성자인 경우: 삭제 신청 버튼 / 그 외: 즉각 삭제 버튼 */}
                     {post?.is_official && isAuthor && !isAdmin ? (
                       <button
                         onClick={() => setShowRequestDeleteModal(true)}
@@ -564,6 +576,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 <input
                   type="file"
                   ref={fileInputRef}
+                  multiple
                   onChange={handleImageUpload}
                   accept="image/*"
                   className="hidden"
@@ -630,7 +643,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             <div className="space-y-6">
               <header className="space-y-3 pb-4 border-b border-zinc-100 dark:border-zinc-800/60">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-snug">
-                  {post?.is_official && (
+                  {post.is_official && (
                     <span className="text-emerald-600 dark:text-emerald-400 mr-2 font-extrabold">
                       [공식]
                     </span>
@@ -675,7 +688,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       </div>
 
-      {/* 공식 게시글 삭제 신청 모달 */}
       {showRequestDeleteModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -735,7 +747,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 사진 전체화면 확대 라이트박스 */}
       {previewImageUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
@@ -772,7 +783,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 커스텀 일반 게시글 영구 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
