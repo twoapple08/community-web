@@ -1,7 +1,7 @@
 'use client'
 
 import { CrownIcon } from "@/components/CrownIcon";
-import { AdminModal } from "@/components/AdminModal";
+import AdminModal from "@/components/AdminModal";
 import './globals.css'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -48,18 +48,36 @@ export default function RootLayout({
     }
   }
 
-  // 유저 프로필 닉네임 로드
-  const loadUserProfile = async (userId: string) => {
-    const { data } = await supabase
+  // 유저 프로필 닉네임 및 관리자 권한 동시 로드 (왕관 미표출 버그 해결)
+  const loadUserProfile = async (userId: string, email?: string) => {
+    // 1. 닉네임 조회
+    const { data: profileData } = await supabase
       .from('profiles')
       .select('nickname')
       .eq('id', userId)
-      .single()
+      .maybeSingle()
 
-    if (data?.nickname) {
-      setNickname(data.nickname)
+    if (profileData?.nickname) {
+      setNickname(profileData.nickname)
     } else {
       setNickname('익명사용자')
+    }
+
+    // 2. 관리자 역할 조회 (제작자 영구 고정 + 최고/일반관리자 DB 동기화)
+    if (email?.toLowerCase() === "iwsamuel08@gmail.com") {
+      setUserRole("creator")
+    } else {
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .or(`user_id.eq.${userId},email.eq.${email || ''}`)
+        .maybeSingle()
+
+      if (roleData?.role) {
+        setUserRole(roleData.role as "creator" | "super_admin" | "admin")
+      } else {
+        setUserRole(null)
+      }
     }
   }
 
@@ -68,7 +86,7 @@ export default function RootLayout({
       const currentUser = session?.user ?? null
       setUser(currentUser)
       if (currentUser) {
-        loadUserProfile(currentUser.id)
+        loadUserProfile(currentUser.id, currentUser.email)
       }
     })
 
@@ -78,9 +96,10 @@ export default function RootLayout({
       const currentUser = session?.user ?? null
       setUser(currentUser)
       if (currentUser) {
-        loadUserProfile(currentUser.id)
+        loadUserProfile(currentUser.id, currentUser.email)
       } else {
         setNickname('')
+        setUserRole(null)
       }
     })
 
@@ -101,6 +120,7 @@ export default function RootLayout({
     await supabase.auth.signOut()
     setUser(null)
     setNickname('')
+    setUserRole(null)
   }
 
   // 닉네임 저장 처리
@@ -134,33 +154,37 @@ export default function RootLayout({
     setUpdatingNickname(false)
   }
 
+  const isCreatorOrSuperAdmin =
+    user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ||
+    userRole === "creator" ||
+    userRole === "super_admin"
+
   return (
     <html lang="ko" className="dark">
       <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-200">
-        {/* 상단 네비게이션 헤더 */}
+        {/* 상단 네비게이션 헤더 (모바일 반응형 최적화) */}
         <header className="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md transition-colors duration-200">
-          <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="max-w-6xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-2">
             {/* 로고 */}
-            <Link href="/" className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition">
+            <Link href="/" className="text-lg sm:text-xl font-bold tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">
               COMMUNITY
             </Link>
 
             {/* 우측 네비게이션 영역 */}
-            <div className="flex items-center gap-3">
-              {/* 원본 스위치 스타일 테마 토글 버튼 (완벽 복원) */}
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+              {/* 원본 슬라이딩 스위치 스타일 테마 토글 버튼 */}
               <button
                 type="button"
                 role="switch"
                 aria-checked={theme === 'dark'}
                 onClick={toggleTheme}
                 title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-                className={`relative inline-flex h-8 w-14 items-center rounded-full p-1 transition-colors duration-300 cursor-pointer shadow-inner ${
+                className={`relative inline-flex h-8 w-14 items-center rounded-full p-1 transition-colors duration-300 cursor-pointer shadow-inner shrink-0 ${
                   theme === 'dark'
                     ? 'bg-white border border-zinc-200'
                     : 'bg-zinc-900 border border-zinc-800'
                 }`}
               >
-                {/* 슬라이딩 원형 노브 */}
                 <span
                   className={`inline-flex h-6 w-6 transform items-center justify-center rounded-full shadow-md transition-transform duration-300 ease-in-out ${
                     theme === 'dark'
@@ -178,11 +202,12 @@ export default function RootLayout({
 
               {user ? (
                 <>
+                  {/* 글쓰기 버튼 (whitespace-nowrap 및 shrink-0으로 모바일 줄바꿈 깨짐 완전 방어) */}
                   <Link
                     href="/write"
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition"
+                    className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium transition whitespace-nowrap shrink-0"
                   >
-                    <PenSquare className="w-4 h-4" />
+                    <PenSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     <span>글쓰기</span>
                   </Link>
 
@@ -192,27 +217,30 @@ export default function RootLayout({
                       setNewNickname(nickname)
                       setShowNicknameModal(true)
                     }}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-xs font-medium text-zinc-800 dark:text-zinc-200"
+                    className="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-xs font-medium text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
                     title="닉네임 변경"
                   >
-                    <UserIcon className="w-3.5 h-3.5 text-emerald-500" />
-                    <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-4 h-4" />
-                <span className="max-w-[110px] truncate">{nickname || "닉네임 설정"}</span>
-                    <Settings2 className="w-3 h-3 text-zinc-400" />
+                    <UserIcon className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-4 h-4 shrink-0" />
+                    <span className="max-w-[70px] sm:max-w-[110px] truncate">{nickname || "닉네임 설정"}</span>
+                    <Settings2 className="w-3 h-3 text-zinc-400 shrink-0" />
                   </button>
-                {Boolean(user?.email?.toLowerCase() === "iwsamuel08@gmail.com" || userRole === "creator" || userRole === "super_admin") && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAdminModalOpen(true)}
-                    className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition shrink-0"
-                  >
-                    <span>관리자 지정</span>
-                  </button>
-                )}
 
+                  {/* 관리자 지정 버튼 */}
+                  {isCreatorOrSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAdminModalOpen(true)}
+                      className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition whitespace-nowrap shrink-0"
+                    >
+                      <span>관리자 지정</span>
+                    </button>
+                  )}
+
+                  {/* 로그아웃 버튼 */}
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-sm font-medium transition"
+                    className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-xs sm:text-sm font-medium transition shrink-0"
                     title="로그아웃"
                   >
                     <LogOut className="w-4 h-4" />
@@ -222,7 +250,7 @@ export default function RootLayout({
               ) : (
                 <button
                   onClick={handleLogin}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-sm font-semibold transition"
+                  className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-xs sm:text-sm font-semibold transition whitespace-nowrap shrink-0"
                 >
                   <LogIn className="w-4 h-4" />
                   <span>로그인</span>
@@ -292,8 +320,14 @@ export default function RootLayout({
             </div>
           </div>
         )}
-      <AdminModal isOpen={isAdminModalOpen} onClose={() => setIsAdminModalOpen(false)} currentUserRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} />
-</body>
+
+        {/* 관리자 지정 모달 */}
+        <AdminModal
+          isOpen={isAdminModalOpen}
+          onClose={() => setIsAdminModalOpen(false)}
+          currentUserRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}
+        />
+      </body>
     </html>
   )
 }
