@@ -17,7 +17,9 @@ import {
   Filter,
   EyeOff,
   X,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import PostModal from '@/components/PostModal';
 
@@ -84,6 +86,10 @@ function FeedContent() {
   const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
+  // 페이지네이션 상태 (기본 10개, 브라우저 저장 유지)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [postsPerPage, setPostsPerPage] = useState<number>(10);
+
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -92,6 +98,20 @@ function FeedContent() {
     post: Post;
   } | null>(null);
   const [actionProcessing, setActionProcessing] = useState(false);
+
+  // 로컬스토리지 개인 설정 로드
+  useEffect(() => {
+    const savedSize = localStorage.getItem('user_posts_per_page');
+    if (savedSize && [10, 20, 30, 40, 50].includes(Number(savedSize))) {
+      setPostsPerPage(Number(savedSize));
+    }
+  }, []);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPostsPerPage(newSize);
+    setCurrentPage(1);
+    localStorage.setItem('user_posts_per_page', String(newSize));
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -140,7 +160,6 @@ function FeedContent() {
         }
       }
 
-      // 관리자 역할 매핑 (user_id 및 fallback 결합)
       const { data: rolesData } = await supabase.from('user_roles').select('*');
       const roleMapByUserId: Record<string, RoleType> = {};
       rolesData?.forEach((r: any) => {
@@ -149,7 +168,6 @@ function FeedContent() {
       });
 
       const formattedPosts: Post[] = postsData.map((post) => {
-        // author_id로 역할 식별 (미식별 시 제작자 fallback)
         let determinedRole = roleMapByUserId[post.author_id] || null;
 
         return {
@@ -174,6 +192,11 @@ function FeedContent() {
   useEffect(() => {
     fetchPosts();
   }, [sortType]);
+
+  // 검색/필터 변경 시 1페이지로 리셋
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, officialFilter, selectedFilterTags, sortType]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -277,9 +300,16 @@ function FeedContent() {
       });
   }, [posts, officialFilter, selectedFilterTags, searchQuery, isAdmin, currentUserId]);
 
+  // 페이지네이션 계산
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
+  const paginatedPosts = useMemo(() => {
+    const startIndex = (currentPage - 1) * postsPerPage;
+    return filteredPosts.slice(startIndex, startIndex + postsPerPage);
+  }, [filteredPosts, currentPage, postsPerPage]);
+
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
-      {/* 타이틀 및 새로고침 헤더 (모바일 반응형 한 줄 정렬) */}
+      {/* 타이틀 및 새로고침 헤더 */}
       <div className="flex items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-5">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
@@ -368,7 +398,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 필터 탭 바 (모바일 가로 붕괴 방지 반응형) */}
+      {/* 필터 탭 바 */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-6">
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
@@ -446,7 +476,7 @@ function FeedContent() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredPosts.map((post) => {
+          {paginatedPosts.map((post) => {
             const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
             const plainText = extractPlainText(post.content);
             const imageCount = countImages(post.content);
@@ -502,7 +532,6 @@ function FeedContent() {
                     </p>
 
                     <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs text-zinc-500 pt-1">
-                      {/* 작성자 닉네임 좌측 왕관 100% 매핑 렌더링 */}
                       <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
                         <CrownIcon role={post.author_role} className="w-4 h-4 shrink-0" />
                         <span>{post.author_nickname}</span>
@@ -524,7 +553,6 @@ function FeedContent() {
                     </div>
                   </div>
 
-                  {/* 썸네일 미리보기 */}
                   {post.is_preview_hidden ? (
                     <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none">
                       <EyeOff className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400 dark:text-zinc-500" />
@@ -575,6 +603,84 @@ function FeedContent() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* 하단 페이지네이션 및 맨 아래쪽 우측 게시글 표시 개수 선택기 */}
+      {filteredPosts.length > 0 && (
+        <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="hidden sm:block text-xs text-zinc-400 w-32">
+            전체 {filteredPosts.length}개
+          </div>
+
+          {/* 중앙: 페이지 번호 바 */}
+          <div className="flex items-center gap-1 justify-center">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition"
+              title="이전 페이지"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((page) => {
+                if (totalPages <= 7) return true;
+                return (
+                  page === 1 ||
+                  page === totalPages ||
+                  Math.abs(page - currentPage) <= 1
+                );
+              })
+              .map((page, idx, arr) => {
+                const prev = arr[idx - 1];
+                const hasGap = prev && page - prev > 1;
+                return (
+                  <div key={page} className="flex items-center">
+                    {hasGap && <span className="px-1 text-xs text-zinc-400">...</span>}
+                    <button
+                      onClick={() => setCurrentPage(page)}
+                      className={`min-w-8 h-8 px-2 text-xs font-semibold rounded-lg transition ${
+                        currentPage === page
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  </div>
+                );
+              })}
+
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition"
+              title="다음 페이지"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* 맨 아래쪽 우측: 게시글 표시 개수 설정 (10, 20, 30, 40, 50) */}
+          <div className="flex items-center gap-1.5 self-end sm:self-auto">
+            <label htmlFor="pageSizeSelect" className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+              표시:
+            </label>
+            <select
+              id="pageSizeSelect"
+              value={postsPerPage}
+              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              className="px-2.5 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition cursor-pointer"
+            >
+              <option value={10}>10개씩 보기</option>
+              <option value={20}>20개씩 보기</option>
+              <option value={30}>30개씩 보기</option>
+              <option value={40}>40개씩 보기</option>
+              <option value={50}>50개씩 보기</option>
+            </select>
+          </div>
         </div>
       )}
 
