@@ -18,11 +18,12 @@ import {
   Underline,
   Image as ImageIcon,
   Loader2,
-  Eye,
   Heart,
   ShieldCheck,
   Send,
-  EyeOff
+  EyeOff,
+  FileDown,
+  AlertCircle
 } from 'lucide-react';
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -63,7 +64,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  // 편집 모드 관리
+  // 편집 모드 상태
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
@@ -74,6 +75,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [editIsPreviewHidden, setEditIsPreviewHidden] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [selectedEditorImg, setSelectedEditorImg] = useState<HTMLImageElement | null>(null);
@@ -88,6 +90,18 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // 수정 모드 임시보관 상태
+  const [hasDraft, setHasDraft] = useState(false);
+
+  // 사이트 맞춤 커스텀 알림/확인 팝업 상태
+  const [customPopup, setCustomPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'alert' | 'confirm';
+    onConfirm?: () => void;
+  }>({ isOpen: false, title: '', message: '' })
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const email = session?.user?.email;
@@ -101,7 +115,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   }, []);
 
-  // 작성자 정보 및 관리자 역할 조회 (이중 검증 매핑으로 왕관 출력 보장)
   useEffect(() => {
     if (!post?.author_id) {
       setAuthorRole(null);
@@ -109,7 +122,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       return;
     }
 
-    // 1. 프로필 닉네임 조회
     supabase
       .from("profiles")
       .select("nickname")
@@ -119,7 +131,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         if (data?.nickname) setAuthorNickname(data.nickname);
       });
 
-    // 2. 관리자 역할 조회 (user_id 대조 및 creator fallback)
     supabase
       .from("user_roles")
       .select("role, user_id, email")
@@ -147,6 +158,17 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
+  // 임시보관 확인
+  const checkDraft = async () => {
+    if (!currentUserId) return;
+    const { data } = await supabase
+      .from('post_drafts')
+      .select('title')
+      .eq('user_id', currentUserId)
+      .maybeSingle();
+    setHasDraft(Boolean(data));
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -157,10 +179,16 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         } else if (showDeleteConfirm) {
           setShowDeleteConfirm(false);
         } else if (isEditing) {
-          if (window.confirm('수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.')) {
-            setIsEditing(false);
-            setSelectedEditorImg(null);
-          }
+          setCustomPopup({
+            isOpen: true,
+            title: '수정 취소',
+            message: '수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.',
+            type: 'confirm',
+            onConfirm: () => {
+              setIsEditing(false);
+              setSelectedEditorImg(null);
+            }
+          });
         } else {
           onClose();
         }
@@ -230,7 +258,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      alert(`공식 상태 변경 실패: ${error.message}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '상태 변경 실패',
+        message: `공식 상태 변경 실패: ${error.message}`,
+        type: 'alert'
+      });
     } else {
       setPost({ ...post, is_official: nextStatus });
       if (onDeleted) onDeleted();
@@ -249,20 +282,37 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      alert(`삭제 신청 실패: ${error.message}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '신청 실패',
+        message: `삭제 신청 실패: ${error.message}`,
+        type: 'alert'
+      });
       setRequestSubmitting(false);
     } else {
-      alert('관리자에게 삭제 신청이 접수되었습니다. 승인 검토 전까지 비공개 상태로 전환됩니다.');
-      setShowRequestDeleteModal(false);
-      onClose();
-      if (onDeleted) onDeleted();
-      router.refresh();
+      setCustomPopup({
+        isOpen: true,
+        title: '신청 접수',
+        message: '관리자에게 삭제 신청이 접수되었습니다. 검토 전까지 비공개 상태로 전환됩니다.',
+        type: 'alert',
+        onConfirm: () => {
+          setShowRequestDeleteModal(false);
+          onClose();
+          if (onDeleted) onDeleted();
+          router.refresh();
+        }
+      });
     }
   };
 
   const handleToggleLike = async () => {
     if (!currentUserId) {
-      alert('좋아요 기능은 로그인이 필요합니다.');
+      setCustomPopup({
+        isOpen: true,
+        title: '로그인 필요',
+        message: '좋아요 기능은 로그인이 필요합니다.',
+        type: 'alert'
+      });
       return;
     }
     if (likeLoading) return;
@@ -304,6 +354,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     if (isEditing && editorRef.current && post) {
       editorRef.current.innerHTML = post.content;
       syncAttachedImages();
+      checkDraft();
     }
   }, [isEditing, post]);
 
@@ -359,7 +410,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       }
       setTimeout(syncAttachedImages, 100);
     } catch (err: any) {
-      alert(`이미지 업로드 중 오류: ${err.message || '스토리지 연결 오류'}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '이미지 업로드 오류',
+        message: err.message || '스토리지 연결 오류',
+        type: 'alert'
+      });
     } finally {
       setUploadingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -397,15 +453,102 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
+  // 수정 모드 임시보관 저장
+  const handleSaveEditDraft = async () => {
+    if (!currentUserId) return;
+    const contentToSave = editorRef.current?.innerHTML || '';
+    if (!editTitle.trim() && !contentToSave.trim()) {
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 불가',
+        message: '제목 또는 본문 내용이 비어있어 보관할 수 없습니다.',
+        type: 'alert'
+      });
+      return;
+    }
+
+    setIsSavingDraft(true);
+    const { error } = await supabase.from('post_drafts').upsert(
+      {
+        user_id: currentUserId,
+        title: editTitle.trim(),
+        content: contentToSave,
+        tags: editTags,
+        thumbnail_url: editThumbnailUrl,
+        is_preview_hidden: editIsPreviewHidden,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    );
+
+    if (error) {
+      setCustomPopup({
+        isOpen: true,
+        title: '보관 실패',
+        message: `임시보관 실패: ${error.message}`,
+        type: 'alert'
+      });
+    } else {
+      setHasDraft(true);
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 완료',
+        message: '현재 수정 내용이 임시보관되었습니다. (최대 1개 유지)',
+        type: 'alert'
+      });
+    }
+    setIsSavingDraft(false);
+  };
+
+  // 수정 모드 임시보관 불러오기
+  const handleLoadEditDraft = async () => {
+    if (!currentUserId) return;
+    const { data } = await supabase
+      .from('post_drafts')
+      .select('*')
+      .eq('user_id', currentUserId)
+      .maybeSingle();
+
+    if (!data) return;
+
+    setCustomPopup({
+      isOpen: true,
+      title: '임시보관 불러오기',
+      message: '보관된 임시글을 불러오시겠습니까? 현재 편집 중인 내용이 대체됩니다.',
+      type: 'confirm',
+      onConfirm: () => {
+        setEditTitle(data.title || '');
+        setEditTags(data.tags || []);
+        setEditThumbnailUrl(data.thumbnail_url || null);
+        setEditIsPreviewHidden(Boolean(data.is_preview_hidden));
+        if (editorRef.current) {
+          editorRef.current.innerHTML = data.content || '';
+          syncAttachedImages();
+        }
+      }
+    });
+  };
+
+  // 수정 완료 저장
   const handleSaveEdit = async () => {
     if (!editTitle.trim()) {
-      alert('제목을 입력해 주십시오.');
+      setCustomPopup({
+        isOpen: true,
+        title: '제목 입력',
+        message: '제목을 입력해 주십시오.',
+        type: 'alert'
+      });
       return;
     }
 
     const contentToSave = editorRef.current?.innerHTML || '';
     if (!contentToSave.trim() || contentToSave === '<p><br></p>') {
-      alert('내용을 입력해 주십시오.');
+      setCustomPopup({
+        isOpen: true,
+        title: '내용 입력',
+        message: '내용을 입력해 주십시오.',
+        type: 'alert'
+      });
       return;
     }
 
@@ -422,9 +565,17 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      alert(`게시글 수정 실패: ${error.message}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '수정 실패',
+        message: `게시글 수정 실패: ${error.message}`,
+        type: 'alert'
+      });
       setSaving(false);
     } else {
+      if (currentUserId) {
+        await supabase.from('post_drafts').delete().eq('user_id', currentUserId);
+      }
       setPost((prev) =>
         prev
           ? {
@@ -543,18 +694,51 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-md border border-emerald-200 dark:border-emerald-900/50">
                   편집 모드
                 </span>
+
+                {/* 수정 모드 전용 임시보관 및 불러오기 버튼 */}
+                {hasDraft && (
+                  <button
+                    type="button"
+                    onClick={handleLoadEditDraft}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-500/40 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-950/60 transition"
+                    title="임시보관 불러오기"
+                  >
+                    <FileDown className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">불러오기</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleSaveEditDraft}
+                  disabled={isSavingDraft}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition disabled:opacity-50"
+                  title="수정 내용 임시보관"
+                >
+                  {isSavingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>임시보관</span>
+                </button>
+
                 <button
                   onClick={handleSaveEdit}
                   disabled={saving || uploadingImage}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
                 >
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   <span>{saving ? '저장 중...' : '수정 완료'}</span>
                 </button>
                 <button
                   onClick={() => {
-                    setIsEditing(false);
-                    setSelectedEditorImg(null);
+                    setCustomPopup({
+                      isOpen: true,
+                      title: '수정 취소',
+                      message: '수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.',
+                      type: 'confirm',
+                      onConfirm: () => {
+                        setIsEditing(false);
+                        setSelectedEditorImg(null);
+                      }
+                    });
                   }}
                   disabled={saving}
                   className="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition"
@@ -675,43 +859,52 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 />
               </div>
 
-              {/* 썸네일 대표 사진 지정 및 미리보기 가리기 토글 바 */}
-              <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                    미리보기 설정
-                  </span>
-                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={editIsPreviewHidden}
-                      onChange={(e) => setEditIsPreviewHidden(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-zinc-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
-                    <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
-                      <EyeOff className="w-3.5 h-3.5" />
-                      미리보기 가리기
+              {/* 썸네일 대표 사진 지정 (본문에 이미지가 삽입되어 있을 때만 노출) */}
+              {attachedImages.length > 0 && (
+                <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                      미리보기 설정
                     </span>
-                  </label>
-                </div>
+                    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={editIsPreviewHidden}
+                        onChange={(e) => setEditIsPreviewHidden(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-zinc-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
+                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
+                        <EyeOff className="w-3.5 h-3.5" />
+                        미리보기 가리기
+                      </span>
+                    </label>
+                  </div>
 
-                {attachedImages.length > 0 && (
+                  {/* 가리기 활성화 시 대표사진 선택 비활성화 및 뱃지 미노출 */}
                   <div>
                     <span className="text-[11px] text-zinc-400 block mb-1.5">
-                      대표로 표시할 썸네일을 터치하여 선택하세요:
+                      {editIsPreviewHidden
+                        ? '미리보기 가리기가 설정되어 있어 썸네일이 피드에 노출되지 않습니다.'
+                        : '대표로 표시할 썸네일을 터치하여 선택하세요:'}
                     </span>
                     <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
                       {attachedImages.map((src, index) => {
-                        const isMain = editThumbnailUrl === src;
+                        const isMain = editThumbnailUrl === src && !editIsPreviewHidden;
                         return (
                           <div
                             key={index}
-                            onClick={() => setEditThumbnailUrl(src)}
-                            className={`relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 cursor-pointer transition ${
-                              isMain
-                                ? 'border-emerald-500 ring-2 ring-emerald-500/30'
-                                : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400'
+                            onClick={() => {
+                              if (!editIsPreviewHidden) {
+                                setEditThumbnailUrl(src);
+                              }
+                            }}
+                            className={`relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition ${
+                              editIsPreviewHidden
+                                ? 'opacity-40 cursor-not-allowed border-zinc-300 dark:border-zinc-700'
+                                : isMain
+                                ? 'border-emerald-500 ring-2 ring-emerald-500/30 cursor-pointer'
+                                : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 cursor-pointer'
                             }`}
                           >
                             <img src={src} alt="사진" className="w-full h-full object-cover" />
@@ -736,8 +929,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                       })}
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
@@ -816,6 +1009,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       </div>
 
+      {/* 공식 게시글 삭제 신청 팝업 */}
       {showRequestDeleteModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -875,6 +1069,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
+      {/* 사진 전체보기 팝업 */}
       {previewImageUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
@@ -911,6 +1106,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
+      {/* 영구 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -954,6 +1150,56 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{deleting ? '삭제 진행 중...' : '삭제'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 사이트 UI 맞춤 커스텀 알림/확인 팝업 */}
+      {customPopup.isOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                  {customPopup.title}
+                </h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              {customPopup.message}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              {customPopup.type === 'confirm' && (
+                <button
+                  type="button"
+                  onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                >
+                  취소
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomPopup((prev) => ({ ...prev, isOpen: false }));
+                  if (customPopup.onConfirm) customPopup.onConfirm();
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
+              >
+                확인
               </button>
             </div>
           </div>

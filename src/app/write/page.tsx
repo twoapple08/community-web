@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Editor from '@/components/Editor'
-import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, Loader2 } from 'lucide-react'
+import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, Loader2, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -25,21 +25,34 @@ export default function WritePage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedThumbnail, setSelectedThumbnail] = useState<string | null>(null)
   const [isPreviewHidden, setIsPreviewHidden] = useState(false)
-  const [editorKey, setEditorKey] = useState(0) // 에디터 강제 재마운트 키
+  const [editorKey, setEditorKey] = useState(0)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
 
-  // 임시보관 안내 상태
+  // 임시보관 확인
   const [existingDraft, setExistingDraft] = useState<DraftData | null>(null)
-  const [loadingDraftCheck, setLoadingDraftCheck] = useState(true)
+
+  // 사이트 맞춤 커스텀 알림/확인 팝업 상태
+  const [customPopup, setCustomPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'alert' | 'confirm';
+    onConfirm?: () => void;
+  }>({ isOpen: false, title: '', message: '' })
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
-        alert('로그인이 필요한 기능입니다.')
-        router.push('/')
+        setCustomPopup({
+          isOpen: true,
+          title: '로그인 필요',
+          message: '로그인이 필요한 기능입니다. 메인 피드로 이동합니다.',
+          type: 'alert',
+          onConfirm: () => router.push('/')
+        })
       } else {
         const uid = session.user.id
         setUserId(uid)
@@ -48,9 +61,7 @@ export default function WritePage() {
     })
   }, [router])
 
-  // 기존 임시보관 확인
   const checkExistingDraft = async (uid: string) => {
-    setLoadingDraftCheck(true)
     const { data } = await supabase
       .from('post_drafts')
       .select('title, content, tags, thumbnail_url, is_preview_hidden, updated_at')
@@ -60,7 +71,6 @@ export default function WritePage() {
     if (data) {
       setExistingDraft(data as DraftData)
     }
-    setLoadingDraftCheck(false)
   }
 
   // 본문 내 삽입된 이미지 목록 실시간 추출
@@ -74,11 +84,16 @@ export default function WritePage() {
     }
   }, [content]);
 
-  // 임시보관 저장 (최대 1개 덮어쓰기)
+  // 임시보관 저장 (유저당 최대 1개)
   const handleSaveDraft = async () => {
     if (!userId) return
     if (!title.trim() && (!content.trim() || content === '<p></p>')) {
-      alert('제목 또는 내용이 비어있어 임시보관할 수 없습니다.')
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 불가',
+        message: '제목 또는 본문 내용이 비어있어 임시보관할 수 없습니다.',
+        type: 'alert'
+      })
       return
     }
 
@@ -98,7 +113,12 @@ export default function WritePage() {
     )
 
     if (error) {
-      alert(`임시보관 실패: ${error.message}`)
+      setCustomPopup({
+        isOpen: true,
+        title: '보관 실패',
+        message: `임시보관 실패: ${error.message}`,
+        type: 'alert'
+      })
     } else {
       setExistingDraft({
         title: title.trim(),
@@ -108,43 +128,78 @@ export default function WritePage() {
         is_preview_hidden: isPreviewHidden,
         updated_at: nowIso,
       })
-      alert('현재 작성 내용이 임시보관되었습니다. (최대 1개 보관)')
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 완료',
+        message: '현재 작성 내용이 안전하게 임시보관되었습니다. (최대 1개 유지)',
+        type: 'alert'
+      })
     }
     setIsSavingDraft(false)
   }
 
-  // 임시보관 글 불러오기
-  const handleLoadDraft = () => {
+  // 임시보관 불러오기 실행
+  const executeLoadDraft = () => {
     if (!existingDraft) return
-    if (
-      (title.trim() || (content.trim() && content !== '<p></p>')) &&
-      !window.confirm('임시보관된 글을 불러오시겠습니까? 현재 작성 중인 내용은 대체됩니다.')
-    ) {
-      return
-    }
-
     setTitle(existingDraft.title || '')
     setContent(existingDraft.content || '')
     setSelectedTags(existingDraft.tags || [])
     setSelectedThumbnail(existingDraft.thumbnail_url || null)
     setIsPreviewHidden(Boolean(existingDraft.is_preview_hidden))
-    setEditorKey((prev) => prev + 1) // 에디터 갱신
+    setEditorKey((prev) => prev + 1)
   }
 
-  // 임시보관 글 삭제
-  const handleDeleteDraft = async () => {
+  const handleLoadDraftClick = () => {
+    if (!existingDraft) return
+    if (title.trim() || (content.trim() && content !== '<p></p>')) {
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 불러오기',
+        message: '임시보관된 글을 불러오시겠습니까? 현재 작성 중인 내용은 대체됩니다.',
+        type: 'confirm',
+        onConfirm: executeLoadDraft
+      })
+    } else {
+      executeLoadDraft()
+    }
+  }
+
+  // 임시보관 삭제
+  const handleDeleteDraft = () => {
     if (!userId) return
-    if (!window.confirm('임시보관된 글을 삭제하시겠습니까?')) return
-
-    await supabase.from('post_drafts').delete().eq('user_id', userId)
-    setExistingDraft(null)
+    setCustomPopup({
+      isOpen: true,
+      title: '임시보관 삭제',
+      message: '보관 중인 임시 게시글을 완전히 삭제하시겠습니까?',
+      type: 'confirm',
+      onConfirm: async () => {
+        await supabase.from('post_drafts').delete().eq('user_id', userId)
+        setExistingDraft(null)
+      }
+    })
   }
 
-  // 최종 게시글 등록
+  // 최종 등록
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) return alert('제목을 입력해 주세요.')
-    if (!content.trim() || content === '<p></p>') return alert('본문 내용을 작성해 주세요.')
+    if (!title.trim()) {
+      setCustomPopup({
+        isOpen: true,
+        title: '제목 입력',
+        message: '게시글 제목을 입력해 주십시오.',
+        type: 'alert'
+      })
+      return
+    }
+    if (!content.trim() || content === '<p></p>') {
+      setCustomPopup({
+        isOpen: true,
+        title: '내용 입력',
+        message: '본문 내용을 작성해 주십시오.',
+        type: 'alert'
+      })
+      return
+    }
     if (!userId) return
 
     setIsSubmitting(true)
@@ -161,10 +216,14 @@ export default function WritePage() {
     ])
 
     if (error) {
-      alert(`게시글 등록 실패: ${error.message}`)
+      setCustomPopup({
+        isOpen: true,
+        title: '등록 실패',
+        message: `게시글 등록 실패: ${error.message}`,
+        type: 'alert'
+      })
       setIsSubmitting(false)
     } else {
-      // 등록 완료 시 보관되어 있던 임시글 자동 청소
       await supabase.from('post_drafts').delete().eq('user_id', userId)
       router.push('/')
       router.refresh()
@@ -187,7 +246,7 @@ export default function WritePage() {
           {existingDraft && (
             <button
               type="button"
-              onClick={handleLoadDraft}
+              onClick={handleLoadDraftClick}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-950/60 text-xs font-semibold transition"
               title="임시보관 불러오기"
             >
@@ -208,7 +267,7 @@ export default function WritePage() {
         </div>
       </div>
 
-      {/* 임시보관 감지 배너 */}
+      {/* 임시보관 안내 배너 */}
       {existingDraft && (
         <div className="flex items-center justify-between p-3.5 mb-5 rounded-2xl bg-emerald-950/30 border border-emerald-800/60 text-xs">
           <div className="flex items-center gap-2 text-emerald-300">
@@ -220,7 +279,7 @@ export default function WritePage() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={handleLoadDraft}
+              onClick={handleLoadDraftClick}
               className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition"
             >
               불러오기
@@ -281,49 +340,56 @@ export default function WritePage() {
           </div>
         </div>
 
-        {/* 에디터 (불러오기 시 key 변경으로 내용 자동 동기화) */}
-        <Editor key={editorKey} content={content} onChange={setContent} />
-
-        {/* 썸네일 미리보기 설정 */}
-        <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-zinc-300">
-              미리보기 썸네일 설정
-            </span>
-            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isPreviewHidden}
-                onChange={(e) => setIsPreviewHidden(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
-              <span className="text-xs font-medium text-zinc-300 flex items-center gap-1">
-                <EyeOff className="w-3.5 h-3.5" />
-                미리보기 가리기
+        {/* 미리보기 썸네일 설정 박스 (수정 모드와 동일한 상단 위치로 이동 + 이미지가 있을 때만 노출) */}
+        {detectedImages.length > 0 && (
+          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-300">
+                미리보기 썸네일 설정
               </span>
-            </label>
-          </div>
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isPreviewHidden}
+                  onChange={(e) => setIsPreviewHidden(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
+                <span className="text-xs font-medium text-zinc-300 flex items-center gap-1">
+                  <EyeOff className="w-3.5 h-3.5" />
+                  미리보기 가리기
+                </span>
+              </label>
+            </div>
 
-          {detectedImages.length > 0 ? (
+            {/* 미리보기 가리기가 활성화되면 대표사진 옵션 정지 및 '대표 사진' 뱃지 미노출 */}
             <div>
               <span className="text-[11px] text-zinc-400 block mb-1.5">
-                피드에 노출할 대표 사진을 선택하세요:
+                {isPreviewHidden
+                  ? '미리보기 가리기가 설정되어 있어 썸네일이 피드에 노출되지 않습니다.'
+                  : '피드에 노출할 대표 사진을 선택하세요:'}
               </span>
               <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
                 {detectedImages.map((src, idx) => {
-                  const isMain = selectedThumbnail === src;
+                  const isMain = selectedThumbnail === src && !isPreviewHidden;
                   return (
                     <div
                       key={idx}
-                      onClick={() => setSelectedThumbnail(src)}
-                      className={`relative shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 cursor-pointer transition ${
-                        isMain
-                          ? 'border-emerald-500 ring-2 ring-emerald-500/30'
-                          : 'border-zinc-700 hover:border-zinc-500'
+                      onClick={() => {
+                        if (!isPreviewHidden) {
+                          setSelectedThumbnail(src);
+                        }
+                      }}
+                      className={`relative shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition ${
+                        isPreviewHidden
+                          ? 'opacity-40 cursor-not-allowed border-zinc-700'
+                          : isMain
+                          ? 'border-emerald-500 ring-2 ring-emerald-500/30 cursor-pointer'
+                          : 'border-zinc-700 hover:border-zinc-500 cursor-pointer'
                       }`}
                     >
                       <img src={src} alt="사진" className="w-full h-full object-cover" />
+                      {/* 가리기 시 '대표 사진' 라벨 숨김 */}
                       {isMain && (
                         <span className="absolute bottom-1 left-1 right-1 bg-emerald-600 text-white text-[9px] font-bold text-center py-0.5 rounded">
                           대표 사진
@@ -334,12 +400,11 @@ export default function WritePage() {
                 })}
               </div>
             </div>
-          ) : (
-            <p className="text-[11px] text-zinc-500">
-              본문에 이미지를 첨부하면 이곳에서 대표 썸네일을 직접 선택할 수 있습니다.
-            </p>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* 에디터 */}
+        <Editor key={editorKey} content={content} onChange={setContent} />
 
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -361,6 +426,56 @@ export default function WritePage() {
           </button>
         </div>
       </form>
+
+      {/* 사이트 UI 맞춤 커스텀 알림/확인 팝업 */}
+      {customPopup.isOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                  {customPopup.title}
+                </h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              {customPopup.message}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              {customPopup.type === 'confirm' && (
+                <button
+                  type="button"
+                  onClick={() => setCustomPopup((prev) => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                >
+                  취소
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomPopup((prev) => ({ ...prev, isOpen: false }));
+                  if (customPopup.onConfirm) customPopup.onConfirm();
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

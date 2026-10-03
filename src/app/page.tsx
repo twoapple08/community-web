@@ -19,7 +19,9 @@ import {
   X,
   Check,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  Layers
 } from 'lucide-react';
 import PostModal from '@/components/PostModal';
 
@@ -27,6 +29,7 @@ type SortType = 'latest' | 'popular' | 'oldest';
 type OfficialFilterType = 'all' | 'official' | 'unofficial';
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const;
 
 interface Post {
   id: string;
@@ -86,9 +89,10 @@ function FeedContent() {
   const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  // 페이지네이션 상태 (기본 10개, 브라우저 저장 유지)
+  // 페이지네이션 및 커스텀 개수 팝업 상태
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [postsPerPage, setPostsPerPage] = useState<number>(10);
+  const [isPageSizeModalOpen, setIsPageSizeModalOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -99,7 +103,6 @@ function FeedContent() {
   } | null>(null);
   const [actionProcessing, setActionProcessing] = useState(false);
 
-  // 로컬스토리지 개인 설정 로드
   useEffect(() => {
     const savedSize = localStorage.getItem('user_posts_per_page');
     if (savedSize && [10, 20, 30, 40, 50].includes(Number(savedSize))) {
@@ -110,6 +113,7 @@ function FeedContent() {
   const handlePageSizeChange = (newSize: number) => {
     setPostsPerPage(newSize);
     setCurrentPage(1);
+    setIsPageSizeModalOpen(false);
     localStorage.setItem('user_posts_per_page', String(newSize));
   };
 
@@ -193,7 +197,6 @@ function FeedContent() {
     fetchPosts();
   }, [sortType]);
 
-  // 검색/필터 변경 시 1페이지로 리셋
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, officialFilter, selectedFilterTags, sortType]);
@@ -300,7 +303,6 @@ function FeedContent() {
       });
   }, [posts, officialFilter, selectedFilterTags, searchQuery, isAdmin, currentUserId]);
 
-  // 페이지네이션 계산
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = useMemo(() => {
     const startIndex = (currentPage - 1) * postsPerPage;
@@ -606,7 +608,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 하단 페이지네이션 및 맨 아래쪽 우측 게시글 표시 개수 선택기 */}
+      {/* 하단 페이지네이션 및 맨 아래쪽 우측 사이트 맞춤 개수 선택기 */}
       {filteredPosts.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="hidden sm:block text-xs text-zinc-400 w-32">
@@ -663,23 +665,65 @@ function FeedContent() {
             </button>
           </div>
 
-          {/* 맨 아래쪽 우측: 게시글 표시 개수 설정 (10, 20, 30, 40, 50) */}
+          {/* 맨 아래쪽 우측: 네이티브 select를 완전히 대체한 사이트 맞춤 팝업 버튼 */}
           <div className="flex items-center gap-1.5 self-end sm:self-auto">
-            <label htmlFor="pageSizeSelect" className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-              표시:
-            </label>
-            <select
-              id="pageSizeSelect"
-              value={postsPerPage}
-              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-              className="px-2.5 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition cursor-pointer"
+            <button
+              type="button"
+              onClick={() => setIsPageSizeModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold transition shadow-sm"
             >
-              <option value={10}>10개씩 보기</option>
-              <option value={20}>20개씩 보기</option>
-              <option value={30}>30개씩 보기</option>
-              <option value={40}>40개씩 보기</option>
-              <option value={50}>50개씩 보기</option>
-            </select>
+              <Layers className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{postsPerPage}개씩 보기</span>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 사이트 UI 맞춤 게시글 표시 개수 선택 팝업 (1번 이미지 네이티브 창 완전 대체) */}
+      {isPageSizeModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setIsPageSizeModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-500" />
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white">페이지당 게시글 수</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPageSizeModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              {PAGE_SIZE_OPTIONS.map((size) => {
+                const isSelected = postsPerPage === size;
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => handlePageSizeChange(size)}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition ${
+                      isSelected
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/80 shadow-sm'
+                        : 'bg-zinc-50 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-transparent'
+                    }`}
+                  >
+                    <span>{size}개씩 보기</span>
+                    {isSelected && <Check className="w-4 h-4 text-emerald-500" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -768,7 +812,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 관리자 확인 팝업 */}
+      {/* 관리자 삭제 승인/거절 확인 팝업 */}
       {confirmModal && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
