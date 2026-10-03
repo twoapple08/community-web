@@ -2,11 +2,12 @@
 
 import { CrownIcon } from "@/components/CrownIcon";
 import AdminModal from "@/components/AdminModal";
+import UserHubModal from "@/components/UserHubModal";
 import './globals.css'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Moon, Sun, PenSquare, LogOut, LogIn, Check, Crown } from 'lucide-react'
+import { Moon, Sun, PenSquare, LogOut, LogIn, Crown } from 'lucide-react'
 
 export default function RootLayout({
   children,
@@ -18,11 +19,7 @@ export default function RootLayout({
   const [nickname, setNickname] = useState<string>("");
   const [userRole, setUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
-  
-  // 닉네임 수정 팝업 상태
-  const [showNicknameModal, setShowNicknameModal] = useState(false)
-  const [newNickname, setNewNickname] = useState('')
-  const [updatingNickname, setUpdatingNickname] = useState(false)
+  const [isUserHubOpen, setIsUserHubOpen] = useState(false);
 
   // 초기 테마 로드
   useEffect(() => {
@@ -121,29 +118,6 @@ export default function RootLayout({
     setUserRole(null)
   }
 
-  const handleSaveNickname = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newNickname.trim()) return alert('닉네임을 입력해 주십시오.')
-    if (newNickname.trim().length > 15) return alert('닉네임은 15자 이하로 설정해 주십시오.')
-
-    setUpdatingNickname(true)
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({
-        id: user.id,
-        nickname: newNickname.trim(),
-      })
-
-    if (error) {
-      alert(`닉네임 저장 실패: ${error.message}`)
-    } else {
-      setNickname(newNickname.trim())
-      setShowNicknameModal(false)
-      window.location.reload()
-    }
-    setUpdatingNickname(false)
-  }
-
   const isCreatorOrSuperAdmin =
     user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ||
     userRole === "creator" ||
@@ -185,7 +159,7 @@ export default function RootLayout({
                   {theme === 'dark' ? (
                     <Moon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white fill-white" />
                   ) : (
-                    <Sun className="w-3.5 h-3.5 text-zinc-950 stroke-[2.5]" />
+                    <Sun className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-950 stroke-[2.5]" />
                   )}
                 </span>
               </button>
@@ -201,14 +175,11 @@ export default function RootLayout({
                     <span>글쓰기</span>
                   </Link>
 
-                  {/* 닉네임 버튼 */}
+                  {/* 닉네임 버튼 (클릭 시 마이메뉴 허브 모달 호출) */}
                   <button
-                    onClick={() => {
-                      setNewNickname(nickname)
-                      setShowNicknameModal(true)
-                    }}
+                    onClick={() => setIsUserHubOpen(true)}
                     className="inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-xs font-medium text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
-                    title="닉네임 변경"
+                    title="마이 메뉴"
                   >
                     <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                     <span className="max-w-[55px] sm:max-w-[110px] truncate">{nickname || "닉네임"}</span>
@@ -252,48 +223,17 @@ export default function RootLayout({
 
         <main>{children}</main>
 
-        {/* 닉네임 변경 팝업 모달 */}
-        {showNicknameModal && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
-            onClick={() => !updatingNickname && setShowNicknameModal(false)}
-          >
-            <div
-              className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-base font-bold text-zinc-900 dark:text-white">닉네임 변경</h3>
-              <form onSubmit={handleSaveNickname} className="space-y-4">
-                <input
-                  type="text"
-                  value={newNickname}
-                  onChange={(e) => setNewNickname(e.target.value)}
-                  placeholder="사용할 닉네임을 입력하세요"
-                  maxLength={15}
-                  autoFocus
-                  className="w-full px-3.5 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-                />
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowNicknameModal(false)}
-                    disabled={updatingNickname}
-                    className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={updatingNickname}
-                    className="px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{updatingNickname ? '저장 중...' : '변경 완료'}</span>
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+        {/* 마이메뉴 허브 모달 (닉네임 변경 / 내가 쓴 글 / 좋아요 누른 글) */}
+        {user && (
+          <UserHubModal
+            isOpen={isUserHubOpen}
+            onClose={() => setIsUserHubOpen(false)}
+            userId={user.id}
+            userEmail={user.email || ""}
+            userRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}
+            currentNickname={nickname}
+            onNicknameUpdated={(newNick) => setNickname(newNick)}
+          />
         )}
 
         {/* 관리자 지정 모달 */}
