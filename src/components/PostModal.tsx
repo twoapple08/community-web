@@ -21,8 +21,11 @@ import {
   Eye,
   Heart,
   ShieldCheck,
-  Send
+  Send,
+  EyeOff
 } from 'lucide-react';
+
+const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
 
 interface Post {
   id: string;
@@ -34,6 +37,9 @@ interface Post {
   is_official?: boolean;
   delete_requested?: boolean;
   delete_reason?: string | null;
+  tags?: string[];
+  thumbnail_url?: string | null;
+  is_preview_hidden?: boolean;
 }
 
 interface PostModalProps {
@@ -57,9 +63,23 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // 편집 모드 관리
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
+
+  const [editTitle, setEditTitle] = useState('');
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editThumbnailUrl, setEditThumbnailUrl] = useState<string | null>(null);
+  const [editIsPreviewHidden, setEditIsPreviewHidden] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [selectedEditorImg, setSelectedEditorImg] = useState<HTMLImageElement | null>(null);
+
+  const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
   const [deleteReasonText, setDeleteReasonText] = useState("");
@@ -95,19 +115,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   }, [post?.author_id]);
 
-  const [editTitle, setEditTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [attachedImages, setAttachedImages] = useState<string[]>([]);
-  const [selectedEditorImg, setSelectedEditorImg] = useState<HTMLImageElement | null>(null);
-
-  const editorRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const syncAttachedImages = () => {
     if (!editorRef.current) return;
     const imgs = Array.from(editorRef.current.querySelectorAll('img')).map((img) => img.src);
     setAttachedImages(imgs);
+    if (imgs.length > 0 && !editThumbnailUrl) {
+      setEditThumbnailUrl(imgs[0]);
+    }
   };
 
   useEffect(() => {
@@ -163,6 +177,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     if (!error && data) {
       setPost(data);
       setEditTitle(data.title);
+      setEditTags(Array.isArray(data.tags) ? data.tags : []);
+      setEditThumbnailUrl(data.thumbnail_url || null);
+      setEditIsPreviewHidden(Boolean(data.is_preview_hidden));
       setLikesCount(data.likes_count ?? 0);
 
       const userIdToCheck = uid !== undefined ? uid : currentUserId;
@@ -334,6 +351,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         img.remove();
       }
     });
+    if (editThumbnailUrl === src) {
+      setEditThumbnailUrl(null);
+    }
     setSelectedEditorImg(null);
     syncAttachedImages();
   };
@@ -372,6 +392,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .update({
         title: editTitle.trim(),
         content: contentToSave,
+        tags: editTags,
+        thumbnail_url: editThumbnailUrl,
+        is_preview_hidden: editIsPreviewHidden,
       })
       .eq('id', postId);
 
@@ -379,7 +402,18 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       alert(`게시글 수정 실패: ${error.message}`);
       setSaving(false);
     } else {
-      setPost((prev) => (prev ? { ...prev, title: editTitle.trim(), content: contentToSave } : null));
+      setPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              title: editTitle.trim(),
+              content: contentToSave,
+              tags: editTags,
+              thumbnail_url: editThumbnailUrl,
+              is_preview_hidden: editIsPreviewHidden,
+            }
+          : null
+      );
       setIsEditing(false);
       setSelectedEditorImg(null);
       setSaving(false);
@@ -450,6 +484,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     <button
                       onClick={() => {
                         setEditTitle(post?.title || '');
+                        setEditTags(Array.isArray(post?.tags) ? post?.tags : []);
+                        setEditThumbnailUrl(post?.thumbnail_url || null);
+                        setEditIsPreviewHidden(Boolean(post?.is_preview_hidden));
                         setIsEditing(true);
                       }}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900/50 transition"
@@ -538,6 +575,38 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
+                  해시태그 설정 (중복 선택 가능)
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {AVAILABLE_TAGS.map((tag) => {
+                    const isSelected = editTags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setEditTags((prev) => prev.filter((t) => t !== tag));
+                          } else {
+                            setEditTags((prev) => [...prev, tag]);
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${
+                          isSelected
+                            ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                            : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                        }`}
+                      >
+                        <span>#{tag}</span>
+                        {isSelected && <Check className="w-3 h-3" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center gap-1 p-2 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl">
                 <button
                   type="button"
@@ -583,47 +652,69 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 />
               </div>
 
-              {attachedImages.length > 0 && (
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-                    <span>삽입된 사진 관리 ({attachedImages.length}장)</span>
-                    <span className="text-[11px] text-zinc-400">클릭 시 미리보기 / 휴지통 클릭 시 삭제</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
-                    {attachedImages.map((src, index) => (
-                      <div
-                        key={index}
-                        className="relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800"
-                      >
-                        <img
-                          src={src}
-                          alt={`첨부 사진 ${index + 1}`}
-                          className="w-full h-full object-cover cursor-pointer"
-                          onClick={() => setPreviewImageUrl(src)}
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewImageUrl(src)}
-                            className="p-1 rounded-full bg-white/80 hover:bg-white text-zinc-900 transition"
-                            title="크게 보기"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveImageBySrc(src)}
-                            className="p-1 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
-                            title="사진 삭제"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              {/* 썸네일 대표 사진 지정 및 미리보기 가리기 토글 바 */}
+              <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    미리보기 설정
+                  </span>
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={editIsPreviewHidden}
+                      onChange={(e) => setEditIsPreviewHidden(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-zinc-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
+                    <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
+                      <EyeOff className="w-3.5 h-3.5" />
+                      미리보기 가리기
+                    </span>
+                  </label>
                 </div>
-              )}
+
+                {attachedImages.length > 0 && (
+                  <div>
+                    <span className="text-[11px] text-zinc-400 block mb-1.5">
+                      대표로 표시할 썸네일을 터치하여 선택하세요:
+                    </span>
+                    <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
+                      {attachedImages.map((src, index) => {
+                        const isMain = editThumbnailUrl === src;
+                        return (
+                          <div
+                            key={index}
+                            onClick={() => setEditThumbnailUrl(src)}
+                            className={`relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 cursor-pointer transition ${
+                              isMain
+                                ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                                : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400'
+                            }`}
+                          >
+                            <img src={src} alt="사진" className="w-full h-full object-cover" />
+                            {isMain && (
+                              <span className="absolute bottom-1 left-1 right-1 bg-emerald-600/90 text-white text-[9px] font-bold text-center py-0.5 rounded">
+                                대표 사진
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveImageBySrc(src);
+                              }}
+                              className="absolute top-1 right-1 p-1 rounded-full bg-red-600 hover:bg-red-700 text-white transition opacity-0 group-hover:opacity-100"
+                              title="삭제"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
@@ -650,6 +741,20 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   )}
                   {post.title}
                 </h2>
+
+                {post.tags && post.tags.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {post.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200/80 dark:border-emerald-900/50"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
                   <span className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
                     <CrownIcon role={authorRole} className="w-4 h-4" />

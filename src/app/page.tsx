@@ -1,14 +1,30 @@
 'use client'
 
 import { CrownIcon, RoleType } from "@/components/CrownIcon";
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { MessagesSquare, Calendar, Image as ImageIcon, RotateCw, Heart, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import {
+  MessagesSquare,
+  Calendar,
+  Image as ImageIcon,
+  RotateCw,
+  Heart,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Search,
+  Filter,
+  EyeOff,
+  X,
+  Check
+} from 'lucide-react';
 import PostModal from '@/components/PostModal';
 
 type SortType = 'latest' | 'popular' | 'oldest';
 type OfficialFilterType = 'all' | 'official' | 'unofficial';
+
+const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
 
 interface Post {
   id: string;
@@ -21,6 +37,9 @@ interface Post {
   is_official?: boolean;
   delete_requested?: boolean;
   delete_reason?: string | null;
+  tags?: string[];
+  thumbnail_url?: string | null;
+  is_preview_hidden?: boolean;
 }
 
 const extractFirstImage = (html: string): string | null => {
@@ -44,6 +63,11 @@ const countImages = (html: string): number => {
   return matches ? matches.length : 0;
 };
 
+// 공백 무시 정규화 함수 (제목, 작성자, 내용 스캔)
+const normalizeText = (text: string): string => {
+  return (text || '').replace(/\s+/g, '').toLowerCase();
+};
+
 function FeedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -54,12 +78,18 @@ function FeedContent() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
 
+  // 필터 및 검색 상태
   const [sortType, setSortType] = useState<SortType>('latest');
   const [officialFilter, setOfficialFilter] = useState<OfficialFilterType>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
+  const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 삭제 신청 승인/거절 확인 팝업 상태
+  // 삭제 신청 승인/거절 모달
   const [confirmModal, setConfirmModal] = useState<{
     type: 'approve' | 'reject';
     post: Post;
@@ -130,6 +160,9 @@ function FeedContent() {
         is_official: Boolean(post.is_official),
         delete_requested: Boolean(post.delete_requested),
         delete_reason: post.delete_reason || null,
+        tags: Array.isArray(post.tags) ? post.tags : [],
+        thumbnail_url: post.thumbnail_url || null,
+        is_preview_hidden: Boolean(post.is_preview_hidden),
       }));
 
       setPosts(formattedPosts);
@@ -158,7 +191,6 @@ function FeedContent() {
     fetchPosts();
   };
 
-  // 삭제 신청 승인 (영구 삭제)
   const handleApproveDelete = async () => {
     if (!confirmModal) return;
     setActionProcessing(true);
@@ -172,7 +204,6 @@ function FeedContent() {
     setActionProcessing(false);
   };
 
-  // 삭제 신청 거절 (공개 복구)
   const handleRejectDelete = async () => {
     if (!confirmModal) return;
     setActionProcessing(true);
@@ -193,30 +224,64 @@ function FeedContent() {
     setActionProcessing(false);
   };
 
-  // 게시글 필터링 및 관리자 삭제 신청 최상단 정렬 파이프라인
-  const filteredPosts = posts
-    .filter((post) => {
-      // 삭제 신청 상태의 글은 관리자나 본인 작성자가 아니면 절대 노출하지 않음
-      if (post.delete_requested && !isAdmin && post.author_id !== currentUserId) {
-        return false;
-      }
+  const handleOpenFilterModal = () => {
+    setTempFilterTags([...selectedFilterTags]);
+    setIsFilterModalOpen(true);
+  };
 
-      if (officialFilter === 'official') return post.is_official;
-      if (officialFilter === 'unofficial') return !post.is_official;
-      return true;
-    })
-    .sort((a, b) => {
-      // 관리자 화면에서는 삭제 신청 게시글을 무조건 최상단에 우선 배치
-      if (isAdmin) {
-        if (a.delete_requested && !b.delete_requested) return -1;
-        if (!a.delete_requested && b.delete_requested) return 1;
-      }
-      return 0;
-    });
+  const handleApplyFilterModal = () => {
+    setSelectedFilterTags([...tempFilterTags]);
+    setIsFilterModalOpen(false);
+  };
+
+  const handleResetFilterModal = () => {
+    setTempFilterTags([]);
+    setSelectedFilterTags([]);
+    setIsFilterModalOpen(false);
+  };
+
+  // 공백 무시 검색 및 다중 태그 OR 필터링 연산
+  const filteredPosts = useMemo(() => {
+    const normQuery = normalizeText(searchQuery);
+
+    return posts
+      .filter((post) => {
+        if (post.delete_requested && !isAdmin && post.author_id !== currentUserId) {
+          return false;
+        }
+
+        if (officialFilter === 'official' && !post.is_official) return false;
+        if (officialFilter === 'unofficial' && post.is_official) return false;
+
+        // 깔때기 태그 필터: 선택한 태그 중 하나라도 포함되면 노출 (OR 조건)
+        if (selectedFilterTags.length > 0) {
+          const postTags = post.tags || [];
+          const hasMatchingTag = selectedFilterTags.some((t) => postTags.includes(t));
+          if (!hasMatchingTag) return false;
+        }
+
+        // 공백 무시 통합 검색 (제목, 작성자, 내용)
+        if (normQuery) {
+          const titleMatch = normalizeText(post.title).includes(normQuery);
+          const authorMatch = normalizeText(post.author_nickname || '').includes(normQuery);
+          const contentMatch = normalizeText(extractPlainText(post.content)).includes(normQuery);
+          if (!titleMatch && !authorMatch && !contentMatch) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (isAdmin) {
+          if (a.delete_requested && !b.delete_requested) return -1;
+          if (!a.delete_requested && b.delete_requested) return 1;
+        }
+        return 0;
+      });
+  }, [posts, officialFilter, selectedFilterTags, searchQuery, isAdmin, currentUserId]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* 최상단 헤더 */}
+      {/* 헤더 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
@@ -234,9 +299,79 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 탭 필터: [통합 / 공식만 / 비공식만] & [최신 / 인기 / 오래된순] */}
+      {/* 검색창 및 깔때기 필터 버튼 */}
+      <div className="flex items-center gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="제목, 작성자, 내용 검색 (공백 무시)"
+            className="w-full pl-9 pr-8 py-2.5 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleOpenFilterModal}
+          className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border transition shadow-sm shrink-0 ${
+            selectedFilterTags.length > 0
+              ? 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-500/20'
+              : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+          }`}
+          title="해시태그 필터"
+        >
+          <Filter className="w-3.5 h-3.5" />
+          <span>필터</span>
+          {selectedFilterTags.length > 0 && (
+            <span className="w-4 h-4 rounded-full bg-white text-emerald-600 text-[10px] flex items-center justify-center font-bold">
+              {selectedFilterTags.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* 활성화된 필터 태그 뱃지 */}
+      {selectedFilterTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          <span className="text-[11px] text-zinc-400 font-medium">선택된 태그:</span>
+          {selectedFilterTags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800"
+            >
+              #{tag}
+              <button
+                type="button"
+                onClick={() => setSelectedFilterTags((prev) => prev.filter((t) => t !== tag))}
+                className="hover:text-rose-500"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelectedFilterTags([])}
+            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1"
+          >
+            초기화
+          </button>
+        </div>
+      )}
+
+      {/* 분류 및 정렬 탭 */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        {/* 공식 분류 탭 */}
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
             onClick={() => setOfficialFilter('all')}
@@ -270,7 +405,6 @@ function FeedContent() {
           </button>
         </div>
 
-        {/* 정렬 필터 */}
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
             onClick={() => setSortType('latest')}
@@ -315,7 +449,7 @@ function FeedContent() {
       ) : (
         <div className="space-y-4">
           {filteredPosts.map((post) => {
-            const thumbnail = extractFirstImage(post.content);
+            const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
             const plainText = extractPlainText(post.content);
             const imageCount = countImages(post.content);
 
@@ -329,7 +463,6 @@ function FeedContent() {
                     : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
                 }`}
               >
-                {/* 삭제 신청 게시글 관리자 전용 배지 */}
                 {post.delete_requested && (
                   <div className="flex items-center justify-between pb-3 mb-3 border-b border-amber-200 dark:border-amber-900/60">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
@@ -352,9 +485,24 @@ function FeedContent() {
                       )}
                       {post.title}
                     </h2>
+
+                    {post.tags && post.tags.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {post.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
                     <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
                       {plainText || '내용이 없습니다.'}
                     </p>
+
                     <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-zinc-500 pt-1">
                       <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
                         <CrownIcon role={rolesMap[post.author_id]} className="w-4 h-4" />
@@ -377,7 +525,13 @@ function FeedContent() {
                     </div>
                   </div>
 
-                  {thumbnail && (
+                  {/* 썸네일 미리보기 렌더링 (가리기 설정 시 EyeOff 블라인드 표시) */}
+                  {post.is_preview_hidden ? (
+                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none">
+                      <EyeOff className="w-6 h-6 text-zinc-400 dark:text-zinc-500" />
+                      <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">미리보기 가림</span>
+                    </div>
+                  ) : thumbnail ? (
                     <div className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80">
                       <img
                         src={thumbnail}
@@ -386,16 +540,14 @@ function FeedContent() {
                         loading="lazy"
                       />
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
-                {/* 관리자 전용 삭제 신청 심사 바 */}
                 {post.delete_requested && isAdmin && (
                   <div
                     onClick={(e) => e.stopPropagation()}
                     className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
                   >
-                    {/* 좌측 하단 허락 / 거절 버튼 */}
                     <div className="flex items-center gap-2 order-2 sm:order-1">
                       <button
                         type="button"
@@ -415,7 +567,6 @@ function FeedContent() {
                       </button>
                     </div>
 
-                    {/* 우측 하단 삭제 사유 표기 */}
                     <div className="text-zinc-700 dark:text-zinc-300 font-medium order-1 sm:order-2 bg-amber-100/80 dark:bg-amber-900/40 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-800 max-w-full break-words">
                       <span className="font-bold text-amber-900 dark:text-amber-200">삭제사유: </span>
                       {post.delete_reason || '사유가 입력되지 않았습니다.'}
@@ -428,7 +579,91 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 허락 / 거절 결정 팝업 창 */}
+      {/* 깔때기 태그 필터 팝업 모달 */}
+      {isFilterModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setIsFilterModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-emerald-500" />
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">태그 필터 설정</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFilterModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              선택한 태그가 하나라도 포함된 게시글이 피드에 표시됩니다. (다중 선택 가능)
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+              {AVAILABLE_TAGS.map((tag) => {
+                const isSelected = tempFilterTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      if (isSelected) {
+                        setTempFilterTags((prev) => prev.filter((t) => t !== tag));
+                      } else {
+                        setTempFilterTags((prev) => [...prev, tag]);
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition border ${
+                      isSelected
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                        : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                    }`}
+                  >
+                    <span>#{tag}</span>
+                    {isSelected && <Check className="w-3 h-3" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={handleResetFilterModal}
+                className="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:underline"
+              >
+                전체 해제
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFilterModalOpen(false)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyFilterModal}
+                  className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 확인 팝업 */}
       {confirmModal && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
