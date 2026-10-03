@@ -1,46 +1,55 @@
 'use client'
 
 import { CrownIcon, RoleType } from "@/components/CrownIcon";
-import { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { MessageSquare, Calendar, User as UserIcon, Image as ImageIcon, RotateCw } from 'lucide-react'
-import PostModal from '@/components/PostModal'
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { MessagesSquare, Calendar, Image as ImageIcon, RotateCw, Heart } from 'lucide-react';
+import PostModal from '@/components/PostModal';
+
+type SortType = 'latest' | 'popular' | 'oldest';
 
 interface Post {
-  id: string
-  title: string
-  content: string
-  created_at: string
-  author_id: string
-  author_nickname?: string
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  author_id: string;
+  likes_count?: number;
+  author_nickname?: string;
 }
 
 const extractFirstImage = (html: string): string | null => {
-  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i)
-  return match ? match[1] : null
-}
+  if (!html) return null;
+  const match = html.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
+  return match ? match[1] : null;
+};
 
 const extractPlainText = (html: string): string => {
+  if (!html) return '';
   return html
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim()
-}
+    .trim();
+};
 
 const countImages = (html: string): number => {
-  const matches = html.match(/<img[^>]+src=["']([^"']+)["']/gi)
-  return matches ? matches.length : 0
-}
+  if (!html) return 0;
+  const matches = html.match(/<img[^>]+src=['"]([^'"]+)['"]/gi);
+  return matches ? matches.length : 0;
+};
 
 function FeedContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const activePostId = searchParams.get('post')
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activePostId = searchParams.get('post');
 
-  const [posts, setPosts] = useState<Post[]>([])
+  const [posts, setPosts] = useState<Post[]>([]);
   const [rolesMap, setRolesMap] = useState<Record<string, RoleType>>({});
+  const [sortType, setSortType] = useState<SortType>('latest');
+  const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     supabase.from("user_roles").select("user_id, role, email").then(({ data }) => {
@@ -53,96 +62,142 @@ function FeedContent() {
       setRolesMap(map);
     });
   }, []);
-  const [loading, setLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const fetchPosts = async () => {
-    const { data: postsData, error: postsError } = await supabase
-      .from('posts')
-      .select('*')
-      .order('created_at', { ascending: false })
+  const fetchPosts = async (currentSort: SortType = sortType) => {
+    const baseQuery = supabase.from('posts').select('*');
+
+    const query =
+      currentSort === 'popular'
+        ? baseQuery.order('likes_count', { ascending: false }).order('created_at', { ascending: false })
+        : currentSort === 'oldest'
+        ? baseQuery.order('created_at', { ascending: true })
+        : baseQuery.order('created_at', { ascending: false });
+
+    const { data: postsData, error: postsError } = await query;
 
     if (!postsError && postsData) {
-      const authorIds = Array.from(new Set(postsData.map((p) => p.author_id).filter(Boolean)))
-      const profileMap: Record<string, string> = {}
+      const authorIds = Array.from(new Set(postsData.map((p) => p.author_id).filter(Boolean)));
+      const profileMap: Record<string, string> = {};
 
       if (authorIds.length > 0) {
         const { data: profilesData } = await supabase
           .from('profiles')
           .select('id, nickname')
-          .in('id', authorIds)
+          .in('id', authorIds);
 
         if (profilesData) {
           profilesData.forEach((profile) => {
-            profileMap[profile.id] = profile.nickname
-          })
+            profileMap[profile.id] = profile.nickname;
+          });
         }
       }
 
       const formattedPosts = postsData.map((post) => ({
         ...post,
+        likes_count: post.likes_count ?? 0,
         author_nickname: profileMap[post.author_id] || '작성자',
-      }))
+      }));
 
-      setPosts(formattedPosts)
+      setPosts(formattedPosts);
     }
-    setLoading(false)
-  }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    fetchPosts()
-  }, [])
+    fetchPosts(sortType);
+  }, [sortType]);
+
+  const handleSortChange = (newSort: SortType) => {
+    if (sortType === newSort) return;
+    setSortType(newSort);
+    setLoading(true);
+  };
 
   const handleManualRefresh = async () => {
-    setIsRefreshing(true)
-    await fetchPosts()
+    setIsRefreshing(true);
+    await fetchPosts(sortType);
     setTimeout(() => {
-      setIsRefreshing(false)
-    }, 400)
-  }
+      setIsRefreshing(false);
+    }, 400);
+  };
 
   const handleOpenPost = (id: string) => {
-    router.push(`/?post=${id}`, { scroll: false })
-  }
+    router.push(`/?post=${id}`, { scroll: false });
+  };
 
   const handleClosePost = () => {
-    router.push('/', { scroll: false })
-  }
+    router.push('/', { scroll: false });
+    fetchPosts(sortType);
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* 헤더 및 전용 새로고침 버튼 바 */}
-      <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">커뮤니티 피드</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">자유롭게 소통하고 게시글을 공유하세요.</p>
         </div>
 
-        <button
-          onClick={handleManualRefresh}
-          disabled={isRefreshing}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition shadow-sm disabled:opacity-50"
-          title="피드 새로고침"
-        >
-          <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
-          <span>{isRefreshing ? '갱신 중...' : '새로고침'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
+            <button
+              onClick={() => handleSortChange('latest')}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                sortType === 'latest'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+              }`}
+            >
+              최신순
+            </button>
+            <button
+              onClick={() => handleSortChange('popular')}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                sortType === 'popular'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+              }`}
+            >
+              인기순
+            </button>
+            <button
+              onClick={() => handleSortChange('oldest')}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                sortType === 'oldest'
+                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+              }`}
+            >
+              오래된순
+            </button>
+          </div>
+
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition shadow-sm disabled:opacity-50"
+            title="피드 새로고침"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
+            <span className="hidden sm:inline">{isRefreshing ? '갱신 중...' : '새로고침'}</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="py-20 text-center text-zinc-400 dark:text-zinc-500">게시글 목록을 불러오는 중...</div>
       ) : posts.length === 0 ? (
         <div className="py-20 text-center border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl bg-zinc-50 dark:bg-zinc-900/50">
-          <MessageSquare className="w-10 h-10 text-zinc-400 dark:text-zinc-600 mx-auto mb-3" />
+          <MessagesSquare className="w-10 h-10 text-zinc-400 dark:text-zinc-600 mx-auto mb-3" />
           <p className="text-zinc-700 dark:text-zinc-300 font-medium">아직 등록된 게시글이 없습니다.</p>
           <p className="text-sm text-zinc-500 mt-1">상단 '글쓰기' 버튼을 눌러 첫 번째 게시글을 작성해 보세요.</p>
         </div>
       ) : (
         <div className="space-y-4">
           {posts.map((post) => {
-            const thumbnail = extractFirstImage(post.content)
-            const plainText = extractPlainText(post.content)
-            const imageCount = countImages(post.content)
+            const thumbnail = extractFirstImage(post.content);
+            const plainText = extractPlainText(post.content);
+            const imageCount = countImages(post.content);
 
             return (
               <article
@@ -167,6 +222,12 @@ function FeedContent() {
                         <Calendar className="w-3.5 h-3.5" />
                         {new Date(post.created_at).toLocaleDateString()}
                       </span>
+                      
+                      <span className="flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium">
+                        <Heart className="w-3.5 h-3.5 fill-rose-500/20" />
+                        {post.likes_count ?? 0}
+                      </span>
+
                       {imageCount > 1 && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50">
                           <ImageIcon className="w-3 h-3" />
@@ -188,7 +249,7 @@ function FeedContent() {
                   )}
                 </div>
               </article>
-            )
+            );
           })}
         </div>
       )}
@@ -197,11 +258,11 @@ function FeedContent() {
         <PostModal
           postId={activePostId}
           onClose={handleClosePost}
-          onDeleted={fetchPosts}
+          onDeleted={() => fetchPosts(sortType)}
         />
       )}
     </div>
-  )
+  );
 }
 
 export default function Home() {
@@ -209,5 +270,5 @@ export default function Home() {
     <Suspense fallback={<div className="py-20 text-center text-zinc-400">피드 데이터를 불러오는 중...</div>}>
       <FeedContent />
     </Suspense>
-  )
+  );
 }
