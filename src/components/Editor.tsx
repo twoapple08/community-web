@@ -16,10 +16,6 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
   Table as TableIcon,
   Code,
   Minus,
@@ -28,12 +24,12 @@ import {
   Highlighter,
   Type,
   X,
-  Check
+  Check,
+  AlertCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 
-// TipTap 스키마 정제 방지 전용 커스텀 마크 정의
 const CustomUnderline = Mark.create({
   name: 'customUnderline',
   parseHTML() {
@@ -163,12 +159,10 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
   const [showMoreTools, setShowMoreTools] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 링크 모달 상태
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
   const [inputLinkUrl, setInputLinkUrl] = useState('')
   const [inputLinkText, setInputLinkText] = useState('')
 
-  // 폰트 및 크기 팝업 상태
   const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
   const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false)
   const [customSizeInput, setCustomSizeInput] = useState('')
@@ -195,9 +189,23 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     },
   })
 
+  // 특수 고정 임베드 감지 연산
+  const detectedEmbedType = useMemo(() => {
+    const url = inputLinkUrl.trim().toLowerCase();
+    if (/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)/.test(url)) {
+      return 'youtube';
+    }
+    if (/open\.kakao\.com\/[a-z0-9_\/]+/i.test(url)) {
+      return 'kakaotalk';
+    }
+    if (/(?:discord\.gg|discord\.com\/invite)\/[a-z0-9-]+/i.test(url)) {
+      return 'discord';
+    }
+    return null;
+  }, [inputLinkUrl]);
+
   if (!editor) return null
 
-  // 이미지 업로드
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -245,7 +253,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     }
   }
 
-  // 링크 삽입 모달 오픈
   const handleOpenLinkModal = () => {
     const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
     setInputLinkText(selected || '')
@@ -253,7 +260,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     setIsLinkModalOpen(true)
   }
 
-  // 링크 삽입 확정
   const handleApplyLink = (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputLinkUrl.trim()) return
@@ -263,7 +269,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
       finalUrl = 'https://' + finalUrl
     }
 
-    const displayText = inputLinkText.trim() || finalUrl
+    const displayText = detectedEmbedType ? finalUrl : (inputLinkText.trim() || finalUrl)
 
     if (editor.state.selection.empty) {
       editor.chain().focus().insertContent(`<a href="${finalUrl}" target="_blank" rel="noopener noreferrer">${displayText}</a> `).run()
@@ -276,7 +282,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     setInputLinkText('')
   }
 
-  // 글자색 적용
   const handleSetColor = (color: string) => {
     if (editor.state.selection.empty) {
       editor.chain().focus().insertContent(`<span style="color: ${color};">색상</span> `).run()
@@ -285,7 +290,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     }
   }
 
-  // 형광펜 적용
   const handleSetHighlight = (color: string) => {
     if (color === 'clear') {
       editor.chain().focus().unsetMark('customHighlight').run()
@@ -298,7 +302,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     }
   }
 
-  // 폰트 크기 적용
   const handleSetFontSize = (sizeStr: string) => {
     let clean = sizeStr.trim()
     if (!clean.endsWith('px') && !clean.endsWith('pt') && !clean.endsWith('rem')) {
@@ -313,7 +316,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     setCustomSizeInput('')
   }
 
-  // 글꼴 패밀리 적용
   const handleSetFontFamily = (family: string) => {
     if (editor.state.selection.empty) {
       editor.chain().focus().insertContent(`<span style="font-family: ${family};">글꼴</span> `).run()
@@ -338,7 +340,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/50 overflow-visible shadow-sm relative">
-      {/* 1열 기본 툴바 */}
       <div className="flex items-center justify-between gap-1 p-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
           <button
@@ -410,7 +411,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
             <LinkIcon className="w-4 h-4" />
           </button>
 
-          {/* 도구 더보기 토글 */}
           <button
             type="button"
             onClick={() => setShowMoreTools(!showMoreTools)}
@@ -425,7 +425,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
           </button>
         </div>
 
-        {/* 맨 오른쪽: 이미지 첨부 버튼 */}
         <div className="ml-auto">
           <button
             type="button"
@@ -451,10 +450,8 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
         </div>
       </div>
 
-      {/* 2열 고급 도구 모음 (아카라이브 방식) */}
       {showMoreTools && (
         <div className="p-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-wrap items-center gap-2 text-xs relative z-20 animate-in slide-in-from-top-2 duration-150">
-          {/* 글꼴 드롭다운 팝업 */}
           <div className="relative">
             <button
               type="button"
@@ -486,7 +483,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
             )}
           </div>
 
-          {/* 글자 크기 드롭다운 팝업 (직접 입력란 포함) */}
           <div className="relative">
             <button
               type="button"
@@ -541,7 +537,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 글자 색상 팔레트 */}
           <div className="flex items-center gap-1">
             <Palette className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
             <button type="button" onClick={() => handleSetColor('#ef4444')} className="w-4 h-4 rounded-full bg-red-500 border border-red-600" title="빨간색" />
@@ -554,7 +549,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
             <button type="button" onClick={() => handleSetColor('#71717a')} className="w-4 h-4 rounded-full bg-zinc-500 border border-zinc-600" title="회색" />
           </div>
 
-          {/* 형광펜 팔레트 */}
           <div className="flex items-center gap-1">
             <Highlighter className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
             <button type="button" onClick={() => handleSetHighlight('#fef08a')} className="w-4 h-4 rounded bg-yellow-200 border border-yellow-400" title="노랑 형광펜" />
@@ -567,7 +561,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 표 삽입 */}
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -617,10 +610,9 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
         </div>
       )}
 
-      {/* 본문 에디터 내용 영역 */}
       <EditorContent editor={editor} />
 
-      {/* 링크 삽입 커스텀 팝업 (실시간 입력 상태 표시창 포함) */}
+      {/* 링크 삽입 모달 (특수 플랫폼 감지 시 고정 출력 안내 및 입력 필드 잠금) */}
       {isLinkModalOpen && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
@@ -662,35 +654,64 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
-                  표시할 텍스트 (선택 사항)
+                  표시할 텍스트
                 </label>
                 <input
                   type="text"
-                  value={inputLinkText}
+                  value={
+                    detectedEmbedType === 'youtube'
+                      ? 'YouTube 동영상 플레이어로 자동 출력됩니다'
+                      : detectedEmbedType === 'kakaotalk'
+                      ? '카카오톡 오픈채팅 바로 자동 출력됩니다'
+                      : detectedEmbedType === 'discord'
+                      ? '디스코드 서버 초대 바로 자동 출력됩니다'
+                      : inputLinkText
+                  }
+                  disabled={Boolean(detectedEmbedType)}
                   onChange={(e) => setInputLinkText(e.target.value)}
                   placeholder="비워두면 URL이 그대로 표시됩니다"
-                  className="w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className={`w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                    detectedEmbedType ? 'opacity-60 cursor-not-allowed bg-zinc-100 dark:bg-zinc-850' : ''
+                  }`}
                 />
               </div>
 
-              {/* 실시간 입력 상태 안내창 */}
-              <div className="p-3 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl text-xs space-y-1 border border-zinc-200 dark:border-zinc-700">
-                <div className="flex items-center gap-1 font-bold text-zinc-700 dark:text-zinc-300">
-                  <span>입력 확인:</span>
-                  {inputLinkUrl.trim() ? (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-0.5">
-                      <Check className="w-3.5 h-3.5" /> 정상 입력됨
-                    </span>
-                  ) : (
-                    <span className="text-amber-500">주소를 입력해 주세요</span>
-                  )}
-                </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                  연결: {inputLinkUrl.trim() || '입력 대기 중...'}
-                </p>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                  표시명: {inputLinkText.trim() || inputLinkUrl.trim() || '(URL 주소로 표시)'}
-                </p>
+              {/* 실시간 입력 상태 및 고정 임베드 규격 명시 */}
+              <div className="p-3 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl text-xs space-y-1.5 border border-zinc-200 dark:border-zinc-700">
+                {detectedEmbedType ? (
+                  <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-[11px] block">
+                        전용 고정 임베드 방식 자동 적용
+                      </span>
+                      <p className="text-[10px] text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                        {detectedEmbedType === 'youtube' &&
+                          '유튜브 영상은 레터박스 없는 16:9 반응형 플레이어(나무위키 스타일)로 고정 출력됩니다.'}
+                        {detectedEmbedType === 'kakaotalk' &&
+                          '카카오톡 오픈채팅 링크는 주소가 숨겨진 전용 노란색 바(채팅방 입장)로 고정 출력됩니다.'}
+                        {detectedEmbedType === 'discord' &&
+                          '디스코드 초대 링크는 주소가 숨겨진 전용 파란색 바(서버 참가)로 고정 출력됩니다.'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1 font-bold text-zinc-700 dark:text-zinc-300">
+                      <span>입력 확인:</span>
+                      {inputLinkUrl.trim() ? (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-0.5">
+                          <Check className="w-3.5 h-3.5" /> 일반 링크
+                        </span>
+                      ) : (
+                        <span className="text-amber-500">주소를 입력해 주세요</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                      연결: {inputLinkUrl.trim() || '입력 대기 중...'}
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">

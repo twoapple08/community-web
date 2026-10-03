@@ -6,7 +6,7 @@ import UserHubModal from "@/components/UserHubModal";
 import BlacklistModal from "@/components/BlacklistModal";
 import TermsModal from "@/components/TermsModal";
 import './globals.css'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
@@ -25,6 +25,36 @@ export default function RootLayout({
   const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+
+  // 실버 팰리스 스타일: 데스크톱 브라우저 줌 상쇄 처리 (모바일 핀치 줌은 100% 보존)
+  const initialDprRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+    if (isTouch) return; // 모바일 터치 환경은 브라우저 줌 간섭 배제
+
+    if (!initialDprRef.current) {
+      const saved = sessionStorage.getItem('base_desktop_dpr');
+      if (saved) {
+        initialDprRef.current = parseFloat(saved);
+      } else {
+        initialDprRef.current = window.devicePixelRatio || 1;
+        sessionStorage.setItem('base_desktop_dpr', String(initialDprRef.current));
+      }
+    }
+
+    const adjustDesktopZoom = () => {
+      const baseDpr = initialDprRef.current || 1;
+      const currentDpr = window.devicePixelRatio || 1;
+      const zoomFactor = currentDpr / baseDpr;
+      const counterZoom = Math.max(0.5, Math.min(2.5, 1 / zoomFactor));
+      (document.body.style as any).zoom = counterZoom;
+    };
+
+    window.addEventListener('resize', adjustDesktopZoom);
+    adjustDesktopZoom();
+    return () => window.removeEventListener('resize', adjustDesktopZoom);
+  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
@@ -146,7 +176,6 @@ export default function RootLayout({
               COMMUNITY
             </Link>
 
-            {/* 200% 확대 상태에서도 UI 붕괴 없이 우측 버튼들이 가로 스크롤로 보호됨 */}
             <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0 overflow-x-auto no-scrollbar py-1">
               <button
                 type="button"

@@ -1,7 +1,7 @@
 'use client'
 
 import { CrownIcon, RoleType } from "./CrownIcon";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import ReportModal from './ReportModal';
@@ -18,7 +18,6 @@ import {
   Heart,
   ShieldCheck,
   Send,
-  EyeOff,
   FileDown,
   Siren,
   ExternalLink
@@ -60,7 +59,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [likeLoading, setLikeLoading] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-  // 편집 모드 상태
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
@@ -81,11 +79,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // 신고 모달 상태
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-
-  // 링크 클릭 안전 접속 확인 모달 (예, 아니오 중앙 배치)
   const [linkConfirmUrl, setLinkConfirmUrl] = useState<string | null>(null);
+
+  const contentContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -222,6 +219,33 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setLoading(false);
   };
 
+  // 임베드 카드 메타데이터 비동기 바인딩
+  useEffect(() => {
+    if (!post?.content || !contentContainerRef.current) return;
+
+    const embedElements = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
+    embedElements.forEach(async (el) => {
+      const url = el.getAttribute('data-embed-url');
+      const type = el.getAttribute('data-embed-type');
+      if (!url) return;
+
+      try {
+        const res = await fetch(`/api/embed-metadata?url=${encodeURIComponent(url)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.title) {
+            const titleEl = el.querySelector<HTMLElement>('.embed-title-text');
+            if (titleEl) {
+              titleEl.textContent = data.title;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Metadata resolve error:', err);
+      }
+    });
+  }, [post?.content, isEditing]);
+
   const handleToggleOfficial = async () => {
     if (!post) return;
     const nextStatus = !post.is_official;
@@ -316,11 +340,22 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 본문 클릭 핸들러 (모든 링크 클릭 시 접속 확인 팝업 오픈, 이미지 클릭 시 사진 확대)
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    const anchor = target.closest('a');
 
+    // 임베드 카드 액션 버튼 또는 카드 클릭 처리
+    const embedCard = target.closest<HTMLElement>('[data-embed-url]');
+    if (embedCard) {
+      const href = embedCard.getAttribute('data-embed-url');
+      if (href) {
+        e.preventDefault();
+        e.stopPropagation();
+        setLinkConfirmUrl(href);
+        return;
+      }
+    }
+
+    const anchor = target.closest('a');
     if (anchor && anchor.href) {
       e.preventDefault();
       e.stopPropagation();
@@ -445,14 +480,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   })());
   const canManage = isAuthor || canForceManage;
 
-  // 일반 텍스트 링크까지 100% 탐지하여 임베드 또는 안전 링크로 변환
   const renderRichContent = (html: string) => {
     if (typeof window === 'undefined') return html;
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // 1. 일반 텍스트 노드에 쓰인 순수 URL을 <a> 태그로 자동 감지 변환
     const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
     const walkTextNodes = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
@@ -470,77 +503,73 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     };
     walkTextNodes(doc.body);
 
-    // 2. 모든 <a> 태그를 전용 임베드 카드 및 안전 링크로 변환
     const anchors = Array.from(doc.querySelectorAll('a'));
     anchors.forEach((a) => {
       const href = a.getAttribute('href') || '';
 
-      // 유튜브 영상 임베드 (16:9 반응형 + 하단 정보 안내바)
+      // 1. 유튜브: 레터박스 및 부가 설명 없이 16:9 순수 플레이어 (나무위키 스타일)
       const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch) {
         const videoId = ytMatch[1];
         const wrapper = doc.createElement('div');
-        wrapper.className = 'my-3 w-full max-w-xl mx-auto rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-md bg-black not-prose';
+        wrapper.className = 'my-3 w-full max-w-2xl mx-auto rounded-none overflow-hidden shadow-md bg-black not-prose';
         wrapper.innerHTML = `
-          <div class="aspect-video w-full">
-            <iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-          </div>
-          <div class="px-3.5 py-2 bg-zinc-100 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
-            <span class="font-bold text-red-600 dark:text-red-500">YouTube 동영상</span>
-            <a href="${href}" class="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-medium text-[11px] underline">원본 보기 ↗</a>
+          <div class="aspect-video w-full bg-black">
+            <iframe src="https://www.youtube.com/embed/${videoId}?rel=0" class="w-full h-full border-0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
           </div>
         `;
         a.replaceWith(wrapper);
         return;
       }
 
-      // 디스코드 초대 링크 전용 카드
-      const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+/i);
-      if (discordMatch) {
-        const card = doc.createElement('div');
-        card.className = 'my-2.5 p-3 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/30 flex items-center justify-between gap-3 max-w-md not-prose';
-        card.innerHTML = `
-          <div class="flex items-center gap-2.5 min-w-0">
-            <div class="w-8 h-8 rounded-lg bg-[#5865F2] flex items-center justify-center text-white shrink-0">
-              <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-            </div>
-            <div class="min-w-0">
-              <p class="text-xs font-bold text-zinc-900 dark:text-white truncate">디스코드 서버 초대</p>
-              <p class="text-[10px] text-zinc-400 truncate">${href}</p>
-            </div>
-          </div>
-          <a href="${href}" class="px-3 py-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold rounded-lg transition shrink-0 no-underline">
-            서버 참가
-          </a>
-        `;
-        a.replaceWith(card);
-        return;
-      }
-
-      // 카카오톡 오픈채팅 전용 카드
+      // 2. 카카오톡: 노란색 바 형태 (라운드 스퀘어 배제, 링크 텍스트 미표기)
       const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
       if (kakaoMatch) {
-        const card = doc.createElement('div');
-        card.className = 'my-2.5 p-3 rounded-xl bg-[#FEE500]/15 border border-[#FEE500]/50 flex items-center justify-between gap-3 max-w-md not-prose';
-        card.innerHTML = `
-          <div class="flex items-center gap-2.5 min-w-0">
-            <div class="w-8 h-8 rounded-lg bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
+        const bar = doc.createElement('div');
+        bar.className = 'my-2.5 px-4 py-3 bg-[#242111] dark:bg-[#1c190d] border border-[#FEE500]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
+        bar.setAttribute('data-embed-url', href);
+        bar.setAttribute('data-embed-type', 'kakaotalk');
+        bar.innerHTML = `
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-8 h-8 rounded-none bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
               <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
             </div>
-            <div class="min-w-0">
-              <p class="text-xs font-bold text-zinc-900 dark:text-white truncate">카카오톡 오픈채팅</p>
-              <p class="text-[10px] text-zinc-400 truncate">${href}</p>
-            </div>
+            <span class="text-xs sm:text-sm font-extrabold text-white truncate embed-title-text group-hover:underline">
+              카카오톡 오픈채팅
+            </span>
           </div>
-          <a href="${href}" class="px-3 py-1.5 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] text-xs font-bold rounded-lg transition shrink-0 no-underline">
+          <button type="button" class="px-4 py-2 bg-[#FEE500] hover:bg-[#ebd300] text-[#191919] text-xs font-black rounded-none transition shrink-0 whitespace-nowrap">
             채팅방 입장
-          </a>
+          </button>
         `;
-        a.replaceWith(card);
+        a.replaceWith(bar);
         return;
       }
 
-      // 일반 링크 서식
+      // 3. 디스코드: 파란색 바 형태 (라운드 스퀘어 배제, 링크 텍스트 미표기)
+      const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i);
+      if (discordMatch) {
+        const bar = doc.createElement('div');
+        bar.className = 'my-2.5 px-4 py-3 bg-[#111322] dark:bg-[#0c0d18] border border-[#5865F2]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
+        bar.setAttribute('data-embed-url', href);
+        bar.setAttribute('data-embed-type', 'discord');
+        bar.innerHTML = `
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-8 h-8 rounded-none bg-[#5865F2] flex items-center justify-center text-white shrink-0">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+            </div>
+            <span class="text-xs sm:text-sm font-extrabold text-white truncate embed-title-text group-hover:underline">
+              디스코드 서버 초대
+            </span>
+          </div>
+          <button type="button" class="px-4 py-2 bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-black rounded-none transition shrink-0 whitespace-nowrap">
+            서버 참가
+          </button>
+        `;
+        a.replaceWith(bar);
+        return;
+      }
+
       a.className = 'text-blue-500 dark:text-blue-400 underline font-semibold cursor-pointer hover:text-blue-600 break-all';
     });
 
@@ -775,8 +804,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </div>
               </header>
 
-              {/* 본문 및 안전 임베드 렌더링 영역 */}
               <div
+                ref={contentContainerRef}
                 onClick={handleContentClick}
                 className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap leading-relaxed text-zinc-800 dark:text-zinc-200 [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-4 [&_img]:cursor-pointer [&_table]:border-collapse"
                 dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
@@ -801,7 +830,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           )}
         </div>
 
-        {/* 상세창 맨 우측 하단: 빨간색 선 사이렌 아이콘과 신고 로 이루어진 빨간 테두리 버튼 */}
         {!isEditing && post && (
           <div className="absolute bottom-4 right-6 z-20">
             <button
@@ -817,7 +845,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         )}
       </div>
 
-      {/* 외부 링크 접속 확인 팝업 (예, 아니오 중앙 배치) */}
       {linkConfirmUrl && (
         <div
           className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
@@ -870,7 +897,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 세분화 신고 모달 */}
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
@@ -878,7 +904,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         currentUserId={currentUserId}
       />
 
-      {/* 삭제 신청 모달 */}
       {showRequestDeleteModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
@@ -938,7 +963,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 사진 전체보기 팝업 */}
       {previewImageUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
@@ -965,7 +989,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
-      {/* 영구 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
