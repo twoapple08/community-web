@@ -112,7 +112,7 @@ function FeedContent() {
   const [savingNotice, setSavingNotice] = useState(false);
   const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
 
-  // 창 없이 텍스트+테두리만 있는 플로팅 토스트 상태 (페이드인 & 위로 페이드아웃)
+  // 상단 공지 알림 토스트 (배경색 추가, 위치 top-20으로 하향 조정)
   const [noticeToast, setNoticeToast] = useState<{
     show: boolean;
     entered: boolean;
@@ -193,7 +193,6 @@ function FeedContent() {
     setIsNoticeDetailOpen(false);
   };
 
-  // 페이드인 후 일정 시간 뒤 위로 슬라이드되며 페이드아웃되는 토스트 트리거
   const showTopToast = (msg: string) => {
     setNoticeToast({ show: true, entered: false, leaving: false, text: msg });
     setTimeout(() => {
@@ -205,7 +204,7 @@ function FeedContent() {
       setTimeout(() => {
         setNoticeToast({ show: false, entered: false, leaving: false, text: '' });
       }, 350);
-    }, 2400);
+    }, 2500);
   };
 
   const handleSaveNotice = async (e: React.FormEvent) => {
@@ -420,16 +419,17 @@ function FeedContent() {
 
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
-      {/* 화면 상단 미니멀 알림 (창 없음, 텍스트+테두리만 존재, 페이드인 & 위로 페이드아웃) */}
+      {/* 화면 상단 공지 알림 토스트 (배경색 적용, top-20 위치로 하향 배치, 페이드인 & 위로 슬라이드 아웃) */}
       {noticeToast.show && (
         <div
-          className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-3.5 py-1.5 border border-blue-500/80 text-blue-600 dark:text-blue-400 bg-transparent rounded-none text-xs font-bold tracking-wide pointer-events-none transition-all duration-300 ease-out shadow-sm ${
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-[100] px-5 py-2.5 bg-blue-600 text-white border border-blue-400 rounded-none text-xs font-bold tracking-wide pointer-events-none transition-all duration-300 ease-out shadow-2xl flex items-center gap-2 ${
             noticeToast.entered && !noticeToast.leaving
               ? 'opacity-100 translate-y-0'
               : 'opacity-0 -translate-y-4'
           }`}
         >
-          {noticeToast.text}
+          <Megaphone className="w-3.5 h-3.5" />
+          <span>{noticeToast.text}</span>
         </div>
       )}
 
@@ -455,32 +455,30 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 파란색 계열 직각 사각형 공지 배너 (가독성을 위해 배경 채움 해제 + X축 수직 중심선 완벽 정렬) */}
+      {/* 공지사항 배너 (배경 채움 해제 + 투명 틴트 + X축 수평 중심선 완벽 일치) */}
       {notice && (
         <div
           onClick={() => {
             setIsNoticeAutoPopup(false);
             setIsNoticeDetailOpen(true);
           }}
-          className="w-full rounded-none bg-blue-50/50 dark:bg-blue-950/20 border border-blue-500/40 dark:border-blue-500/40 hover:bg-blue-100/40 dark:hover:bg-blue-950/40 px-3.5 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-colors duration-300 group select-none mb-3"
+          className="w-full rounded-none bg-blue-50/40 dark:bg-blue-950/20 border border-blue-500/40 dark:border-blue-500/40 hover:bg-blue-100/40 dark:hover:bg-blue-950/40 px-3.5 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-colors duration-300 group select-none mb-3"
         >
-          {/* 좌측: 확성기, [공지사항], 제목, 날짜가 모두 동일한 수직 중심선에 일치 */}
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 bg-blue-100/70 dark:bg-blue-900/30 border border-blue-500/30 rounded-none">
-              <Megaphone className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-6 h-6 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 bg-blue-100/70 dark:bg-blue-900/40 border border-blue-500/30 rounded-none transition-colors duration-300">
+              <Megaphone className="w-3.5 h-3.5 transition-colors duration-300" />
             </div>
-            <span className="text-sm font-black text-blue-600 dark:text-blue-400 shrink-0 leading-none flex items-center">
+            <span className="text-sm font-black text-blue-600 dark:text-blue-400 shrink-0 leading-normal transition-colors duration-300">
               [공지사항]
             </span>
-            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate leading-none flex items-center group-hover:underline">
+            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate group-hover:underline leading-normal transition-colors duration-300">
               {notice.title}
             </span>
-            <span className="text-xs font-semibold text-zinc-500 dark:text-white shrink-0 hidden sm:inline-flex items-center leading-none">
+            <span className="text-xs font-semibold text-zinc-500 dark:text-white shrink-0 hidden sm:inline leading-normal transition-colors duration-300">
               ({new Date(notice.updated_at).toLocaleDateString()})
             </span>
           </div>
 
-          {/* 우측: [공지 수정] 버튼도 정확히 같은 높이의 중심선에 일치 */}
           <div className="flex items-center shrink-0">
             {isAdmin && (
               <button
@@ -489,7 +487,7 @@ function FeedContent() {
                   e.stopPropagation();
                   setIsNoticeEditOpen(true);
                 }}
-                className="inline-flex items-center justify-center gap-1 h-7 px-2.5 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-500 text-white transition-colors duration-300 shadow-sm shrink-0 leading-none"
+                className="inline-flex items-center justify-center gap-1 h-7 px-2.5 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-500 text-white transition-colors duration-300 shadow-sm shrink-0 leading-normal"
               >
                 <Pencil className="w-3 h-3" />
                 <span>공지 수정</span>
@@ -516,7 +514,7 @@ function FeedContent() {
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors duration-300"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -555,7 +553,7 @@ function FeedContent() {
               <button
                 type="button"
                 onClick={() => setSelectedFilterTags((prev) => prev.filter((t) => t !== tag))}
-                className="hover:text-rose-500"
+                className="hover:text-rose-500 transition-colors duration-300"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -564,7 +562,7 @@ function FeedContent() {
           <button
             type="button"
             onClick={() => setSelectedFilterTags([])}
-            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1"
+            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1 transition-colors duration-300"
           >
             초기화
           </button>
@@ -704,24 +702,23 @@ function FeedContent() {
                       {plainText || '내용이 없습니다.'}
                     </p>
 
-                    {/* 피드 하단 메타 정보 (X축 수직 중심선 완벽 정렬: leading-none 및 inline-flex 적용) */}
                     <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs text-zinc-500 pt-1">
-                      <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium leading-none transition-colors duration-300">
+                      <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium leading-normal transition-colors duration-300">
                         <CrownIcon role={post.author_role} className="w-4 h-4 shrink-0" />
-                        <span className="leading-none">{post.author_nickname}</span>
+                        <span>{post.author_nickname}</span>
                       </span>
-                      <span className="inline-flex items-center gap-1 text-zinc-400 dark:text-zinc-500 leading-none transition-colors duration-300">
+                      <span className="inline-flex items-center gap-1 text-zinc-400 dark:text-zinc-500 leading-normal transition-colors duration-300">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span className="leading-none">{new Date(post.created_at).toLocaleDateString()}</span>
+                        <span>{new Date(post.created_at).toLocaleDateString()}</span>
                       </span>
-                      <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium leading-none transition-colors duration-300">
+                      <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium leading-normal transition-colors duration-300">
                         <Heart className="w-3.5 h-3.5 fill-rose-500/20" />
-                        <span className="leading-none">{post.likes_count ?? 0}</span>
+                        <span>{post.likes_count ?? 0}</span>
                       </span>
                       {imageCount > 1 && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50 leading-none transition-colors duration-300">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50 leading-normal transition-colors duration-300">
                           <ImageIcon className="w-3 h-3" />
-                          <span className="leading-none">+{imageCount}</span>
+                          <span>+{imageCount}</span>
                         </span>
                       )}
                     </div>
@@ -872,7 +869,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 공지 상세 모달 (자동 팝업일 때만 체크박스 노출 / 수동 클릭 시 체크박스 미노출) */}
+      {/* 공지 상세 모달 */}
       {isNoticeDetailOpen && notice && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300"
@@ -1010,7 +1007,7 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 깔때기 필터 팝업 */}
+      {/* 태그 필터 팝업 */}
       {isFilterModalOpen && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300"

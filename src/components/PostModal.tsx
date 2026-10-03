@@ -1,10 +1,11 @@
 'use client'
 
 import { CrownIcon, RoleType } from "./CrownIcon";
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import ReportModal from './ReportModal';
+import Editor from './Editor';
 import {
   X,
   Calendar,
@@ -14,10 +15,6 @@ import {
   AlertTriangle,
   Pencil,
   Save,
-  Bold,
-  Italic,
-  Underline,
-  Image as ImageIcon,
   Loader2,
   Heart,
   ShieldCheck,
@@ -25,8 +22,7 @@ import {
   EyeOff,
   FileDown,
   Siren,
-  ExternalLink,
-  MessageCircle
+  ExternalLink
 } from 'lucide-react';
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -63,26 +59,21 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [likeLoading, setLikeLoading] = useState(false);
-
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // 편집 모드 상태
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
 
   const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editThumbnailUrl, setEditThumbnailUrl] = useState<string | null>(null);
   const [editIsPreviewHidden, setEditIsPreviewHidden] = useState(false);
-
   const [saving, setSaving] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [attachedImages, setAttachedImages] = useState<string[]>([]);
-  const [selectedEditorImg, setSelectedEditorImg] = useState<HTMLImageElement | null>(null);
-
-  const editorRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [hasDraft, setHasDraft] = useState(false);
 
   const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
   const [deleteReasonText, setDeleteReasonText] = useState("");
@@ -90,18 +81,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [hasDraft, setHasDraft] = useState(false);
 
   // 신고 모달 상태
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
-  const [customPopup, setCustomPopup] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    type?: 'alert' | 'confirm';
-    onConfirm?: () => void;
-  }>({ isOpen: false, title: '', message: '' })
+  // 링크 클릭 안전 접속 확인 모달 (예, 아니오 중앙 배치)
+  const [linkConfirmUrl, setLinkConfirmUrl] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -150,15 +135,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       });
   }, [post?.author_id]);
 
-  const syncAttachedImages = () => {
-    if (!editorRef.current) return;
-    const imgs = Array.from(editorRef.current.querySelectorAll('img')).map((img) => img.src);
-    setAttachedImages(imgs);
-    if (imgs.length > 0 && !editThumbnailUrl) {
-      setEditThumbnailUrl(imgs[0]);
-    }
-  };
-
   const checkDraft = async () => {
     if (!currentUserId) return;
     const { data } = await supabase
@@ -172,7 +148,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isReportModalOpen) {
+        if (linkConfirmUrl) {
+          setLinkConfirmUrl(null);
+        } else if (isReportModalOpen) {
           setIsReportModalOpen(false);
         } else if (previewImageUrl) {
           setPreviewImageUrl(null);
@@ -181,16 +159,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         } else if (showDeleteConfirm) {
           setShowDeleteConfirm(false);
         } else if (isEditing) {
-          setCustomPopup({
-            isOpen: true,
-            title: '수정 취소',
-            message: '수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.',
-            type: 'confirm',
-            onConfirm: () => {
-              setIsEditing(false);
-              setSelectedEditorImg(null);
-            }
-          });
+          if (window.confirm('수정을 취소하시겠습니까? 변경 사항은 저장되지 않습니다.')) {
+            setIsEditing(false);
+          }
         } else {
           onClose();
         }
@@ -198,7 +169,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl, isReportModalOpen]);
+  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl, isReportModalOpen, linkConfirmUrl]);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -230,6 +201,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     if (!error && data) {
       setPost(data);
       setEditTitle(data.title);
+      setEditContent(data.content);
       setEditTags(Array.isArray(data.tags) ? data.tags : []);
       setEditThumbnailUrl(data.thumbnail_url || null);
       setEditIsPreviewHidden(Boolean(data.is_preview_hidden));
@@ -331,12 +303,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   useEffect(() => {
-    if (isEditing && editorRef.current && post) {
-      editorRef.current.innerHTML = post.content;
-      syncAttachedImages();
+    if (isEditing) {
       checkDraft();
     }
-  }, [isEditing, post]);
+  }, [isEditing]);
 
   const handleCopyLink = async () => {
     try {
@@ -347,82 +317,18 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  const executeCommand = (command: string, value: string | undefined = undefined) => {
-    document.execCommand(command, false, value);
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploadingImage(true);
-    try {
-      for (const file of Array.from(files)) {
-        const ext = file.name.split('.').pop() || 'png';
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${ext}`;
-        let finalUrl: string | null = null;
-
-        const { error: uploaderError } = await supabase.storage.from('posts').upload(fileName, file);
-        if (!uploaderError) {
-          const { data } = supabase.storage.from('posts').getPublicUrl(fileName);
-          if (data?.publicUrl) finalUrl = data.publicUrl;
-        } else {
-          const { error: uploaderError2 } = await supabase.storage.from('post-images').upload(fileName, file);
-          if (!uploaderError2) {
-            const { data } = supabase.storage.from('post-images').getPublicUrl(fileName);
-            if (data?.publicUrl) finalUrl = data.publicUrl;
-          }
-        }
-
-        if (!finalUrl) {
-          finalUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve((reader.result as string) || '');
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(file);
-          });
-        }
-
-        if (finalUrl && editorRef.current) {
-          editorRef.current.focus();
-          document.execCommand('insertImage', false, finalUrl);
-        }
-      }
-      setTimeout(syncAttachedImages, 100);
-    } catch (err: any) {
-      alert(`이미지 업로드 오류: ${err.message}`);
-    } finally {
-      setUploadingImage(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleRemoveImageBySrc = (src: string) => {
-    if (!editorRef.current) return;
-    const imgElements = editorRef.current.querySelectorAll('img');
-    imgElements.forEach((img) => {
-      if (img.src === src) {
-        img.remove();
-      }
-    });
-    if (editThumbnailUrl === src) {
-      setEditThumbnailUrl(null);
-    }
-    setSelectedEditorImg(null);
-    syncAttachedImages();
-  };
-
-  const handleEditorClick = (e: React.MouseEvent) => {
+  // 본문 클릭 핸들러 (모든 링크 클릭 시 접속 확인 팝업 오픈, 이미지 클릭 시 사진 확대)
+  const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'IMG') {
-      setSelectedEditorImg(target as HTMLImageElement);
-    } else {
-      setSelectedEditorImg(null);
-    }
-  };
+    const anchor = target.closest('a');
 
-  const handleContentViewClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
+    if (anchor && anchor.href) {
+      e.preventDefault();
+      e.stopPropagation();
+      setLinkConfirmUrl(anchor.href);
+      return;
+    }
+
     if (target.tagName === 'IMG') {
       setPreviewImageUrl((target as HTMLImageElement).src);
     }
@@ -430,8 +336,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const handleSaveEditDraft = async () => {
     if (!currentUserId) return;
-    const contentToSave = editorRef.current?.innerHTML || '';
-    if (!editTitle.trim() && !contentToSave.trim()) {
+    if (!editTitle.trim() && !editContent.trim()) {
       alert('제목 또는 내용이 비어있어 보관할 수 없습니다.');
       return;
     }
@@ -441,7 +346,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       {
         user_id: currentUserId,
         title: editTitle.trim(),
-        content: contentToSave,
+        content: editContent,
         tags: editTags,
         thumbnail_url: editThumbnailUrl,
         is_preview_hidden: editIsPreviewHidden,
@@ -470,27 +375,23 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     if (!data) return;
     if (window.confirm('보관된 임시글을 불러오시겠습니까? 현재 편집 중인 내용이 대체됩니다.')) {
       setEditTitle(data.title || '');
+      setEditContent(data.content || '');
       setEditTags(data.tags || []);
       setEditThumbnailUrl(data.thumbnail_url || null);
       setEditIsPreviewHidden(Boolean(data.is_preview_hidden));
-      if (editorRef.current) {
-        editorRef.current.innerHTML = data.content || '';
-        syncAttachedImages();
-      }
     }
   };
 
   const handleSaveEdit = async () => {
     if (!editTitle.trim()) return alert('제목을 입력해 주십시오.');
-    const contentToSave = editorRef.current?.innerHTML || '';
-    if (!contentToSave.trim() || contentToSave === '<p><br></p>') return alert('내용을 입력해 주십시오.');
+    if (!editContent.trim() || editContent === '<p></p>') return alert('내용을 입력해 주십시오.');
 
     setSaving(true);
     const { error } = await supabase
       .from('posts')
       .update({
         title: editTitle.trim(),
-        content: contentToSave,
+        content: editContent,
         tags: editTags,
         thumbnail_url: editThumbnailUrl,
         is_preview_hidden: editIsPreviewHidden,
@@ -509,7 +410,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           ? {
               ...prev,
               title: editTitle.trim(),
-              content: contentToSave,
+              content: editContent,
               tags: editTags,
               thumbnail_url: editThumbnailUrl,
               is_preview_hidden: editIsPreviewHidden,
@@ -517,7 +418,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           : null
       );
       setIsEditing(false);
-      setSelectedEditorImg(null);
       setSaving(false);
       if (onDeleted) onDeleted();
       router.refresh();
@@ -536,7 +436,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 계층형 수정/삭제 권한 통제
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
   const canForceManage = Boolean((() => {
     if (!post || isAuthor) return false;
@@ -547,46 +446,46 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   })());
   const canManage = isAuthor || canForceManage;
 
-  // 하이퍼링크 및 유튜브/디스코드/카카오톡 전용 리치 임베드 변환 렌더링
+  // 유튜브, 디스코드, 카카오톡 및 모든 링크를 안전하게 임베드 및 상호작용 연결하는 파서
   const renderRichContent = (html: string) => {
-    // 1. 유튜브 URL 감지 및 임베드 변환
-    let processed = html.replace(
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s<]*)/g,
+    let processed = html;
+
+    // 1. 유튜브 단독 링크 -> 16:9 반응형 플레이어 임베드
+    processed = processed.replace(
+      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s<"']*)/g,
       (_match, videoId) => {
-        return `<div class="my-4 aspect-video w-full max-w-xl mx-auto rounded-none overflow-hidden border border-zinc-800 shadow-lg">
+        return `<div class="my-4 aspect-video w-full max-w-xl mx-auto overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-md">
           <iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>`;
       }
     );
 
-    // 2. 디스코드 초대 링크 감지 및 카드 임베드
+    // 2. 디스코드 초대 링크 -> 전용 카드 임베드
     processed = processed.replace(
       /(https?:\/\/(?:www\.)?(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+)/g,
       (match) => {
-        return `<a href="${match}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3.5 py-2 my-2 rounded-none bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs no-underline transition shadow">
-          <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-          <span>디스코드 서버 참가하기</span>
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+        return `<a href="${match}" class="inline-flex items-center gap-2 px-3 py-1.5 my-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs no-underline shadow cursor-pointer">
+          <svg class="w-4 h-4 fill-current shrink-0" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+          <span>디스코드 서버 입장하기</span>
         </a>`;
       }
     );
 
-    // 3. 카카오톡 오픈채팅 링크 감지 및 카드 임베드
+    // 3. 카카오톡 오픈채팅 링크 -> 전용 카드 임베드
     processed = processed.replace(
       /(https?:\/\/(?:open\.kakao\.com)\/[a-zA-Z0-9_\/]+)/g,
       (match) => {
-        return `<a href="${match}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 px-3.5 py-2 my-2 rounded-none bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-bold text-xs no-underline transition shadow">
-          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
+        return `<a href="${match}" class="inline-flex items-center gap-2 px-3 py-1.5 my-1.5 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-bold text-xs no-underline shadow cursor-pointer">
+          <svg class="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
           <span>카카오톡 오픈채팅 입장하기</span>
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
         </a>`;
       }
     );
 
-    // 4. 일반 하이퍼링크 클릭 상호작용 보장
+    // 4. 일반 하이퍼링크 스타일 지정
     processed = processed.replace(
       /(<a\s+[^>]*href="[^"]*")/gi,
-      `$1 target="_blank" rel="noopener noreferrer" class="text-blue-500 underline font-semibold hover:text-blue-400"`
+      `$1 class="text-blue-500 dark:text-blue-400 underline font-semibold cursor-pointer hover:text-blue-600"`
     );
 
     return processed;
@@ -633,6 +532,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     <button
                       onClick={() => {
                         setEditTitle(post?.title || '');
+                        setEditContent(post?.content || '');
                         setEditTags(Array.isArray(post?.tags) ? post?.tags : []);
                         setEditThumbnailUrl(post?.thumbnail_url || null);
                         setEditIsPreviewHidden(Boolean(post?.is_preview_hidden));
@@ -693,7 +593,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
                 <button
                   onClick={handleSaveEdit}
-                  disabled={saving || uploadingImage}
+                  disabled={saving}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
                 >
                   {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -775,131 +675,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1 p-2 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => executeCommand('bold')}
-                  className="p-1.5 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition"
-                >
-                  <Bold className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => executeCommand('italic')}
-                  className="p-1.5 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition"
-                >
-                  <Italic className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => executeCommand('underline')}
-                  className="p-1.5 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition"
-                >
-                  <Underline className="w-4 h-4" />
-                </button>
-                <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-1" />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingImage}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition disabled:opacity-50"
-                >
-                  {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" /> : <ImageIcon className="w-4 h-4 text-emerald-500" />}
-                  <span>{uploadingImage ? '업로드 중...' : '이미지 추가'}</span>
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  multiple
-                  onChange={handleImageUpload}
-                  accept="image/*"
-                  className="hidden"
-                />
-              </div>
-
-              {attachedImages.length > 0 && (
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                      미리보기 설정
-                    </span>
-                    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={editIsPreviewHidden}
-                        onChange={(e) => setEditIsPreviewHidden(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-zinc-300 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative"></div>
-                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
-                        <EyeOff className="w-3.5 h-3.5" />
-                        미리보기 가리기
-                      </span>
-                    </label>
-                  </div>
-
-                  <div>
-                    <span className="text-[11px] text-zinc-400 block mb-1.5">
-                      {editIsPreviewHidden
-                        ? '미리보기 가리기가 설정되어 있어 썸네일이 피드에 노출되지 않습니다.'
-                        : '대표로 표시할 썸네일을 터치하여 선택하세요:'}
-                    </span>
-                    <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
-                      {attachedImages.map((src, index) => {
-                        const isMain = editThumbnailUrl === src && !editIsPreviewHidden;
-                        return (
-                          <div
-                            key={index}
-                            onClick={() => {
-                              if (!editIsPreviewHidden) {
-                                setEditThumbnailUrl(src);
-                              }
-                            }}
-                            className={`relative group shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition ${
-                              editIsPreviewHidden
-                                ? 'opacity-40 cursor-not-allowed border-zinc-300 dark:border-zinc-700'
-                                : isMain
-                                ? 'border-emerald-500 ring-2 ring-emerald-500/30 cursor-pointer'
-                                : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 cursor-pointer'
-                            }`}
-                          >
-                            <img src={src} alt="사진" className="w-full h-full object-cover" />
-                            {isMain && (
-                              <span className="absolute bottom-1 left-1 right-1 bg-emerald-600/90 text-white text-[9px] font-bold text-center py-0.5 rounded">
-                                대표 사진
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveImageBySrc(src);
-                              }}
-                              className="absolute top-1 right-1 p-1 rounded-full bg-red-600 hover:bg-red-700 text-white transition opacity-0 group-hover:opacity-100"
-                              title="삭제"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
+              {/* 고기능 리치 텍스트 에디터 연결 (글쓰기 페이지와 동일한 에디터 장착) */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
-                  내용
+                  내용 및 이미지 편집
                 </label>
-                <div
-                  ref={editorRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  onClick={handleEditorClick}
-                  onInput={syncAttachedImages}
-                  className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap overflow-hidden min-h-[220px] p-4 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-zinc-900 dark:text-zinc-100"
-                />
+                <Editor content={editContent} onChange={setEditContent} minHeight="240px" />
               </div>
             </div>
           ) : (
@@ -939,10 +720,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </div>
               </header>
 
-              {/* 하이퍼링크 및 유튜브/디스코드/카톡 임베드 렌더링 영역 */}
+              {/* 본문 및 임베드 렌더링 영역 (링크 클릭 인터셉트 연동) */}
               <div
-                onClick={handleContentViewClick}
-                className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap overflow-hidden leading-relaxed text-zinc-800 dark:text-zinc-200 [&_iframe]:rounded-xl [&_iframe]:shadow-md"
+                onClick={handleContentClick}
+                className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap leading-relaxed text-zinc-800 dark:text-zinc-200 [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-4 [&_img]:cursor-pointer [&_table]:border-collapse"
                 dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
               />
 
@@ -980,6 +761,60 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           </div>
         )}
       </div>
+
+      {/* 링크 클릭 시 '이 링크에 접속하시겠습니까?' 안내 팝업 (예, 아니오 중앙 배치) */}
+      {linkConfirmUrl && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setLinkConfirmUrl(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center">
+              <div className="p-2.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                <ExternalLink className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+                외부 링크 접속 확인
+              </h3>
+              <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                이 링크에 접속하시겠습니까?
+              </p>
+            </div>
+
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl text-xs font-mono text-zinc-700 dark:text-zinc-300 break-all max-h-28 overflow-y-auto border border-zinc-200 dark:border-zinc-700 text-left">
+              {linkConfirmUrl}
+            </div>
+
+            {/* 예, 아니오 버튼 중앙 배치 */}
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setLinkConfirmUrl(null)}
+                className="px-5 py-2 text-xs font-semibold rounded-xl border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+              >
+                아니오
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const url = linkConfirmUrl;
+                  setLinkConfirmUrl(null);
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+                className="px-6 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
+              >
+                예
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 세분화 신고 모달 */}
       <ReportModal

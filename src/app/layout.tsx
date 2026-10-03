@@ -26,7 +26,7 @@ export default function RootLayout({
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
-  // 1. 화면 확대 및 축소(Ctrl+휠, Ctrl++, 모바일 제스처 줌) 완벽 차단
+  // 화면 확대 및 축소(Ctrl+휠, Ctrl++, 핀치줌, 모바일 제스처) 원천 차단
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey) {
@@ -35,25 +35,37 @@ export default function RootLayout({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) {
+      if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0', '_'].includes(e.key)) {
         e.preventDefault()
       }
     }
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const handleTouch = (e: TouchEvent) => {
       if (e.touches.length > 1) {
         e.preventDefault()
       }
     }
 
+    const handleGesture = (e: Event) => {
+      e.preventDefault()
+    }
+
     window.addEventListener('wheel', handleWheel, { passive: false })
     window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('touchstart', handleTouchStart, { passive: false })
+    window.addEventListener('touchstart', handleTouch, { passive: false })
+    window.addEventListener('touchmove', handleTouch, { passive: false })
+    window.addEventListener('gesturestart', handleGesture)
+    window.addEventListener('gesturechange', handleGesture)
+    window.addEventListener('gestureend', handleGesture)
 
     return () => {
       window.removeEventListener('wheel', handleWheel)
       window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchstart', handleTouch)
+      window.removeEventListener('touchmove', handleTouch)
+      window.removeEventListener('gesturestart', handleGesture)
+      window.removeEventListener('gesturechange', handleGesture)
+      window.removeEventListener('gestureend', handleGesture)
     }
   }, [])
 
@@ -92,7 +104,6 @@ export default function RootLayout({
       setNickname('익명사용자')
     }
 
-    // 약관 미동의 시 모달 자동 강제 호출
     if (!profileData?.terms_agreed) {
       setIsTermsModalOpen(true)
     } else {
@@ -168,6 +179,12 @@ export default function RootLayout({
 
   return (
     <html lang="ko" className="dark">
+      <head>
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=0.75, maximum-scale=0.75, minimum-scale=0.75, user-scalable=no, shrink-to-fit=no"
+        />
+      </head>
       <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300">
         <header className="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md transition-colors duration-300">
           <div className="max-w-6xl mx-auto px-2 sm:px-4 h-16 flex items-center justify-between gap-1 sm:gap-2">
@@ -222,7 +239,6 @@ export default function RootLayout({
                     <span className="max-w-[55px] sm:max-w-[110px] truncate">{nickname || "닉네임"}</span>
                   </button>
 
-                  {/* 관리자 지정 버튼 */}
                   {isCreatorOrSuperAdmin && (
                     <button
                       type="button"
@@ -235,7 +251,6 @@ export default function RootLayout({
                     </button>
                   )}
 
-                  {/* 관리자 지정과 로그아웃 사이: 테마 무관 무조건 흰색 테두리 검은색 박스에 흰색 글씨 블랙리스트 버튼 */}
                   {isAdminGroup && (
                     <button
                       type="button"
@@ -248,7 +263,6 @@ export default function RootLayout({
                     </button>
                   )}
 
-                  {/* 로그아웃 버튼 */}
                   <button
                     onClick={handleLogout}
                     className="inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-xs sm:text-sm font-medium transition duration-300 shrink-0"
@@ -291,13 +305,11 @@ export default function RootLayout({
           currentUserRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}
         />
 
-        {/* 블랙리스트 관리 모달 */}
         <BlacklistModal
           isOpen={isBlacklistModalOpen}
           onClose={() => setIsBlacklistModalOpen(false)}
         />
 
-        {/* 로그인 시 필수 약관 동의 모달 (미동의 시 화면 이동 불가) */}
         {user && (
           <TermsModal
             isOpen={isTermsModalOpen}

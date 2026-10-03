@@ -20,6 +20,14 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
   const [customReasonText, setCustomReasonText] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // 신고창 전용 커스텀 완료/오류 팝업
+  const [resultPopup, setResultPopup] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    isSuccess?: boolean;
+  } | null>(null);
+
   if (!isOpen) return null
 
   const toggleReason = (r: string) => {
@@ -31,17 +39,29 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentUserId) {
-      alert('신고 기능은 로그인 후 이용 가능합니다.')
+      setResultPopup({
+        show: true,
+        title: '로그인 필요',
+        message: '신고 기능은 로그인 후 이용 가능합니다.',
+      })
       return
     }
 
     if (selectedReasons.length === 0 && !isOtherSelected) {
-      alert('신고 사유를 최소 하나 이상 선택해 주십시오.')
+      setResultPopup({
+        show: true,
+        title: '사유 선택 필요',
+        message: '신고 사유를 최소 하나 이상 선택해 주십시오.',
+      })
       return
     }
 
     if (isOtherSelected && !customReasonText.trim()) {
-      alert('기타 사유 내용을 입력해 주십시오.')
+      setResultPopup({
+        show: true,
+        title: '기타 사유 기입',
+        message: '기타 사유 내용을 입력해 주십시오.',
+      })
       return
     }
 
@@ -62,13 +82,26 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
 
     if (error) {
       if (error.code === '23505') {
-        alert('이미 신고한 게시글입니다. (게시글 하나당 1회만 신고 가능)')
+        setResultPopup({
+          show: true,
+          title: '중복 신고 안내',
+          message: '이미 신고한 게시글입니다. (게시글 하나당 1회만 신고 가능)',
+        })
       } else {
-        alert(`신고 접수 실패: ${error.message}`)
+        setResultPopup({
+          show: true,
+          title: '접수 실패',
+          message: `신고 접수 실패: ${error.message}`,
+        })
       }
     } else {
-      alert('신고가 정상적으로 접수되었습니다. 관리자 시스템 및 자동 누적 정책에 따라 처리됩니다.')
-      onClose()
+      // 요청 문구 정확 반영
+      setResultPopup({
+        show: true,
+        title: '접수 완료',
+        message: '신고가 정삭적으로 접수되었습니다.',
+        isSuccess: true,
+      })
     }
     setSubmitting(false)
   }
@@ -97,7 +130,6 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          {/* 큰 주제 1 (체크박스 없음) */}
           <div className="space-y-2">
             <span className="font-extrabold text-zinc-900 dark:text-zinc-100 block border-l-2 border-rose-600 pl-2">
               부적절한 이미지
@@ -120,7 +152,6 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
             </div>
           </div>
 
-          {/* 큰 주제 2 (체크박스 없음) */}
           <div className="space-y-2">
             <span className="font-extrabold text-zinc-900 dark:text-zinc-100 block border-l-2 border-rose-600 pl-2">
               부적절한 내용
@@ -143,7 +174,6 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
             </div>
           </div>
 
-          {/* 기타 직접 기입란 */}
           <div className="space-y-1.5 pl-3 border-t border-zinc-100 dark:border-zinc-800 pt-2">
             <label className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 cursor-pointer select-none">
               <input
@@ -185,6 +215,41 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
           </div>
         </form>
       </div>
+
+      {/* 신고창 디자인 일치 커스텀 접수 결과 팝업 */}
+      {resultPopup && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/85"
+          onClick={() => {
+            if (resultPopup.isSuccess) onClose();
+            setResultPopup(null);
+          }}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border-2 border-rose-600 rounded-none p-6 text-center space-y-4 shadow-2xl animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white">
+              {resultPopup.title}
+            </h3>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed font-medium">
+              {resultPopup.message}
+            </p>
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (resultPopup.isSuccess) onClose();
+                  setResultPopup(null);
+                }}
+                className="px-6 py-2 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-none transition"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

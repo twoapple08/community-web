@@ -32,6 +32,15 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
 
+  // 블랙리스트 전용 커스텀 확인 팝업
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isConfirm: boolean;
+    onConfirm?: () => void;
+  } | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       loadData()
@@ -57,14 +66,24 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
   const handleAddBlacklist = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedUserId) {
-      alert('블랙리스트로 지정할 유저를 선택해 주십시오.')
+      setConfirmDialog({
+        isOpen: true,
+        title: '유저 선택 필요',
+        message: '블랙리스트로 지정할 유저를 목록에서 선택해 주십시오.',
+        isConfirm: false
+      })
       return
     }
 
     setLoading(true)
     const targetUser = profiles.find((p) => p.id === selectedUserId)
     if (!targetUser) {
-      alert('유저 정보를 찾을 수 없습니다.')
+      setConfirmDialog({
+        isOpen: true,
+        title: '오류',
+        message: '유저 정보를 찾을 수 없습니다.',
+        isConfirm: false
+      })
       setLoading(false)
       return
     }
@@ -77,23 +96,46 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
     })
 
     if (error) {
-      alert(`블랙리스트 등록 실패: ${error.message}`)
+      setConfirmDialog({
+        isOpen: true,
+        title: '등록 실패',
+        message: `블랙리스트 등록 실패: ${error.message}`,
+        isConfirm: false
+      })
     } else {
       setSelectedUserId('')
       setSearchNickname('')
       await loadData()
+      setConfirmDialog({
+        isOpen: true,
+        title: '등록 완료',
+        message: `[${targetUser.nickname}] 유저가 블랙리스트에 정상 등록되었습니다.`,
+        isConfirm: false
+      })
     }
     setLoading(false)
   }
 
-  const handleRemoveBlacklist = async (userId: string) => {
-    if (!window.confirm('해당 유저를 블랙리스트에서 해제하시겠습니까?')) return
-    const { error } = await supabase.from('blacklists').delete().eq('user_id', userId)
-    if (error) {
-      alert(`해제 실패: ${error.message}`)
-    } else {
-      await loadData()
-    }
+  const handleRequestRemove = (user: BlacklistUser) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '블랙리스트 해제',
+      message: `정말로 [${user.nickname || user.email}] 유저를 블랙리스트에서 해제하시겠습니까?`,
+      isConfirm: true,
+      onConfirm: async () => {
+        const { error } = await supabase.from('blacklists').delete().eq('user_id', user.user_id)
+        if (error) {
+          setConfirmDialog({
+            isOpen: true,
+            title: '해제 실패',
+            message: `해제 실패: ${error.message}`,
+            isConfirm: false
+          })
+        } else {
+          await loadData()
+        }
+      }
+    })
   }
 
   if (!isOpen) return null
@@ -183,7 +225,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
             <button
               type="submit"
               disabled={loading || !selectedUserId}
-              className="px-4 py-2 text-xs font-bold !bg-white !text-black hover:!bg-zinc-200 transition disabled:opacity-40"
+              className="px-4 py-2 text-xs font-bold !bg-white !text-black hover:!bg-zinc-200 transition disabled:opacity-40 rounded-none"
             >
               {loading ? '처리 중...' : '블랙리스트 추가'}
             </button>
@@ -211,7 +253,7 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleRemoveBlacklist(user.user_id)}
+                    onClick={() => handleRequestRemove(user)}
                     className="p-1 text-zinc-400 hover:text-white transition shrink-0"
                     title="제재 해제"
                   >
@@ -223,6 +265,44 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
           )}
         </div>
       </div>
+
+      {/* 블랙리스트 UI 일치 커스텀 확인/알림 팝업 */}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90"
+          onClick={() => setConfirmDialog(null)}
+        >
+          <div
+            className="w-full max-w-sm !bg-black !text-white !border-2 !border-white p-6 space-y-4 text-center rounded-none shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold">{confirmDialog.title}</h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">{confirmDialog.message}</p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              {confirmDialog.isConfirm && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-1.5 text-xs !border !border-zinc-500 text-zinc-300 hover:!border-white hover:!text-white rounded-none transition"
+                >
+                  취소
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const onOk = confirmDialog.onConfirm;
+                  setConfirmDialog(null);
+                  if (onOk) onOk();
+                }}
+                className="px-5 py-1.5 text-xs !bg-white !text-black font-bold hover:!bg-zinc-200 rounded-none transition"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
