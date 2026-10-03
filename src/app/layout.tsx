@@ -6,7 +6,7 @@ import UserHubModal from "@/components/UserHubModal";
 import BlacklistModal from "@/components/BlacklistModal";
 import TermsModal from "@/components/TermsModal";
 import './globals.css'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
@@ -26,132 +26,150 @@ export default function RootLayout({
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
-  // 화면 확대 및 축소(Ctrl+휠, Ctrl++, 핀치줌, 모바일 제스처) 원천 차단
+  // 실버팰리스 수준의 화면 확대/축소(Ctrl+휠, 핀치줌, 더블탭 줌) 완전 차단
   useEffect(() => {
+    let lastTouchEnd = 0;
+
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey) {
-        e.preventDefault()
+        e.preventDefault();
       }
-    }
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0', '_'].includes(e.key)) {
-        e.preventDefault()
+        e.preventDefault();
       }
-    }
+    };
 
-    const handleTouch = (e: TouchEvent) => {
+    const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length > 1) {
-        e.preventDefault()
+        e.preventDefault();
       }
-    }
+    };
 
-    const handleGesture = (e: Event) => {
-      e.preventDefault()
-    }
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
 
-    window.addEventListener('wheel', handleWheel, { passive: false })
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('touchstart', handleTouch, { passive: false })
-    window.addEventListener('touchmove', handleTouch, { passive: false })
-    window.addEventListener('gesturestart', handleGesture)
-    window.addEventListener('gesturechange', handleGesture)
-    window.addEventListener('gestureend', handleGesture)
+    const handleTouchEnd = (e: TouchEvent) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        e.preventDefault();
+      }
+      lastTouchEnd = now;
+    };
+
+    const preventGesture = (e: Event) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('touchstart', handleTouchStart, { passive: false });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: false });
+    window.addEventListener('gesturestart', preventGesture);
+    window.addEventListener('gesturechange', preventGesture);
+    window.addEventListener('gestureend', preventGesture);
 
     return () => {
-      window.removeEventListener('wheel', handleWheel)
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('touchstart', handleTouch)
-      window.removeEventListener('touchmove', handleTouch)
-      window.removeEventListener('gesturestart', handleGesture)
-      window.removeEventListener('gesturechange', handleGesture)
-      window.removeEventListener('gestureend', handleGesture)
-    }
-  }, [])
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('gesturestart', preventGesture);
+      window.removeEventListener('gesturechange', preventGesture);
+      window.removeEventListener('gestureend', preventGesture);
+    };
+  }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null
+    const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
     if (savedTheme === 'light') {
-      setTheme('light')
-      document.documentElement.classList.remove('dark')
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
     } else {
-      setTheme('dark')
-      document.documentElement.classList.add('dark')
+      setTheme('dark');
+      document.documentElement.classList.add('dark');
     }
-  }, [])
+  }, []);
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(nextTheme)
-    localStorage.setItem('theme', nextTheme)
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem('theme', nextTheme);
     if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark')
+      document.documentElement.classList.add('dark');
     } else {
-      document.documentElement.classList.remove('dark')
+      document.documentElement.classList.remove('dark');
     }
-  }
+  };
 
   const loadUserProfile = async (userId: string, email?: string) => {
     const { data: profileData } = await supabase
       .from('profiles')
       .select('nickname, terms_agreed')
       .eq('id', userId)
-      .maybeSingle()
+      .maybeSingle();
 
     if (profileData?.nickname) {
-      setNickname(profileData.nickname)
+      setNickname(profileData.nickname);
     } else {
-      setNickname('익명사용자')
+      setNickname('익명사용자');
     }
 
     if (!profileData?.terms_agreed) {
-      setIsTermsModalOpen(true)
+      setIsTermsModalOpen(true);
     } else {
-      setIsTermsModalOpen(false)
+      setIsTermsModalOpen(false);
     }
 
     if (email?.toLowerCase() === "iwsamuel08@gmail.com") {
-      setUserRole("creator")
+      setUserRole("creator");
     } else {
       const { data: roleData } = await supabase
         .from('user_roles')
         .select('role')
         .or(`user_id.eq.${userId},email.eq.${email || ''}`)
-        .maybeSingle()
+        .maybeSingle();
 
       if (roleData?.role) {
-        setUserRole(roleData.role as "creator" | "super_admin" | "admin")
+        setUserRole(roleData.role as "creator" | "super_admin" | "admin");
       } else {
-        setUserRole(null)
+        setUserRole(null);
       }
     }
-  }
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
       if (currentUser) {
-        loadUserProfile(currentUser.id, currentUser.email)
+        loadUserProfile(currentUser.id, currentUser.email);
       }
-    })
+    });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
       if (currentUser) {
-        loadUserProfile(currentUser.id, currentUser.email)
+        loadUserProfile(currentUser.id, currentUser.email);
       } else {
-        setNickname('')
-        setUserRole(null)
-        setIsTermsModalOpen(false)
+        setNickname('');
+        setUserRole(null);
+        setIsTermsModalOpen(false);
       }
-    })
+    });
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleLogin = async () => {
     await supabase.auth.signInWithOAuth({
@@ -160,32 +178,32 @@ export default function RootLayout({
         redirectTo: window.location.origin,
         queryParams: { prompt: "select_account" },
       },
-    })
-  }
+    });
+  };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setNickname('')
-    setUserRole(null)
-  }
+    await supabase.auth.signOut();
+    setUser(null);
+    setNickname('');
+    setUserRole(null);
+  };
 
   const isCreatorOrSuperAdmin =
     user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ||
     userRole === "creator" ||
-    userRole === "super_admin"
+    userRole === "super_admin";
 
-  const isAdminGroup = Boolean(userRole === "creator" || userRole === "super_admin" || userRole === "admin")
+  const isAdminGroup = Boolean(userRole === "creator" || userRole === "super_admin" || userRole === "admin");
 
   return (
     <html lang="ko" className="dark">
       <head>
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=0.75, maximum-scale=0.75, minimum-scale=0.75, user-scalable=no, shrink-to-fit=no"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
         />
       </head>
-      <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300">
+      <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden">
         <header className="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md transition-colors duration-300">
           <div className="max-w-6xl mx-auto px-2 sm:px-4 h-16 flex items-center justify-between gap-1 sm:gap-2">
             <Link href="/" className="text-base sm:text-xl font-bold tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">

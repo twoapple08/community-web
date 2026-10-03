@@ -112,16 +112,14 @@ function FeedContent() {
   const [savingNotice, setSavingNotice] = useState(false);
   const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
 
-  // 상단 공지 알림 토스트 (배경색 추가, 위치 top-20으로 하향 조정)
-  const [noticeToast, setNoticeToast] = useState<{
-    show: boolean;
-    entered: boolean;
-    leaving: boolean;
+  // 상단 공지 알림 토스트 (CSS 애니메이션으로 페이드인 & 페이드아웃 보장)
+  const [toastState, setToastState] = useState<{
+    visible: boolean;
+    animatingOut: boolean;
     text: string;
   }>({
-    show: false,
-    entered: false,
-    leaving: false,
+    visible: false,
+    animatingOut: false,
     text: '',
   });
 
@@ -194,15 +192,11 @@ function FeedContent() {
   };
 
   const showTopToast = (msg: string) => {
-    setNoticeToast({ show: true, entered: false, leaving: false, text: msg });
+    setToastState({ visible: true, animatingOut: false, text: msg });
     setTimeout(() => {
-      setNoticeToast((prev) => ({ ...prev, entered: true }));
-    }, 25);
-
-    setTimeout(() => {
-      setNoticeToast((prev) => ({ ...prev, leaving: true, entered: false }));
+      setToastState((prev) => ({ ...prev, animatingOut: true }));
       setTimeout(() => {
-        setNoticeToast({ show: false, entered: false, leaving: false, text: '' });
+        setToastState({ visible: false, animatingOut: false, text: '' });
       }, 350);
     }, 2500);
   };
@@ -419,17 +413,15 @@ function FeedContent() {
 
   return (
     <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
-      {/* 화면 상단 공지 알림 토스트 (배경색 적용, top-20 위치로 하향 배치, 페이드인 & 위로 슬라이드 아웃) */}
-      {noticeToast.show && (
+      {/* 상단 공지 알림 토스트 (top-20, 순수 CSS 애니메이션으로 완벽한 페이드인 & 페이드아웃) */}
+      {toastState.visible && (
         <div
-          className={`fixed top-20 left-1/2 -translate-x-1/2 z-[100] px-5 py-2.5 bg-blue-600 text-white border border-blue-400 rounded-none text-xs font-bold tracking-wide pointer-events-none transition-all duration-300 ease-out shadow-2xl flex items-center gap-2 ${
-            noticeToast.entered && !noticeToast.leaving
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 -translate-y-4'
+          className={`fixed top-20 left-1/2 z-[100] px-5 py-2.5 bg-blue-600 text-white border border-blue-400 rounded-none text-xs font-bold tracking-wide pointer-events-none shadow-2xl flex items-center gap-2 ${
+            toastState.animatingOut ? 'animate-notice-out' : 'animate-notice-in'
           }`}
         >
           <Megaphone className="w-3.5 h-3.5" />
-          <span>{noticeToast.text}</span>
+          <span>{toastState.text}</span>
         </div>
       )}
 
@@ -455,7 +447,7 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 공지사항 배너 (배경 채움 해제 + 투명 틴트 + X축 수평 중심선 완벽 일치) */}
+      {/* 공지사항 배너 (배경 채움 해제 + 투명 틴트 + X축 수평 중심선 일치) */}
       {notice && (
         <div
           onClick={() => {

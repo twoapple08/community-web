@@ -24,7 +24,10 @@ import {
   Minus,
   Sparkles,
   Palette,
-  Highlighter
+  Highlighter,
+  Type,
+  X,
+  Check
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useState, useRef } from 'react'
@@ -35,10 +38,28 @@ interface EditorProps {
   minHeight?: string
 }
 
+const PRESET_FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
+const FONT_FAMILIES = [
+  { label: '기본 고딕 (Sans)', value: 'sans-serif' },
+  { label: '명조체 (Serif)', value: 'serif' },
+  { label: '고정폭 (Mono)', value: 'monospace' },
+  { label: '손글씨체 (Cursive)', value: 'cursive' }
+];
+
 export default function Editor({ content, onChange, minHeight = '300px' }: EditorProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [showMoreTools, setShowMoreTools] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 1. 커스텀 링크 삽입 모달 상태
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
+  const [inputLinkUrl, setInputLinkUrl] = useState('')
+  const [inputLinkText, setInputLinkText] = useState('')
+
+  // 2. 글꼴 및 크기 커스텀 드롭다운 상태
+  const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
+  const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false)
+  const [customSizeInput, setCustomSizeInput] = useState('')
 
   const editor = useEditor({
     extensions: [
@@ -60,7 +81,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
   if (!editor) return null
 
-  // 1. 이미지 업로드 (맨 우측 배치)
+  // 이미지 업로드
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -108,33 +129,62 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     }
   }
 
-  // 2. 링크 삽입
-  const handleInsertLink = () => {
-    const url = prompt('삽입할 링크(URL)를 입력하세요:')
-    if (!url) return
-    const text = prompt('표시할 텍스트를 입력하세요 (비워두면 URL 그대로 표시):') || url
-    editor.chain().focus().insertContent(`<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a> `).run()
+  // 커스텀 링크 팝업 열기
+  const handleOpenLinkModal = () => {
+    const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
+    setInputLinkText(selected || '')
+    setInputLinkUrl('')
+    setIsLinkModalOpen(true)
   }
 
-  // 3. 서식 헬퍼 함수
+  // 커스텀 링크 삽입 적용
+  const handleApplyLink = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!inputLinkUrl.trim()) return
+
+    let finalUrl = inputLinkUrl.trim()
+    if (!/^https?:\/\//i.test(finalUrl)) {
+      finalUrl = 'https://' + finalUrl
+    }
+
+    const displayText = inputLinkText.trim() || finalUrl
+    editor.chain().focus().insertContent(`<a href="${finalUrl}" target="_blank" rel="noopener noreferrer">${displayText}</a> `).run()
+    setIsLinkModalOpen(false)
+    setInputLinkUrl('')
+    setInputLinkText('')
+  }
+
+  // 서식 헬퍼 함수
   const applyTextColor = (color: string) => {
-    editor.chain().focus().insertContent(`<span style="color: ${color};">${editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to) || '색상 텍스트'}</span> `).run()
+    const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
+    editor.chain().focus().insertContent(`<span style="color: ${color};">${selected || '색상 텍스트'}</span> `).run()
   }
 
   const applyHighlightColor = (bgColor: string) => {
-    editor.chain().focus().insertContent(`<mark style="background-color: ${bgColor}; padding: 0 4px; border-radius: 2px;">${editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to) || '형광펜 텍스트'}</mark> `).run()
+    const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
+    editor.chain().focus().insertContent(`<mark style="background-color: ${bgColor}; padding: 0 4px; border-radius: 2px;">${selected || '형광펜 텍스트'}</mark> `).run()
   }
 
   const applyFontSize = (size: string) => {
-    editor.chain().focus().insertContent(`<span style="font-size: ${size};">${editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to) || '텍스트'}</span> `).run()
+    let clean = size.trim()
+    if (!clean.endsWith('px') && !clean.endsWith('em') && !clean.endsWith('rem')) {
+      clean += 'px'
+    }
+    const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
+    editor.chain().focus().insertContent(`<span style="font-size: ${clean};">${selected || '텍스트'}</span> `).run()
+    setIsSizeDropdownOpen(false)
+    setCustomSizeInput('')
   }
 
   const applyFontFamily = (font: string) => {
-    editor.chain().focus().insertContent(`<span style="font-family: ${font};">${editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to) || '텍스트'}</span> `).run()
+    const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
+    editor.chain().focus().insertContent(`<span style="font-family: ${font};">${selected || '텍스트'}</span> `).run()
+    setIsFontDropdownOpen(false)
   }
 
   const applyAlign = (align: string) => {
-    editor.chain().focus().insertContent(`<div style="text-align: ${align};">${editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to) || '정렬된 문단'}</div><p></p>`).run()
+    const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
+    editor.chain().focus().insertContent(`<div style="text-align: ${align};">${selected || '정렬된 문단'}</div><p></p>`).run()
   }
 
   const insertTable = (rows: number, cols: number) => {
@@ -155,8 +205,8 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
   }
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/50 overflow-hidden shadow-sm">
-      {/* 1열: 가장 자주 쓰는 툴바 + [더보기 토글] + 맨 우측 [이미지 첨부] */}
+    <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/50 overflow-visible shadow-sm relative">
+      {/* 1열: 기본 툴바 + [더보기 토글] + 맨 우측 [이미지 추가] */}
       <div className="flex items-center justify-between gap-1 p-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
           <button
@@ -186,7 +236,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-1" />
 
-          {/* 인용구 및 목록 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().toggleBlockquote().run()}
@@ -212,16 +261,17 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
             <ListOrdered className="w-4 h-4" />
           </button>
 
+          {/* 사이트 UI 맞춤 커스텀 링크 팝업 트리거 */}
           <button
             type="button"
-            onClick={handleInsertLink}
+            onClick={handleOpenLinkModal}
             className="p-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
             title="링크 삽입"
           >
             <LinkIcon className="w-4 h-4" />
           </button>
 
-          {/* 더보기 펼치기 토글 버튼 */}
+          {/* 도구 더보기 토글 */}
           <button
             type="button"
             onClick={() => setShowMoreTools(!showMoreTools)}
@@ -230,7 +280,6 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-600 dark:text-emerald-400'
                 : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300'
             }`}
-            title="더 많은 서식 도구 보기"
           >
             <span>도구 더보기</span>
             {showMoreTools ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -263,42 +312,99 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
         </div>
       </div>
 
-      {/* 2열: 펼쳐지는 고급 도구 모음 (글자색, 형광펜, 폰트크기, 정렬, 표 등) */}
+      {/* 2열: 펼쳐지는 고급 서식 도구 모음 */}
       {showMoreTools && (
-        <div className="p-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-wrap items-center gap-2 text-xs animate-in slide-in-from-top-2 duration-150">
-          {/* 글꼴 크기 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-zinc-400 font-bold">크기:</span>
-            <select
-              onChange={(e) => applyFontSize(e.target.value)}
-              className="px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-800 dark:text-zinc-200 text-xs"
-              defaultValue="16px"
+        <div className="p-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-wrap items-center gap-2 text-xs relative z-20 animate-in slide-in-from-top-2 duration-150">
+          {/* 글꼴 드롭다운 */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsFontDropdownOpen(!isFontDropdownOpen)
+                setIsSizeDropdownOpen(false)
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-800 dark:text-zinc-200 font-medium shadow-sm"
             >
-              <option value="12px">작게 (12px)</option>
-              <option value="14px">보통 (14px)</option>
-              <option value="16px">기본 (16px)</option>
-              <option value="20px">크게 (20px)</option>
-              <option value="26px">아주 크게 (26px)</option>
-            </select>
+              <Type className="w-3.5 h-3.5 text-zinc-400" />
+              <span>글꼴 선택</span>
+              <ChevronDown className="w-3 h-3 text-zinc-400" />
+            </button>
+
+            {isFontDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 w-36 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl py-1 z-30 overflow-hidden">
+                {FONT_FAMILIES.map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => applyFontFamily(f.value)}
+                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 block"
+                    style={{ fontFamily: f.value }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* 글꼴 선택 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-zinc-400 font-bold">글꼴:</span>
-            <select
-              onChange={(e) => applyFontFamily(e.target.value)}
-              className="px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-800 dark:text-zinc-200 text-xs"
+          {/* 폰트 크기 드롭다운 (직접 입력란 포함) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSizeDropdownOpen(!isSizeDropdownOpen)
+                setIsFontDropdownOpen(false)
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-800 dark:text-zinc-200 font-medium shadow-sm"
             >
-              <option value="sans-serif">기본 고딕</option>
-              <option value="serif">명조체 (바탕)</option>
-              <option value="monospace">코딩 고정폭</option>
-              <option value="cursive">손글씨체</option>
-            </select>
+              <span>글자 크기</span>
+              <ChevronDown className="w-3 h-3 text-zinc-400" />
+            </button>
+
+            {isSizeDropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 w-44 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl p-2 z-30 space-y-2">
+                {/* 폰트 크기 직접 입력 */}
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold block mb-1">직접 입력 (px)</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      placeholder="예: 22"
+                      value={customSizeInput}
+                      onChange={(e) => setCustomSizeInput(e.target.value)}
+                      className="w-full px-2 py-1 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-900 dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => customSizeInput && applyFontSize(customSizeInput)}
+                      className="px-2 py-1 bg-emerald-600 text-white rounded text-xs font-bold shrink-0"
+                    >
+                      적용
+                    </button>
+                  </div>
+                </div>
+
+                {/* 프리셋 선택 목록 */}
+                <div className="border-t border-zinc-100 dark:border-zinc-800 pt-1 space-y-0.5">
+                  <span className="text-[10px] text-zinc-400 font-bold block mb-1">프리셋 선택</span>
+                  {PRESET_FONT_SIZES.map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => applyFontSize(sz)}
+                      className="w-full px-2 py-1 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded"
+                    >
+                      {sz}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 글자 색상 팔레트 */}
+          {/* 색상 팔레트 */}
           <div className="flex items-center gap-1">
             <Palette className="w-3.5 h-3.5 text-zinc-400" />
             <button type="button" onClick={() => applyTextColor('#ef4444')} className="w-4 h-4 rounded-full bg-red-500" title="빨간색" />
@@ -308,7 +414,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
             <button type="button" onClick={() => applyTextColor('#a855f7')} className="w-4 h-4 rounded-full bg-purple-500" title="보라색" />
           </div>
 
-          {/* 배경 형광펜 팔레트 */}
+          {/* 형광펜 */}
           <div className="flex items-center gap-1">
             <Highlighter className="w-3.5 h-3.5 text-zinc-400" />
             <button type="button" onClick={() => applyHighlightColor('#fef08a')} className="w-4 h-4 rounded bg-yellow-200 border border-yellow-400" title="노랑 형광펜" />
@@ -319,7 +425,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 정렬 버튼 모음 */}
+          {/* 정렬 */}
           <div className="flex items-center gap-0.5">
             <button type="button" onClick={() => applyAlign('left')} className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-800" title="왼쪽 맞춤">
               <AlignLeft className="w-3.5 h-3.5" />
@@ -343,7 +449,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
               type="button"
               onClick={() => insertTable(2, 2)}
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-[11px]"
-              title="2x2 표 삽입"
+              title="2x2 표"
             >
               <TableIcon className="w-3 h-3" />
               <span>2x2 표</span>
@@ -352,7 +458,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
               type="button"
               onClick={() => insertTable(3, 3)}
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-[11px]"
-              title="3x3 표 삽입"
+              title="3x3 표"
             >
               <TableIcon className="w-3 h-3" />
               <span>3x3 표</span>
@@ -390,6 +496,87 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
 
       {/* 본문 에디터 내용 영역 */}
       <EditorContent editor={editor} />
+
+      {/* 사이트 UI 맞춤 링크 삽입 커스텀 팝업 (입력 내용 실시간 반영) */}
+      {isLinkModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setIsLinkModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <LinkIcon className="w-4 h-4 text-emerald-500" />
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">링크 삽입</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLinkModalOpen(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyLink} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                  접속 주소 (URL)
+                </label>
+                <input
+                  type="text"
+                  value={inputLinkUrl}
+                  onChange={(e) => setInputLinkUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  autoFocus
+                  required
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1">
+                  표시할 텍스트 (선택 사항)
+                </label>
+                <input
+                  type="text"
+                  value={inputLinkText}
+                  onChange={(e) => setInputLinkText(e.target.value)}
+                  placeholder="비워두면 URL이 그대로 표시됩니다"
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* 현재 입력된 URL 실시간 미리보기 */}
+              <div className="p-2 bg-zinc-100 dark:bg-zinc-800/60 rounded-lg text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                <span className="font-bold text-zinc-700 dark:text-zinc-300">연결: </span>
+                {inputLinkUrl ? inputLinkUrl : '주소를 입력해 주세요'}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsLinkModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={!inputLinkUrl.trim()}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition disabled:opacity-40 flex items-center gap-1"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>적용</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

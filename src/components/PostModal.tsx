@@ -14,7 +14,6 @@ import {
   Check,
   AlertTriangle,
   Pencil,
-  Save,
   Loader2,
   Heart,
   ShieldCheck,
@@ -317,7 +316,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 본문 클릭 핸들러 (모든 링크 클릭 시 접속 확인 팝업 오픈, 이미지 클릭 시 사진 확대)
+  // 본문 클릭 이벤트: 모든 링크 클릭 인터셉트 및 이미지 미리보기
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const anchor = target.closest('a');
@@ -446,49 +445,56 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   })());
   const canManage = isAuthor || canForceManage;
 
-  // 유튜브, 디스코드, 카카오톡 및 모든 링크를 안전하게 임베드 및 상호작용 연결하는 파서
+  // DOMParser 기반 안전 리치 임베드 변환 (HTML 속성 파괴 방지)
   const renderRichContent = (html: string) => {
-    let processed = html;
+    if (typeof window === 'undefined') return html;
 
-    // 1. 유튜브 단독 링크 -> 16:9 반응형 플레이어 임베드
-    processed = processed.replace(
-      /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[^\s<"']*)/g,
-      (_match, videoId) => {
-        return `<div class="my-4 aspect-video w-full max-w-xl mx-auto overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-md">
-          <iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-        </div>`;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // 1. 모든 앵커 태그 검사 및 전용 임베드로 변환
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    anchors.forEach((a) => {
+      const href = a.getAttribute('href') || '';
+
+      // 유튜브 링크 감지
+      const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+      if (ytMatch) {
+        const videoId = ytMatch[1];
+        const wrapper = doc.createElement('div');
+        wrapper.className = 'my-4 aspect-video w-full max-w-xl mx-auto overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-md';
+        wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+        a.replaceWith(wrapper);
+        return;
       }
-    );
 
-    // 2. 디스코드 초대 링크 -> 전용 카드 임베드
-    processed = processed.replace(
-      /(https?:\/\/(?:www\.)?(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+)/g,
-      (match) => {
-        return `<a href="${match}" class="inline-flex items-center gap-2 px-3 py-1.5 my-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs no-underline shadow cursor-pointer">
+      // 디스코드 초대 링크 감지
+      const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+/i);
+      if (discordMatch) {
+        a.className = 'inline-flex items-center gap-2 px-3.5 py-2 my-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs no-underline shadow cursor-pointer';
+        a.innerHTML = `
           <svg class="w-4 h-4 fill-current shrink-0" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
           <span>디스코드 서버 입장하기</span>
-        </a>`;
+        `;
+        return;
       }
-    );
 
-    // 3. 카카오톡 오픈채팅 링크 -> 전용 카드 임베드
-    processed = processed.replace(
-      /(https?:\/\/(?:open\.kakao\.com)\/[a-zA-Z0-9_\/]+)/g,
-      (match) => {
-        return `<a href="${match}" class="inline-flex items-center gap-2 px-3 py-1.5 my-1.5 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-bold text-xs no-underline shadow cursor-pointer">
+      // 카카오톡 오픈채팅 링크 감지
+      const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
+      if (kakaoMatch) {
+        a.className = 'inline-flex items-center gap-2 px-3.5 py-2 my-2 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-bold text-xs no-underline shadow cursor-pointer';
+        a.innerHTML = `
           <svg class="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
           <span>카카오톡 오픈채팅 입장하기</span>
-        </a>`;
+        `;
+        return;
       }
-    );
 
-    // 4. 일반 하이퍼링크 스타일 지정
-    processed = processed.replace(
-      /(<a\s+[^>]*href="[^"]*")/gi,
-      `$1 class="text-blue-500 dark:text-blue-400 underline font-semibold cursor-pointer hover:text-blue-600"`
-    );
+      // 일반 하이퍼링크 스타일 지정
+      a.className = 'text-blue-500 dark:text-blue-400 underline font-semibold cursor-pointer hover:text-blue-600';
+    });
 
-    return processed;
+    return doc.body.innerHTML;
   };
 
   return (
@@ -587,14 +593,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   disabled={isSavingDraft}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition disabled:opacity-50"
                 >
-                  {isSavingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  {isSavingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   <span>임시보관</span>
                 </button>
 
                 <button
                   onClick={handleSaveEdit}
                   disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
                 >
                   {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                   <span>{saving ? '저장 중...' : '수정 완료'}</span>
@@ -675,7 +681,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </div>
               </div>
 
-              {/* 고기능 리치 텍스트 에디터 연결 (글쓰기 페이지와 동일한 에디터 장착) */}
+              {/* 고기능 리치 텍스트 에디터 연결 */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
                   내용 및 이미지 편집
@@ -720,7 +726,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </div>
               </header>
 
-              {/* 본문 및 임베드 렌더링 영역 (링크 클릭 인터셉트 연동) */}
+              {/* 본문 및 안전 임베드 렌더링 영역 */}
               <div
                 onClick={handleContentClick}
                 className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap leading-relaxed text-zinc-800 dark:text-zinc-200 [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-4 [&_img]:cursor-pointer [&_table]:border-collapse"
@@ -791,7 +797,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               {linkConfirmUrl}
             </div>
 
-            {/* 예, 아니오 버튼 중앙 배치 */}
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
@@ -824,7 +829,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         currentUserId={currentUserId}
       />
 
-      {/* 공식 게시글 삭제 신청 팝업 */}
+      {/* 삭제 신청 모달 */}
       {showRequestDeleteModal && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
