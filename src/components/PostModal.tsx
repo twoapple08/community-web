@@ -492,7 +492,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900/50 transition"
                     >
                       <Pencil className="w-3.5 h-3.5" />
-                      <span>{isAuthor ? "수정" : "강제 편집"}</span>
+                      <span>{isAuthor ? "수정" : "강제 수정"}</span>
                     </button>
 
                     {post?.is_official && isAuthor && !isAdmin ? (

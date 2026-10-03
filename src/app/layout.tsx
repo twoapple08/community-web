@@ -206,7 +206,7 @@ export default function RootLayout({
                     onClick={() => setIsAdminModalOpen(true)}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 transition shrink-0"
                   >
-                    <span>👑 관리자</span>
+                    <span>관리자 지정</span>
                   </button>
                 )}
 

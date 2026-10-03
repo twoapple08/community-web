@@ -1,34 +1,52 @@
-import React from "react";
+'use client'
+
 export type RoleType = "creator" | "super_admin" | "admin" | null | undefined;
 
-export function CrownIcon({ role, className = "w-4 h-4" }: { role: RoleType; className?: string }) {
-  if (!role) return null;
-  let color = "#EF4444";
-  let title = "사이트 제작자";
-  if (role === "super_admin") {
-    color = "#F59E0B";
-    title = "최고관리자";
-  } else if (role === "admin") {
-    color = "#FFFFFF";
-    title = "일반관리자";
+interface CrownIconProps {
+  role: RoleType;
+  className?: string;
+}
+
+export function CrownIcon({ role, className = "w-4 h-4" }: CrownIconProps) {
+  if (!role || (role !== "creator" && role !== "super_admin" && role !== "admin")) {
+    return null;
   }
 
+  const isCreator = role === "creator";
+  const isSuperAdmin = role === "super_admin";
+
+  const fillColor = isCreator ? "#EF4444" : isSuperAdmin ? "#F59E0B" : "#FFFFFF";
+  const strokeColor = isCreator ? "#DC2626" : isSuperAdmin ? "#D97706" : "#A1A1AA";
+  const titleText = isCreator ? "제작자" : isSuperAdmin ? "최고관리자" : "관리자";
+
   return (
-    <span className="inline-flex items-center justify-center shrink-0 mr-1" title={title}>
-      <svg
-        viewBox="0 0 24 24"
-        fill={color}
-        stroke="#18181b"
-        strokeWidth="1.5"
-        className={`drop-shadow-sm ${className}`}
-        style={{ filter: role === "admin" ? "drop-shadow(0 1px 2px rgba(0,0,0,0.6))" : undefined }}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 18h18v2H3v-2zm1.5-3l2.5-7.5L12 12l5-4.5 2.5 7.5H4.5z"
-        />
-      </svg>
-    </span>
+    <svg
+      viewBox="0 0 24 24"
+      className={`inline-block shrink-0 align-middle ${className}`}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>{titleText}</title>
+      <path
+        d="M3 16L4.5 6L8.5 11L12 3L15.5 11L19.5 6L21 16H3Z"
+        fill={fillColor}
+        stroke={strokeColor}
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="3"
+        y="17"
+        width="18"
+        height="3"
+        rx="1"
+        fill={fillColor}
+        stroke={strokeColor}
+        strokeWidth="1.2"
+      />
+      <circle cx="4.5" cy="5.5" r="1.2" fill={fillColor} stroke={strokeColor} strokeWidth="0.8" />
+      <circle cx="12" cy="2.5" r="1.5" fill={fillColor} stroke={strokeColor} strokeWidth="0.8" />
+      <circle cx="19.5" cy="5.5" r="1.2" fill={fillColor} stroke={strokeColor} strokeWidth="0.8" />
+    </svg>
   );
 }
