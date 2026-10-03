@@ -316,7 +316,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 본문 클릭 이벤트: 모든 링크 클릭 인터셉트 및 이미지 미리보기
+  // 본문 클릭 핸들러 (모든 링크 클릭 시 접속 확인 팝업 오픈, 이미지 클릭 시 사진 확대)
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const anchor = target.closest('a');
@@ -445,53 +445,103 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   })());
   const canManage = isAuthor || canForceManage;
 
-  // DOMParser 기반 안전 리치 임베드 변환 (HTML 속성 파괴 방지)
+  // 일반 텍스트 링크까지 100% 탐지하여 임베드 또는 안전 링크로 변환
   const renderRichContent = (html: string) => {
     if (typeof window === 'undefined') return html;
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // 1. 모든 앵커 태그 검사 및 전용 임베드로 변환
+    // 1. 일반 텍스트 노드에 쓰인 순수 URL을 <a> 태그로 자동 감지 변환
+    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
+    const walkTextNodes = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
+        if (urlRegex.test(node.nodeValue)) {
+          const parent = node.parentNode;
+          if (parent && parent.nodeName !== 'A' && parent.nodeName !== 'SCRIPT' && parent.nodeName !== 'STYLE') {
+            const span = doc.createElement('span');
+            span.innerHTML = node.nodeValue.replace(urlRegex, (url) => `<a href="${url}">${url}</a>`);
+            parent.replaceChild(span, node);
+          }
+        }
+      } else {
+        Array.from(node.childNodes).forEach(walkTextNodes);
+      }
+    };
+    walkTextNodes(doc.body);
+
+    // 2. 모든 <a> 태그를 전용 임베드 카드 및 안전 링크로 변환
     const anchors = Array.from(doc.querySelectorAll('a'));
     anchors.forEach((a) => {
       const href = a.getAttribute('href') || '';
 
-      // 유튜브 링크 감지
-      const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+      // 유튜브 영상 임베드 (16:9 반응형 + 하단 정보 안내바)
+      const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch) {
         const videoId = ytMatch[1];
         const wrapper = doc.createElement('div');
-        wrapper.className = 'my-4 aspect-video w-full max-w-xl mx-auto overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-md';
-        wrapper.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+        wrapper.className = 'my-3 w-full max-w-xl mx-auto rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-md bg-black not-prose';
+        wrapper.innerHTML = `
+          <div class="aspect-video w-full">
+            <iframe src="https://www.youtube.com/embed/${videoId}" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+          </div>
+          <div class="px-3.5 py-2 bg-zinc-100 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+            <span class="font-bold text-red-600 dark:text-red-500">YouTube 동영상</span>
+            <a href="${href}" class="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-medium text-[11px] underline">원본 보기 ↗</a>
+          </div>
+        `;
         a.replaceWith(wrapper);
         return;
       }
 
-      // 디스코드 초대 링크 감지
+      // 디스코드 초대 링크 전용 카드
       const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9]+/i);
       if (discordMatch) {
-        a.className = 'inline-flex items-center gap-2 px-3.5 py-2 my-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-bold text-xs no-underline shadow cursor-pointer';
-        a.innerHTML = `
-          <svg class="w-4 h-4 fill-current shrink-0" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-          <span>디스코드 서버 입장하기</span>
+        const card = doc.createElement('div');
+        card.className = 'my-2.5 p-3 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/30 flex items-center justify-between gap-3 max-w-md not-prose';
+        card.innerHTML = `
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-8 h-8 rounded-lg bg-[#5865F2] flex items-center justify-center text-white shrink-0">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs font-bold text-zinc-900 dark:text-white truncate">디스코드 서버 초대</p>
+              <p class="text-[10px] text-zinc-400 truncate">${href}</p>
+            </div>
+          </div>
+          <a href="${href}" class="px-3 py-1.5 bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold rounded-lg transition shrink-0 no-underline">
+            서버 참가
+          </a>
         `;
+        a.replaceWith(card);
         return;
       }
 
-      // 카카오톡 오픈채팅 링크 감지
+      // 카카오톡 오픈채팅 전용 카드
       const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
       if (kakaoMatch) {
-        a.className = 'inline-flex items-center gap-2 px-3.5 py-2 my-2 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] font-bold text-xs no-underline shadow cursor-pointer';
-        a.innerHTML = `
-          <svg class="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
-          <span>카카오톡 오픈채팅 입장하기</span>
+        const card = doc.createElement('div');
+        card.className = 'my-2.5 p-3 rounded-xl bg-[#FEE500]/15 border border-[#FEE500]/50 flex items-center justify-between gap-3 max-w-md not-prose';
+        card.innerHTML = `
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-8 h-8 rounded-lg bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs font-bold text-zinc-900 dark:text-white truncate">카카오톡 오픈채팅</p>
+              <p class="text-[10px] text-zinc-400 truncate">${href}</p>
+            </div>
+          </div>
+          <a href="${href}" class="px-3 py-1.5 bg-[#FEE500] hover:bg-[#FADA0A] text-[#191919] text-xs font-bold rounded-lg transition shrink-0 no-underline">
+            채팅방 입장
+          </a>
         `;
+        a.replaceWith(card);
         return;
       }
 
-      // 일반 하이퍼링크 스타일 지정
-      a.className = 'text-blue-500 dark:text-blue-400 underline font-semibold cursor-pointer hover:text-blue-600';
+      // 일반 링크 서식
+      a.className = 'text-blue-500 dark:text-blue-400 underline font-semibold cursor-pointer hover:text-blue-600 break-all';
     });
 
     return doc.body.innerHTML;
@@ -674,14 +724,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                         }`}
                       >
                         <span>#{tag}</span>
-                        {isSelected && <Check className="w-3 h-3" />}
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 고기능 리치 텍스트 에디터 연결 */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
                   내용 및 이미지 편집
@@ -768,19 +817,19 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         )}
       </div>
 
-      {/* 링크 클릭 시 '이 링크에 접속하시겠습니까?' 안내 팝업 (예, 아니오 중앙 배치) */}
+      {/* 외부 링크 접속 확인 팝업 (예, 아니오 중앙 배치) */}
       {linkConfirmUrl && (
         <div
-          className="fixed inset-0 z-[85] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
           onClick={() => setLinkConfirmUrl(null)}
         >
           <div
-            className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center">
-              <div className="p-2.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
-                <ExternalLink className="w-5 h-5" />
+              <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                <ExternalLink className="w-6 h-6" />
               </div>
             </div>
 
@@ -793,7 +842,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </p>
             </div>
 
-            <div className="p-3 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl text-xs font-mono text-zinc-700 dark:text-zinc-300 break-all max-h-28 overflow-y-auto border border-zinc-200 dark:border-zinc-700 text-left">
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-xs font-mono text-zinc-800 dark:text-zinc-200 break-all max-h-28 overflow-y-auto border border-zinc-200 dark:border-zinc-700 text-left">
               {linkConfirmUrl}
             </div>
 
@@ -808,11 +857,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               <button
                 type="button"
                 onClick={() => {
-                  const url = linkConfirmUrl;
+                  const target = linkConfirmUrl;
                   setLinkConfirmUrl(null);
-                  window.open(url, '_blank', 'noopener,noreferrer');
+                  window.open(target, '_blank', 'noopener,noreferrer');
                 }}
-                className="px-6 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
+                className="px-6 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
               >
                 예
               </button>

@@ -6,7 +6,7 @@ import UserHubModal from "@/components/UserHubModal";
 import BlacklistModal from "@/components/BlacklistModal";
 import TermsModal from "@/components/TermsModal";
 import './globals.css'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
@@ -25,67 +25,6 @@ export default function RootLayout({
   const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
-
-  // 실버팰리스 수준의 화면 확대/축소(Ctrl+휠, 핀치줌, 더블탭 줌) 완전 차단
-  useEffect(() => {
-    let lastTouchEnd = 0;
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault();
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0', '_'].includes(e.key)) {
-        e.preventDefault();
-      }
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      const now = Date.now();
-      if (now - lastTouchEnd <= 300) {
-        e.preventDefault();
-      }
-      lastTouchEnd = now;
-    };
-
-    const preventGesture = (e: Event) => {
-      e.preventDefault();
-    };
-
-    window.addEventListener('wheel', handleWheel, { passive: false });
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('touchstart', handleTouchStart, { passive: false });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleTouchEnd, { passive: false });
-    window.addEventListener('gesturestart', preventGesture);
-    window.addEventListener('gesturechange', preventGesture);
-    window.addEventListener('gestureend', preventGesture);
-
-    return () => {
-      window.removeEventListener('wheel', handleWheel);
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-      window.removeEventListener('gesturestart', preventGesture);
-      window.removeEventListener('gesturechange', preventGesture);
-      window.removeEventListener('gestureend', preventGesture);
-    };
-  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
@@ -198,19 +137,17 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark">
       <head>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
-        />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
-      <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden">
+      <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300">
         <header className="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md transition-colors duration-300">
-          <div className="max-w-6xl mx-auto px-2 sm:px-4 h-16 flex items-center justify-between gap-1 sm:gap-2">
+          <div className="max-w-6xl mx-auto px-2 sm:px-4 h-16 flex items-center justify-between gap-2">
             <Link href="/" className="text-base sm:text-xl font-bold tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">
               COMMUNITY
             </Link>
 
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* 200% 확대 상태에서도 UI 붕괴 없이 우측 버튼들이 가로 스크롤로 보호됨 */}
+            <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0 overflow-x-auto no-scrollbar py-1">
               <button
                 type="button"
                 role="switch"
