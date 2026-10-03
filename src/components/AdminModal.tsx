@@ -33,7 +33,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
 
-  // 커스텀 해제 확인 팝업 상태
   const [deletingAdmin, setDeletingAdmin] = useState<AdminUser | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -148,14 +147,13 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-visible animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-visible animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 모달 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <Crown className="w-5 h-5 text-amber-500" />
@@ -163,7 +161,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full transition"
+            className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full transition duration-300"
           >
             <X className="w-5 h-5" />
           </button>
@@ -182,7 +180,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                   value={searchNickname}
                   onChange={(e) => setSearchNickname(e.target.value)}
                   placeholder="지정할 유저의 닉네임을 입력하세요"
-                  className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full pl-9 pr-4 py-2 text-xs bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition duration-300"
                 />
               </div>
 
@@ -196,7 +194,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                       <div
                         key={p.id}
                         onClick={() => setSelectedUserId(p.id)}
-                        className={`flex items-center justify-between px-3.5 py-2 text-xs cursor-pointer transition ${
+                        className={`flex items-center justify-between px-3.5 py-2 text-xs cursor-pointer transition duration-300 ${
                           isSelected
                             ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-bold'
                             : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300'
@@ -211,7 +209,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
               </div>
             </div>
 
-            {/* 권한 선택 (절대 좌표 드롭다운으로 UI 밀림 완전 차단) */}
             <div className="grid grid-cols-2 gap-3 items-end">
               <div className="relative">
                 <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 mb-1.5">
@@ -220,17 +217,16 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                 <button
                   type="button"
                   onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-medium shadow-sm transition"
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-medium shadow-sm transition duration-300"
                 >
                   <span className="truncate">
-                    {targetRole === 'super_admin' ? '최고관리자 (황금왕관)' : '일반관리자 (순백왕관)'}
+                    {targetRole === 'super_admin' ? '최고관리자' : '일반관리자'}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0 ml-1" />
                 </button>
 
-                {/* 드롭다운 리스트 (absolute로 공중에 띄워 밀림 없음) */}
                 {isRoleDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute top-full left-0 mt-1 w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                     {currentUserRole === 'creator' && (
                       <button
                         type="button"
@@ -238,13 +234,13 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                           setTargetRole('super_admin')
                           setIsRoleDropdownOpen(false)
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition ${
+                        className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition duration-300 ${
                           targetRole === 'super_admin'
                             ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-bold'
                             : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/60 text-zinc-800 dark:text-zinc-200'
                         }`}
                       >
-                        <span>최고관리자 (황금왕관)</span>
+                        <span>최고관리자</span>
                         {targetRole === 'super_admin' && <Check className="w-3.5 h-3.5" />}
                       </button>
                     )}
@@ -254,13 +250,13 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                         setTargetRole('admin')
                         setIsRoleDropdownOpen(false)
                       }}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition ${
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition duration-300 ${
                         targetRole === 'admin'
                           ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold'
                           : 'hover:bg-zinc-100 dark:hover:bg-zinc-700/60 text-zinc-800 dark:text-zinc-200'
                       }`}
                     >
-                      <span>일반관리자 (순백왕관)</span>
+                      <span>일반관리자</span>
                       {targetRole === 'admin' && <Check className="w-3.5 h-3.5" />}
                     </button>
                   </div>
@@ -271,7 +267,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                 <button
                   type="submit"
                   disabled={loading || !selectedUserId}
-                  className="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50"
+                  className="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-sm transition duration-300 disabled:opacity-50"
                 >
                   {loading ? '임명 중...' : '관리자 지정'}
                 </button>
@@ -279,7 +275,6 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
             </div>
           </form>
 
-          {/* 등록된 관리자 목록 */}
           <div>
             <h3 className="text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-2">
               현재 관리자 명단 ({admins.length}명)
@@ -298,7 +293,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                   return (
                     <div
                       key={admin.email}
-                      className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800"
+                      className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 transition duration-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <CrownIcon role={admin.role} className="w-4 h-4 shrink-0" />
@@ -320,7 +315,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                         <button
                           type="button"
                           onClick={() => setDeletingAdmin(admin)}
-                          className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition shrink-0"
+                          className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition duration-300 shrink-0"
                           title="권한 해제"
                         >
                           <UserX className="w-4 h-4" />
@@ -335,14 +330,13 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
         </div>
       </div>
 
-      {/* 커스텀 해제 경고 팝업 */}
       {deletingAdmin && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
           onClick={() => !isDeleting && setDeletingAdmin(null)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
@@ -366,7 +360,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                 type="button"
                 onClick={() => setDeletingAdmin(null)}
                 disabled={isDeleting}
-                className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition duration-300 disabled:opacity-50"
               >
                 취소
               </button>
@@ -374,7 +368,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                 type="button"
                 onClick={handleConfirmRevoke}
                 disabled={isDeleting}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition duration-300 disabled:opacity-50 flex items-center gap-1.5"
               >
                 <span>{isDeleting ? '해제 중...' : '권한 해제'}</span>
               </button>
