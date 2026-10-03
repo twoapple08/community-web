@@ -18,9 +18,10 @@ import {
   Underline,
   Image as ImageIcon,
   Loader2,
-  ZoomIn,
   Eye,
-  Heart
+  Heart,
+  ShieldCheck,
+  Send
 } from 'lucide-react';
 
 interface Post {
@@ -30,6 +31,9 @@ interface Post {
   created_at: string;
   author_id: string;
   likes_count?: number;
+  is_official?: boolean;
+  delete_requested?: boolean;
+  delete_reason?: string | null;
 }
 
 interface PostModalProps {
@@ -56,6 +60,15 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
+
+  // 공식 게시글 삭제 신청 팝업 상태
+  const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
+  const [deleteReasonText, setDeleteReasonText] = useState("");
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+
+  // 일반 게시글 영구 삭제 확인 팝업 상태
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -93,9 +106,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
   const syncAttachedImages = () => {
     if (!editorRef.current) return;
     const imgs = Array.from(editorRef.current.querySelectorAll('img')).map((img) => img.src);
@@ -107,6 +117,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       if (e.key === 'Escape') {
         if (previewImageUrl) {
           setPreviewImageUrl(null);
+        } else if (showRequestDeleteModal) {
+          setShowRequestDeleteModal(false);
         } else if (showDeleteConfirm) {
           setShowDeleteConfirm(false);
         } else if (isEditing) {
@@ -121,7 +133,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showDeleteConfirm, isEditing, previewImageUrl]);
+  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl]);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -171,6 +183,48 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setLoading(false);
   };
 
+  // 관리자 전용 공식 지정 토글
+  const handleToggleOfficial = async () => {
+    if (!post) return;
+    const nextStatus = !post.is_official;
+    const { error } = await supabase
+      .from('posts')
+      .update({ is_official: nextStatus })
+      .eq('id', postId);
+
+    if (error) {
+      alert(`공식 상태 변경 실패: ${error.message}`);
+    } else {
+      setPost({ ...post, is_official: nextStatus });
+      if (onDeleted) onDeleted();
+    }
+  };
+
+  // 공식 게시글 삭제 신청 전송
+  const handleSubmitDeleteRequest = async () => {
+    if (!post) return;
+    setRequestSubmitting(true);
+    const { error } = await supabase
+      .from('posts')
+      .update({
+        delete_requested: true,
+        delete_reason: deleteReasonText.trim() || '사유 미작성',
+      })
+      .eq('id', postId);
+
+    if (error) {
+      alert(`삭제 신청 실패: ${error.message}`);
+      setRequestSubmitting(false);
+    } else {
+      alert('관리자에게 삭제 신청이 접수되었습니다. 승인 검토 전까지 비공개 상태로 전환됩니다.');
+      setShowRequestDeleteModal(false);
+      onClose();
+      if (onDeleted) onDeleted();
+      router.refresh();
+    }
+  };
+
+  // 좋아요 토글 핸들러
   const handleToggleLike = async () => {
     if (!currentUserId) {
       alert('좋아요 기능은 로그인이 필요합니다.');
@@ -197,7 +251,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       if (error) {
         setIsLiked(prevLiked);
         setLikesCount(prevCount);
-        alert('좋아요 취소 처리에 실패했습니다.');
       }
     } else {
       const { error } = await supabase
@@ -207,7 +260,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       if (error) {
         setIsLiked(prevLiked);
         setLikesCount(prevCount);
-        alert('좋아요 등록 처리에 실패했습니다.');
       }
     }
     setLikeLoading(false);
@@ -340,7 +392,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
-  const canManage = Boolean(post && (isAuthor || currentUserRole === "creator" || currentUserRole === "super_admin" || currentUserRole === "admin"));
+  const isAdmin = Boolean(currentUserRole === "creator" || currentUserRole === "super_admin" || currentUserRole === "admin");
+  const canManage = Boolean(post && (isAuthor || isAdmin));
 
   return (
     <div
@@ -352,7 +405,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!isEditing ? (
               <>
                 <button
@@ -363,6 +416,21 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Share2 className="w-3.5 h-3.5" />}
                   <span>{copied ? '링크 복사됨' : '공유'}</span>
                 </button>
+
+                {/* 관리자 전용: 공식 지정 / 해제 토글 버튼 */}
+                {isAdmin && post && (
+                  <button
+                    onClick={handleToggleOfficial}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                      post.is_official
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>{post?.is_official ? '공식 해제' : '공식 지정'}</span>
+                  </button>
+                )}
 
                 {Boolean(canManage && post) && (
                   <>
@@ -377,13 +445,24 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                       <span>{isAuthor ? "수정" : "강제 편집"}</span>
                     </button>
 
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900/50 transition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>{isAuthor ? "삭제" : "강제 삭제"}</span>
-                    </button>
+                    {/* 공식 게시글이면서 일반 작성자인 경우: 삭제 신청 버튼 / 그 외: 즉각 삭제 버튼 */}
+                    {post?.is_official && isAuthor && !isAdmin ? (
+                      <button
+                        onClick={() => setShowRequestDeleteModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900/50 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>삭제 신청</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900/50 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{isAuthor ? "삭제" : "강제 삭제"}</span>
+                      </button>
+                    )}
                   </>
                 )}
               </>
@@ -551,6 +630,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             <div className="space-y-6">
               <header className="space-y-3 pb-4 border-b border-zinc-100 dark:border-zinc-800/60">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-snug">
+                  {post?.is_official && (
+                    <span className="text-emerald-600 dark:text-emerald-400 mr-2 font-extrabold">
+                      [공식]
+                    </span>
+                  )}
                   {post.title}
                 </h2>
                 <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
@@ -591,6 +675,67 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       </div>
 
+      {/* 공식 게시글 삭제 신청 모달 */}
+      {showRequestDeleteModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => !requestSubmitting && setShowRequestDeleteModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">공식 게시글 삭제 신청</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">관리자 승인 후 영구 삭제 처리됩니다.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              공식 게시글은 관리자 승인 절차를 거칩니다. 신청 즉시 일반 사용자에게 비공개 처리되며 관리자 검토 후 삭제가 최종 결정됩니다.
+            </p>
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                삭제 사유 (선택 사항)
+              </label>
+              <textarea
+                value={deleteReasonText}
+                onChange={(e) => setDeleteReasonText(e.target.value)}
+                placeholder="삭제 사유를 상세히 입력해 주십시오."
+                rows={3}
+                className="w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRequestDeleteModal(false)}
+                disabled={requestSubmitting}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitDeleteRequest}
+                disabled={requestSubmitting}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{requestSubmitting ? '신청 중...' : '신청 전송'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 사진 전체화면 확대 라이트박스 */}
       {previewImageUrl && (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
@@ -627,6 +772,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
       )}
 
+      {/* 커스텀 일반 게시글 영구 삭제 확인 팝업 */}
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
