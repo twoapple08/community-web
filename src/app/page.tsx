@@ -256,7 +256,7 @@ function FeedContent() {
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
             }`}
           >
-            공식만 보기
+            공식
           </button>
           <button
             onClick={() => setOfficialFilter('unofficial')}
@@ -266,7 +266,7 @@ function FeedContent() {
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
             }`}
           >
-            비공식만 보기
+            비공식
           </button>
         </div>
 
