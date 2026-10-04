@@ -1,3 +1,11 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 동영상 업로드 시 50MB 용량 안내 팝업 시스템 적용"
+echo "=========================================================="
+
+cat << 'FILE_EDITOR' > src/components/Editor.tsx
 'use client'
 
 import { useEditor, EditorContent, Mark, Node, mergeAttributes } from '@tiptap/react'
@@ -784,3 +792,19 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     </div>
   )
 }
+FILE_EDITOR
+
+echo "--> 소스코드 갱신 완료. 프로덕션 빌드 검증을 진행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 검증 완료! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "feat: 동영상 첨부 시도 시 50MB 최대 용량 사전 안내 팝업 구현"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="
