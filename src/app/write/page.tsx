@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Editor from '@/components/Editor'
+import FreezeModal from '@/components/FreezeModal'
 import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, Loader2, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 
@@ -30,7 +31,11 @@ export default function WritePage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [existingDraft, setExistingDraft] = useState<DraftData | null>(null)
+
+  // 동결 모달 상태
+  const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false)
 
   const [customPopup, setCustomPopup] = useState<{
     isOpen: boolean;
@@ -53,8 +58,8 @@ export default function WritePage() {
       } else {
         const uid = session.user.id
         setUserId(uid)
+        setUserEmail(session.user.email || null)
 
-        // 블랙리스트 여부 검사
         const { data: blackRecord } = await supabase
           .from('blacklists')
           .select('reason')
@@ -94,6 +99,7 @@ export default function WritePage() {
     }
   }, [content]);
 
+  // 임시 보관: 사이트 얼리기 상태에서도 유실 방지를 위해 상시 허용
   const handleSaveDraft = async () => {
     if (!userId) return
     if (!title.trim() && (!content.trim() || content === '<p></p>')) {
@@ -186,8 +192,25 @@ export default function WritePage() {
     })
   }
 
+  // 게시글 정식 등록: 사이트 얼리기 상태 검사
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!userId) return
+
+    const isCreator = userEmail?.toLowerCase() === 'iwsamuel08@gmail.com'
+    if (!isCreator) {
+      const { data: noticeData } = await supabase
+        .from('site_notices')
+        .select('is_frozen')
+        .eq('id', 1)
+        .maybeSingle()
+
+      if (noticeData?.is_frozen) {
+        setIsFreezeModalOpen(true)
+        return
+      }
+    }
+
     if (!title.trim()) {
       setCustomPopup({
         isOpen: true,
@@ -206,7 +229,6 @@ export default function WritePage() {
       })
       return
     }
-    if (!userId) return
 
     setIsSubmitting(true)
 
@@ -427,6 +449,13 @@ export default function WritePage() {
           </button>
         </div>
       </form>
+
+      {/* 동결 안내 팝업 (게시글 작성 차단) */}
+      <FreezeModal
+        isOpen={isFreezeModalOpen}
+        onClose={() => setIsFreezeModalOpen(false)}
+        actionText="게시글 작성을"
+      />
 
       {customPopup.isOpen && (
         <div

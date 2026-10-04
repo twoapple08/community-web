@@ -14,7 +14,9 @@ import {
   Calendar,
   Check,
   Loader2,
-  Sparkles
+  RefreshCw,
+  Snowflake,
+  ShieldAlert
 } from 'lucide-react'
 
 type ModalView = 'menu' | 'nickname' | 'my_posts' | 'liked_posts'
@@ -50,22 +52,70 @@ export default function UserHubModal({
   const router = useRouter()
   const [currentView, setCurrentView] = useState<ModalView>('menu')
 
-  // 닉네임 수정 상태
   const [newNickname, setNewNickname] = useState(currentNickname)
   const [updatingNickname, setUpdatingNickname] = useState(false)
 
-  // 게시글 목록 상태
   const [posts, setPosts] = useState<PostItem[]>([])
   const [loadingPosts, setLoadingPosts] = useState(false)
+
+  // 제작자 전용 제어 상태
+  const isCreator = userRole === 'creator' || userEmail?.toLowerCase() === 'iwsamuel08@gmail.com'
+  const [isFrozen, setIsFrozen] = useState(false)
+  const [isReindexing, setIsReindexing] = useState(false)
+  const [isTogglingFreeze, setIsTogglingFreeze] = useState(false)
+  const [confirmReindexOpen, setConfirmReindexOpen] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
       setCurrentView('menu')
       setNewNickname(currentNickname)
+      if (isCreator) {
+        checkFreezeStatus()
+      }
     }
-  }, [isOpen, currentNickname])
+  }, [isOpen, currentNickname, isCreator])
 
-  // 내가 쓴 게시글 로드
+  const checkFreezeStatus = async () => {
+    const { data } = await supabase
+      .from('site_notices')
+      .select('is_frozen')
+      .eq('id', 1)
+      .maybeSingle()
+    if (data) {
+      setIsFrozen(Boolean(data.is_frozen))
+    }
+  }
+
+  const handleToggleFreeze = async () => {
+    setIsTogglingFreeze(true)
+    const nextStatus = !isFrozen
+    const { error } = await supabase
+      .from('site_notices')
+      .update({ is_frozen: nextStatus })
+      .eq('id', 1)
+
+    if (error) {
+      alert(`사이트 얼리기 상태 변경 실패: ${error.message}`)
+    } else {
+      setIsFrozen(nextStatus)
+      alert(nextStatus ? '사이트가 성공적으로 동결(얼리기)되었습니다.' : '사이트 동결이 해제되었습니다.')
+    }
+    setIsTogglingFreeze(false)
+  }
+
+  const handleExecuteReindex = async () => {
+    setIsReindexing(true)
+    const { data, error } = await supabase.rpc('reindex_post_ids')
+    if (error) {
+      alert(`게시글 번호 초기화 실패: ${error.message}`)
+    } else {
+      setConfirmReindexOpen(false)
+      alert(`총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`)
+      router.refresh()
+    }
+    setIsReindexing(false)
+  }
+
   const fetchMyPosts = async () => {
     setLoadingPosts(true)
     const { data } = await supabase
@@ -80,7 +130,6 @@ export default function UserHubModal({
     setLoadingPosts(false)
   }
 
-  // 내가 좋아요 누른 게시글 로드
   const fetchLikedPosts = async () => {
     setLoadingPosts(true)
     const { data: likeRecords } = await supabase
@@ -97,7 +146,6 @@ export default function UserHubModal({
         .in('id', postIds)
 
       if (postData) {
-        // 좋아요 누른 최신순으로 정렬 매칭
         const postMap = new Map(postData.map((p: any) => [p.id, p]))
         const ordered = postIds
           .map((id) => postMap.get(id))
@@ -160,7 +208,6 @@ export default function UserHubModal({
         className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 상단 헤더 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             {currentView !== 'menu' && (
@@ -188,10 +235,8 @@ export default function UserHubModal({
           </button>
         </div>
 
-        {/* 1. 메인 메뉴 화면 */}
         {currentView === 'menu' && (
           <div className="p-5 space-y-4">
-            {/* 프로필 요약 카드 */}
             <div className="flex items-center gap-3 p-3.5 bg-zinc-50 dark:bg-zinc-800/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
               <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
                 <CrownIcon role={userRole} className="w-5 h-5" />
@@ -209,7 +254,6 @@ export default function UserHubModal({
               </div>
             </div>
 
-            {/* 3대 선택지 목록 */}
             <div className="space-y-2">
               <button
                 type="button"
@@ -268,10 +312,47 @@ export default function UserHubModal({
                 <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:translate-x-0.5 transition" />
               </button>
             </div>
+
+            {/* 오직 사이트 제작자에게만 표시되는 특수 관리 콘솔 */}
+            {isCreator && (
+              <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+                <div className="flex items-center gap-1.5 px-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-[11px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                    사이트 제작자 전용 콘솔
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmReindexOpen(true)}
+                    disabled={isReindexing}
+                    className="flex items-center justify-center gap-1.5 p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-800 dark:text-zinc-200 text-xs font-bold transition disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isReindexing ? 'animate-spin' : ''}`} />
+                    <span>게시글 번호 초기화</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleFreeze}
+                    disabled={isTogglingFreeze}
+                    className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl text-xs font-bold transition disabled:opacity-50 border ${
+                      isFrozen
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md animate-pulse'
+                        : 'border-sky-500/40 bg-sky-950/20 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10'
+                    }`}
+                  >
+                    <Snowflake className="w-3.5 h-3.5" />
+                    <span>{isFrozen ? '얼리기 해제 (동결 중)' : '사이트 얼리기'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* 2. 닉네임 변경 화면 */}
         {currentView === 'nickname' && (
           <form onSubmit={handleSaveNickname} className="p-5 space-y-4">
             <div>
@@ -309,7 +390,6 @@ export default function UserHubModal({
           </form>
         )}
 
-        {/* 3 & 4. 내가 쓴 글 / 좋아요 누른 글 목록 화면 */}
         {(currentView === 'my_posts' || currentView === 'liked_posts') && (
           <div className="p-5">
             {loadingPosts ? (
@@ -347,11 +427,11 @@ export default function UserHubModal({
                       </div>
                       <div className="flex items-center gap-3 text-[10px] text-zinc-400 mt-1">
                         <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
+                          <Calendar className="w-3.5 h-3.5" />
                           {new Date(post.created_at).toLocaleDateString()}
                         </span>
                         <span className="flex items-center gap-1 text-rose-500">
-                          <Heart className="w-3 h-3 fill-rose-500/30" />
+                          <Heart className="w-3.5 h-3.5 fill-rose-500/30" />
                           {post.likes_count ?? 0}
                         </span>
                       </div>
@@ -370,6 +450,50 @@ export default function UserHubModal({
           </div>
         )}
       </div>
+
+      {/* 게시글 번호 재정렬 사전 확인 모달 */}
+      {confirmReindexOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => !isReindexing && setConfirmReindexOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5">
+              <RefreshCw className="w-5 h-5 text-amber-500" />
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-white">게시글 번호 재정렬</h3>
+            </div>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              모든 게시글의 번호를 작성일시 순서대로 <strong className="text-emerald-500">1번부터 연속된 번호</strong>로 초기화하시겠습니까?
+              <br /><br />
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                ※ 과거 외부에 공유된 링크의 번호가 바뀔 수 있으며, 좋아요 및 신고 기록은 새 번호로 안전하게 보존됩니다.
+              </span>
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmReindexOpen(false)}
+                disabled={isReindexing}
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteReindex}
+                disabled={isReindexing}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isReindexing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                <span>{isReindexing ? '재정렬 중...' : '번호 초기화 실행'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

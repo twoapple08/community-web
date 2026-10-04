@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import ReportModal from './ReportModal';
+import FreezeModal from './FreezeModal';
 import Editor from './Editor';
 import {
   X,
@@ -52,6 +53,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [mounted, setMounted] = useState(false);
   const [post, setPost] = useState<Post | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -84,6 +86,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [linkConfirmUrl, setLinkConfirmUrl] = useState<string | null>(null);
 
+  // 동결 차단 모달 상태
+  const [freezeActionText, setFreezeActionText] = useState('');
+  const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
+
   const contentContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,7 +98,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const email = session?.user?.email;
+      const email = session?.user?.email || null;
+      setCurrentUserEmail(email);
       if (email === "iwsamuel08@gmail.com") {
         setCurrentUserRole("creator");
       } else if (email) {
@@ -102,6 +109,24 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       }
     });
   }, []);
+
+  const isCreator = currentUserRole === 'creator' || currentUserEmail?.toLowerCase() === 'iwsamuel08@gmail.com';
+
+  const checkFrozen = async (actionText: string): Promise<boolean> => {
+    if (isCreator) return false; // 사이트 제작자는 동결 효과 무시
+    const { data } = await supabase
+      .from('site_notices')
+      .select('is_frozen')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (data?.is_frozen) {
+      setFreezeActionText(actionText);
+      setIsFreezeModalOpen(true);
+      return true;
+    }
+    return false;
+  };
 
   useEffect(() => {
     if (!post?.author_id) {
@@ -150,7 +175,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (linkConfirmUrl) {
+        if (isFreezeModalOpen) {
+          setIsFreezeModalOpen(false);
+        } else if (linkConfirmUrl) {
           setLinkConfirmUrl(null);
         } else if (isReportModalOpen) {
           setIsReportModalOpen(false);
@@ -171,7 +198,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl, isReportModalOpen, linkConfirmUrl]);
+  }, [onClose, showDeleteConfirm, showRequestDeleteModal, isEditing, previewImageUrl, isReportModalOpen, linkConfirmUrl, isFreezeModalOpen]);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -268,6 +295,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const handleSubmitDeleteRequest = async () => {
     if (!post) return;
+    if (await checkFrozen('게시글 삭제를')) return;
+
     setRequestSubmitting(true);
     const { error } = await supabase
       .from('posts')
@@ -294,6 +323,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       alert('좋아요 기능은 로그인이 필요합니다.');
       return;
     }
+    if (await checkFrozen('좋아요를')) return;
     if (likeLoading) return;
     setLikeLoading(true);
 
@@ -420,6 +450,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   const handleSaveEdit = async () => {
+    if (await checkFrozen('게시글 수정을')) return;
     if (!editTitle.trim()) return alert('제목을 입력해 주십시오.');
     if (!editContent.trim() || editContent === '<p></p>') return alert('내용을 입력해 주십시오.');
 
@@ -462,6 +493,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   const handleExecuteDelete = async () => {
+    if (await checkFrozen('게시글 삭제를')) return;
     const { error } = await supabase.from('posts').delete().eq('id', postId);
     if (error) {
       setDeleteError(error.message);
@@ -510,17 +542,17 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     anchors.forEach((a) => {
       const href = a.getAttribute('href') || '';
 
-      // 1. 유튜브: 레터박스 0% 나무위키 16:9 반응형 단독 플레이어
       const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch) {
         const videoId = ytMatch[1];
         const wrapper = doc.createElement('div');
         wrapper.className = 'my-3 w-full max-w-2xl mx-auto not-prose';
+        wrapper.style.clear = 'both';
         wrapper.innerHTML = `
-          <div style="position: relative; width: 100%; padding-top: 56.25%; height: 0; overflow: hidden; background: transparent; border-radius: 0;">
+          <div style="position: relative; width: 100%; height: 0; padding-bottom: 56.25%; overflow: hidden; background: transparent; border: 0;">
             <iframe
-              src="https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0"
-              style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; margin: 0; padding: 0; display: block;"
+              src="https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1"
+              style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; margin: 0; padding: 0; display: block; vertical-align: top;"
               frameborder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowfullscreen>
@@ -531,23 +563,22 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         return;
       }
 
-      // 2. 카카오톡: 노란색 바 형태 (링크 텍스트 미표기)
       const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
       if (kakaoMatch) {
         const bar = doc.createElement('div');
-        bar.className = 'my-2.5 px-4 py-3 bg-[#242111] dark:bg-[#1c190d] border border-[#FEE500]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
+        bar.className = 'my-2.5 px-4 py-2.5 bg-[#242111] dark:bg-[#1c190d] border border-[#FEE500]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
         bar.setAttribute('data-embed-url', href);
         bar.setAttribute('data-embed-type', 'kakaotalk');
         bar.innerHTML = `
           <div class="flex items-center gap-3 min-w-0">
-            <div class="w-8 h-8 rounded-none bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
+            <div class="w-7 h-7 rounded-none bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
               <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
             </div>
             <span class="text-xs sm:text-sm font-extrabold text-white truncate embed-title-text group-hover:underline">
               카카오톡 오픈채팅
             </span>
           </div>
-          <button type="button" class="px-4 py-2 bg-[#FEE500] hover:bg-[#ebd300] text-[#191919] text-xs font-black rounded-none transition shrink-0 whitespace-nowrap">
+          <button type="button" class="px-3.5 py-1.5 bg-[#FEE500] hover:bg-[#ebd300] text-[#191919] text-xs font-black rounded-none transition shrink-0 whitespace-nowrap">
             채팅방 입장
           </button>
         `;
@@ -555,23 +586,22 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         return;
       }
 
-      // 3. 디스코드: 파란색 바 형태 (링크 텍스트 미표기)
       const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i);
       if (discordMatch) {
         const bar = doc.createElement('div');
-        bar.className = 'my-2.5 px-4 py-3 bg-[#111322] dark:bg-[#0c0d18] border border-[#5865F2]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
+        bar.className = 'my-2.5 px-4 py-2.5 bg-[#111322] dark:bg-[#0c0d18] border border-[#5865F2]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
         bar.setAttribute('data-embed-url', href);
         bar.setAttribute('data-embed-type', 'discord');
         bar.innerHTML = `
           <div class="flex items-center gap-3 min-w-0">
-            <div class="w-8 h-8 rounded-none bg-[#5865F2] flex items-center justify-center text-white shrink-0">
+            <div class="w-7 h-7 rounded-none bg-[#5865F2] flex items-center justify-center text-white shrink-0">
               <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
             </div>
             <span class="text-xs sm:text-sm font-extrabold text-white truncate embed-title-text group-hover:underline">
               디스코드 서버 초대
             </span>
           </div>
-          <button type="button" class="px-4 py-2 bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-black rounded-none transition shrink-0 whitespace-nowrap">
+          <button type="button" class="px-3.5 py-1.5 bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-black rounded-none transition shrink-0 whitespace-nowrap">
             서버 참가
           </button>
         `;
@@ -587,20 +617,20 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4 sm:p-6 sm:py-8 flex justify-center items-start animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 sm:py-8 flex justify-center items-start"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-3xl my-auto sm:my-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 pb-16"
+        className="relative w-full max-w-3xl my-auto sm:my-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden pb-16"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex flex-wrap items-center gap-2">
             {!isEditing ? (
               <>
                 <button
                   onClick={handleCopyLink}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition"
                   title="게시글 링크 복사"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Share2 className="w-3.5 h-3.5" />}
@@ -610,7 +640,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 {(currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin') && post && (
                   <button
                     onClick={handleToggleOfficial}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border transition ${
                       post.is_official
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
                         : 'bg-zinc-50 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700 hover:bg-zinc-100'
@@ -624,7 +654,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 {canManage && post && (
                   <>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
+                        if (await checkFrozen('게시글 수정을')) return;
                         setEditTitle(post?.title || '');
                         setEditContent(post?.content || '');
                         setEditTags(Array.isArray(post?.tags) ? post?.tags : []);
@@ -632,26 +663,32 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                         setEditIsPreviewHidden(Boolean(post?.is_preview_hidden));
                         setIsEditing(true);
                       }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900/50 transition"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg border border-emerald-200 dark:border-emerald-900/50 transition"
                     >
-                      <Pencil className="w-3.5 h-3.5" />
+                      <Pencil className="w-3 h-3" />
                       <span>{isAuthor ? "수정" : "강제 수정"}</span>
                     </button>
 
                     {post?.is_official && isAuthor && !canForceManage ? (
                       <button
-                        onClick={() => setShowRequestDeleteModal(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900/50 transition"
+                        onClick={async () => {
+                          if (await checkFrozen('게시글 삭제를')) return;
+                          setShowRequestDeleteModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-900/50 transition"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                         <span>삭제 신청</span>
                       </button>
                     ) : (
                       <button
-                        onClick={() => setShowDeleteConfirm(true)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900/50 transition"
+                        onClick={async () => {
+                          if (await checkFrozen('게시글 삭제를')) return;
+                          setShowDeleteConfirm(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg border border-red-200 dark:border-red-900/50 transition"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                         <span>{isAuthor ? "삭제" : "강제 삭제"}</span>
                       </button>
                     )}
@@ -659,8 +696,8 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 )}
               </>
             ) : (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-md border border-emerald-200 dark:border-emerald-900/50">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50">
                   편집 모드
                 </span>
 
@@ -668,9 +705,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <button
                     type="button"
                     onClick={handleLoadEditDraft}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-500/40 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-950/60 transition"
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-emerald-500/40 bg-emerald-950/30 text-emerald-400 hover:bg-emerald-950/60 transition"
                   >
-                    <FileDown className="w-3.5 h-3.5" />
+                    <FileDown className="w-3 h-3" />
                     <span className="hidden sm:inline">불러오기</span>
                   </button>
                 )}
@@ -679,24 +716,24 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   type="button"
                   onClick={handleSaveEditDraft}
                   disabled={isSavingDraft}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition disabled:opacity-50"
                 >
-                  {isSavingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  {isSavingDraft ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                   <span>임시보관</span>
                 </button>
 
                 <button
                   onClick={handleSaveEdit}
                   disabled={saving}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition disabled:opacity-50"
                 >
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                   <span>{saving ? '저장 중...' : '수정 완료'}</span>
                 </button>
                 <button
                   onClick={() => setIsEditing(false)}
                   disabled={saving}
-                  className="px-3 py-1.5 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition"
+                  className="px-2.5 py-1 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition"
                 >
                   취소
                 </button>
@@ -713,7 +750,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           </button>
         </div>
 
-        <div className="px-6 py-6 sm:px-8 space-y-6">
+        <div className="px-5 py-5 sm:px-8 space-y-5">
           {loading ? (
             <div className="py-20 text-center text-zinc-400 dark:text-zinc-500">
               내용을 불러오는 중입니다...
@@ -725,7 +762,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           ) : isEditing ? (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
                   제목
                 </label>
                 <input
@@ -733,12 +770,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   placeholder="게시글 제목을 입력하세요"
-                  className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-bold text-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                  className="w-full px-3.5 py-2 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-bold text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
                   해시태그 설정 (중복 선택 가능)
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -755,7 +792,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                             setEditTags((prev) => [...prev, tag]);
                           }
                         }}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-semibold transition border ${
                           isSelected
                             ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
                             : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
@@ -770,16 +807,16 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5">
+                <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1">
                   내용 및 이미지 편집
                 </label>
                 <Editor content={editContent} onChange={setEditContent} minHeight="240px" />
               </div>
             </div>
           ) : (
-            <div className="space-y-6">
-              <header className="space-y-3 pb-4 border-b border-zinc-100 dark:border-zinc-800/60">
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-snug">
+            <div className="space-y-5">
+              <header className="space-y-2 pb-3 border-b border-zinc-100 dark:border-zinc-800/60">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-snug">
                   {post.is_official && (
                     <span className="text-emerald-600 dark:text-emerald-400 mr-2 font-extrabold">
                       [공식]
@@ -793,7 +830,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     {post.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200/80 dark:border-emerald-900/50"
+                        className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200/80 dark:border-emerald-900/50"
                       >
                         #{tag}
                       </span>
@@ -801,12 +838,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
-                  <span className="flex items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-200">
-                    <CrownIcon role={authorRole} className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  <span className="flex items-center gap-1 font-medium text-zinc-800 dark:text-zinc-200">
+                    <CrownIcon role={authorRole} className="w-3.5 h-3.5 shrink-0" />
                     <span>{authorNickname || '작성자'}</span>
                   </span>
-                  <span className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
                     {new Date(post.created_at).toLocaleDateString()}
                   </span>
@@ -816,22 +853,22 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               <div
                 ref={contentContainerRef}
                 onClick={handleContentClick}
-                className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap leading-relaxed text-zinc-800 dark:text-zinc-200 [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-4 [&_img]:cursor-pointer [&_table]:border-collapse"
+                className="prose dark:prose-invert max-w-none break-words break-all whitespace-pre-wrap leading-relaxed text-zinc-800 dark:text-zinc-200 text-sm [&_img]:rounded-xl [&_img]:shadow-md [&_img]:my-3 [&_img]:cursor-pointer [&_table]:border-collapse"
                 dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
               />
 
-              <div className="pt-6 pb-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-center">
+              <div className="pt-4 pb-1 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-center">
                 <button
                   type="button"
                   onClick={handleToggleLike}
                   disabled={likeLoading}
-                  className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-full font-semibold text-sm transition-all shadow-sm active:scale-95 disabled:opacity-50 ${
+                  className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full font-semibold text-xs transition-all shadow-sm active:scale-95 disabled:opacity-50 ${
                     isLiked
                       ? 'bg-rose-50 text-rose-600 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900/50 hover:bg-rose-100'
                       : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 border border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:border-zinc-700'
                   }`}
                 >
-                  <Heart className={`w-4 h-4 transition-transform ${isLiked ? 'fill-current text-rose-500 scale-110' : 'text-zinc-400'}`} />
+                  <Heart className={`w-3.5 h-3.5 transition-transform ${isLiked ? 'fill-current text-rose-500 scale-110' : 'text-zinc-400'}`} />
                   <span>좋아요 {likesCount}</span>
                 </button>
               </div>
@@ -840,28 +877,31 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         </div>
 
         {!isEditing && post && (
-          <div className="absolute bottom-4 right-6 z-20">
+          <div className="absolute bottom-4 right-5 z-20">
             <button
               type="button"
-              onClick={() => setIsReportModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-rose-600 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-none text-xs font-bold transition shadow-sm"
+              onClick={async () => {
+                if (await checkFrozen('신고를')) return;
+                setIsReportModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-rose-600 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-none text-xs font-bold transition shadow-sm"
               title="게시글 신고"
             >
-              <Siren className="w-4 h-4 stroke-rose-600" />
+              <Siren className="w-3.5 h-3.5 stroke-rose-600" />
               <span>신고</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* 외부 링크 접속 확인 팝업 (document.body 포털 마운트로 스크롤 위치 무관 뷰포트 센터링) */}
+      {/* 외부 링크 접속 확인 팝업 */}
       {mounted && linkConfirmUrl && createPortal(
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
           onClick={() => setLinkConfirmUrl(null)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 text-center"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center">
@@ -908,7 +948,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 세분화 신고 모달 */}
+      {/* 직각 하늘색 테두리 사이트 동결 차단 안내 팝업 */}
+      <FreezeModal
+        isOpen={isFreezeModalOpen}
+        onClose={() => setIsFreezeModalOpen(false)}
+        actionText={freezeActionText}
+      />
+
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
@@ -916,14 +962,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         currentUserId={currentUserId}
       />
 
-      {/* 삭제 신청 모달 (포털 마운트) */}
       {mounted && showRequestDeleteModal && createPortal(
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
           onClick={() => !requestSubmitting && setShowRequestDeleteModal(false)}
         >
           <div
-            className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
@@ -977,10 +1022,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 사진 전체보기 팝업 (포털 마운트) */}
       {mounted && previewImageUrl && createPortal(
         <div
-          className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
           onClick={() => setPreviewImageUrl(null)}
         >
           <button
@@ -992,7 +1036,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             <X className="w-6 h-6" />
           </button>
           <div
-            className="relative max-w-5xl max-h-[90vh] flex flex-col items-center animate-in zoom-in-95 duration-200"
+            className="relative max-w-5xl max-h-[90vh] flex flex-col items-center"
             onClick={(e) => e.stopPropagation()}
           >
             <img
@@ -1005,14 +1049,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 영구 삭제 확인 팝업 (포털 마운트) */}
       {mounted && showDeleteConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
           onClick={() => setShowDeleteConfirm(false)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
