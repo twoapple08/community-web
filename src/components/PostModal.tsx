@@ -61,13 +61,30 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [likeLoading, setLikeLoading] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
 
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
+  const [deleteReasonText, setDeleteReasonText] = useState("");
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [linkConfirmUrl, setLinkConfirmUrl] = useState<string | null>(null);
+
   const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
   const [freezeActionText, setFreezeActionText] = useState('');
+
+  const contentContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -104,16 +121,27 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   }, [postId]);
 
+  const isCreator = currentUserRole === 'creator' || currentUserEmail?.toLowerCase() === 'iwsamuel08@gmail.com';
+
+  const checkFrozen = async (actionText: string): Promise<boolean> => {
+    if (isCreator) return false;
+    const { data } = await supabase.from('site_notices').select('is_frozen').eq('id', 1).maybeSingle();
+    if (data?.is_frozen) {
+      setFreezeActionText(actionText);
+      setIsFreezeModalOpen(true);
+      return true;
+    }
+    return false;
+  };
+
   const fetchPost = async (uid?: string | null) => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*')
-      .eq('id', postId)
-      .single();
+    const { data, error } = await supabase.from('posts').select('*').eq('id', postId).single();
 
     if (!error && data) {
       setPost(data);
+      setEditTitle(data.title);
+      setEditContent(data.content);
       setLikesCount(data.likes_count ?? 0);
 
       const userIdToCheck = uid !== undefined ? uid : currentUserId;
@@ -153,11 +181,34 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       });
   }, [post?.author_id]);
 
+  useEffect(() => {
+    if (!post?.content || !contentContainerRef.current) return;
+
+    const embedElements = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
+    embedElements.forEach(async (el) => {
+      const url = el.getAttribute('data-embed-url');
+      if (!url) return;
+      try {
+        const res = await fetch(`/api/embed-metadata?url=${encodeURIComponent(url)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.title) {
+            const titleEl = el.querySelector<HTMLElement>('.embed-title-text');
+            if (titleEl) titleEl.textContent = data.title;
+          }
+        }
+      } catch (err) {
+        console.error('Metadata resolve error:', err);
+      }
+    });
+  }, [post?.content, isEditing]);
+
   const handleToggleLike = async () => {
     if (!currentUserId) {
       alert('좋아요 기능은 로그인이 필요합니다.');
       return;
     }
+    if (await checkFrozen('좋아요를')) return;
     if (likeLoading) return;
     setLikeLoading(true);
 
@@ -177,16 +228,214 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setLikeLoading(false);
   };
 
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {}
+  const handleToggleOfficial = async () => {
+    if (!post) return;
+    const nextStatus = !post.is_official;
+    const { error } = await supabase.from('posts').update({ is_official: nextStatus }).eq('id', postId);
+    if (error) {
+      alert(`공식 상태 변경 실패: ${error.message}`);
+    } else {
+      setPost({ ...post, is_official: nextStatus });
+      if (onDeleted) onDeleted();
+    }
   };
 
-  const isAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
+  const handleSubmitDeleteRequest = async () => {
+    if (!post) return;
+    if (await checkFrozen('게시글 삭제를')) return;
+
+    setRequestSubmitting(true);
+    const { error } = await supabase
+      .from('posts')
+      .update({
+        delete_requested: true,
+        delete_reason: deleteReasonText.trim() || '사유 미작성',
+      })
+      .eq('id', postId);
+
+    if (error) {
+      alert(`신청 실패: ${error.message}`);
+      setRequestSubmitting(false);
+    } else {
+      alert('관리자에게 삭제 신청이 접수되었습니다. 검토 전까지 비공개 상태로 전환됩니다.');
+      setShowRequestDeleteModal(false);
+      onClose();
+      if (onDeleted) onDeleted();
+      router.refresh();
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (await checkFrozen('게시글 수정을')) return;
+    if (!editTitle.trim()) return alert('제목을 입력해 주십시오.');
+    if (!editContent.trim() || editContent === '<p></p>') return alert('내용을 입력해 주십시오.');
+
+    setSaving(true);
+    const { error } = await supabase
+      .from('posts')
+      .update({
+        title: editTitle.trim(),
+        content: editContent,
+      })
+      .eq('id', postId);
+
+    if (error) {
+      alert(`수정 실패: ${error.message}`);
+      setSaving(false);
+    } else {
+      setPost((prev) => (prev ? { ...prev, title: editTitle.trim(), content: editContent } : null));
+      setIsEditing(false);
+      setSaving(false);
+      if (onDeleted) onDeleted();
+      router.refresh();
+    }
+  };
+
+  const handleExecuteDelete = async () => {
+    if (await checkFrozen('게시글 삭제를')) return;
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) {
+      setDeleteError(error.message);
+    } else {
+      setShowDeleteConfirm(false);
+      onClose();
+      if (onDeleted) onDeleted();
+      router.refresh();
+    }
+  };
+
+  const handleContentClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+
+    const embedCard = target.closest<HTMLElement>('[data-embed-url]');
+    if (embedCard) {
+      const href = embedCard.getAttribute('data-embed-url');
+      if (href) {
+        e.preventDefault();
+        e.stopPropagation();
+        setLinkConfirmUrl(href);
+        return;
+      }
+    }
+
+    const anchor = target.closest('a');
+    if (anchor && anchor.href) {
+      e.preventDefault();
+      e.stopPropagation();
+      setLinkConfirmUrl(anchor.href);
+      return;
+    }
+
+    if (target.tagName === 'IMG') {
+      setPreviewImageUrl((target as HTMLImageElement).src);
+    }
+  };
+
+  const renderRichContent = (html: string) => {
+    if (typeof window === 'undefined') return html;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
+    const walkTextNodes = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
+        if (urlRegex.test(node.nodeValue)) {
+          const parent = node.parentNode;
+          if (parent && parent.nodeName !== 'A' && parent.nodeName !== 'SCRIPT' && parent.nodeName !== 'STYLE') {
+            const span = doc.createElement('span');
+            span.innerHTML = node.nodeValue.replace(urlRegex, (url) => `<a href="${url}">${url}</a>`);
+            parent.replaceChild(span, node);
+          }
+        }
+      } else {
+        Array.from(node.childNodes).forEach(walkTextNodes);
+      }
+    };
+    walkTextNodes(doc.body);
+
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    anchors.forEach((a) => {
+      const href = a.getAttribute('href') || '';
+
+      const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+      if (ytMatch) {
+        const videoId = ytMatch[1];
+        const wrapper = doc.createElement('div');
+        wrapper.className = 'my-3 w-full max-w-2xl mx-auto not-prose';
+        wrapper.innerHTML = `
+          <div style="position: relative; width: 100%; height: 0; padding-bottom: 56.25%;">
+            <iframe
+              src="https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1"
+              style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen>
+            </iframe>
+          </div>
+        `;
+        a.replaceWith(wrapper);
+        return;
+      }
+
+      const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
+      if (kakaoMatch) {
+        const bar = doc.createElement('div');
+        bar.className = 'my-2.5 px-4 py-2.5 bg-[#242111] dark:bg-[#1c190d] border border-[#FEE500]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
+        bar.setAttribute('data-embed-url', href);
+        bar.innerHTML = `
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-7 h-7 rounded-none bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
+            </div>
+            <span class="text-xs sm:text-sm font-extrabold text-white truncate embed-title-text group-hover:underline">
+              카카오톡 오픈채팅
+            </span>
+          </div>
+          <button type="button" class="px-3.5 py-1.5 bg-[#FEE500] text-[#191919] text-xs font-black rounded-none">입장</button>
+        `;
+        a.replaceWith(bar);
+        return;
+      }
+
+      const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i);
+      if (discordMatch) {
+        const bar = doc.createElement('div');
+        bar.className = 'my-2.5 px-4 py-2.5 bg-[#111322] dark:bg-[#0c0d18] border border-[#5865F2]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
+        bar.setAttribute('data-embed-url', href);
+        bar.innerHTML = `
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-7 h-7 rounded-none bg-[#5865F2] flex items-center justify-center text-white shrink-0">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
+            </div>
+            <span class="text-xs sm:text-sm font-extrabold text-white truncate embed-title-text group-hover:underline">
+              디스코드 서버 초대
+            </span>
+          </div>
+          <button type="button" class="px-3.5 py-1.5 bg-[#5865F2] text-white text-xs font-black rounded-none">참가</button>
+        `;
+        a.replaceWith(bar);
+        return;
+      }
+
+      a.className = 'text-blue-500 underline font-semibold cursor-pointer';
+    });
+
+    return doc.body.innerHTML;
+  };
+
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
+  const isAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
+
+  const canForceManage = Boolean((() => {
+    if (!post || !currentUserRole || isAuthor) return false;
+    if (currentUserRole === 'creator') return true;
+    if (authorRole === 'creator') return false;
+    if (currentUserRole === 'super_admin') return authorRole !== 'super_admin';
+    if (currentUserRole === 'admin') return !authorRole;
+    return false;
+  })());
+
+  const canManage = isAuthor || canForceManage;
 
   return (
     <div
@@ -199,39 +448,110 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       >
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-100 dark:border-zinc-800">
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleCopyLink}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copied ? '링크 복사됨' : '공유'}</span>
-            </button>
+            {!isEditing ? (
+              <>
+                <button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(window.location.href);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Share2 className="w-3.5 h-3.5" />}
+                  <span>{copied ? '복사됨' : '공유'}</span>
+                </button>
+
+                {/* 공식 지정 버튼 (클랜 피드에서만 동작) */}
+                {post?.feed_type === 'clan' && isAdmin && (
+                  <button
+                    onClick={handleToggleOfficial}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border border-emerald-500/40 text-emerald-500"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>{post.is_official ? '공식 해제' : '공식 지정'}</span>
+                  </button>
+                )}
+
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-500 border border-emerald-500/30 rounded-lg"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>{isAuthor ? '수정' : '강제 수정'}</span>
+                    </button>
+
+                    {post?.feed_type === 'clan' && post?.is_official && isAuthor && !isAdmin ? (
+                      <button
+                        onClick={() => setShowRequestDeleteModal(true)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-amber-500 border border-amber-500/30 rounded-lg"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>삭제 신청</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-500 border border-red-500/30 rounded-lg"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>{isAuthor ? '삭제' : '강제 삭제'}</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving}
+                  className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold"
+                >
+                  {saving ? '저장 중...' : '수정 완료'}
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-1 border rounded-lg text-xs"
+                >
+                  취소
+                </button>
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-white rounded-full transition"
-          >
+          <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-white rounded-full">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="px-5 py-5 sm:px-8 space-y-5">
           {loading ? (
-            <div className="py-20 text-center text-zinc-400">게시글 로딩 중...</div>
+            <div className="py-20 text-center text-zinc-400">게시글을 불러오는 중...</div>
           ) : !post ? (
-            <div className="py-20 text-center text-zinc-400">존재하지 않거나 삭제된 게시글입니다.</div>
+            <div className="py-20 text-center text-zinc-400">삭제되었거나 없는 게시글입니다.</div>
+          ) : isEditing ? (
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="w-full p-2.5 bg-zinc-800 border border-zinc-700 text-white rounded-xl font-bold"
+              />
+              <Editor content={editContent} onChange={setEditContent} minHeight="240px" />
+            </div>
           ) : (
             <div className="space-y-5">
               <header className="space-y-2 pb-3 border-b border-zinc-100 dark:border-zinc-800">
-                <h2 className="text-xl sm:text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-extrabold text-zinc-900 dark:text-white">
                   {post.feed_type === 'clan' && post.is_official && (
                     <span className="text-emerald-500 mr-2">[공식]</span>
                   )}
                   {post.title}
                 </h2>
-
-                <div className="flex items-center gap-3 text-xs text-zinc-500">
+                <div className="flex items-center gap-3 text-xs text-zinc-400">
                   <span className="flex items-center gap-1 font-medium text-zinc-800 dark:text-zinc-200">
                     <CrownIcon role={authorRole} className="w-3.5 h-3.5 shrink-0" />
                     <span>{authorNickname || '작성자'}</span>
@@ -241,11 +561,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </header>
 
               <div
-                className="prose dark:prose-invert max-w-none break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200 text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: post.content }}
+                ref={contentContainerRef}
+                onClick={handleContentClick}
+                className="prose dark:prose-invert max-w-none break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200 text-sm leading-relaxed [&_img]:rounded-xl [&_img]:my-3 [&_img]:cursor-pointer"
+                dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
               />
 
-              <div className="pt-4 pb-1 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-center">
+              <div className="pt-4 pb-1 border-t border-zinc-100 dark:border-zinc-800 flex justify-center">
                 <button
                   type="button"
                   onClick={handleToggleLike}
@@ -261,7 +583,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </button>
               </div>
 
-              {/* 커뮤니티 피드 게시글일 때만 댓글 시스템 활성화 */}
+              {/* 커뮤니티 피드 글일 때만 댓글 시스템 활성화 */}
               {post.feed_type === 'community' && (
                 <CommentsSection
                   postId={post.id}
@@ -273,11 +595,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           )}
         </div>
 
-        {post && (
+        {!isEditing && post && (
           <div className="absolute bottom-4 right-5 z-20">
             <button
               type="button"
-              onClick={() => setIsReportModalOpen(true)}
+              onClick={async () => {
+                if (await checkFrozen('신고를')) return;
+                setIsReportModalOpen(true);
+              }}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-rose-600 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-none text-xs font-bold transition shadow-sm"
             >
               <Siren className="w-3.5 h-3.5 stroke-rose-600" />
@@ -286,6 +611,65 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           </div>
         )}
       </div>
+
+      {/* 외부 링크 확인 모달 */}
+      {mounted && linkConfirmUrl && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setLinkConfirmUrl(null)}>
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-2xl p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold">외부 링크 접속 확인</h3>
+            <p className="text-xs text-zinc-400">이 링크로 이동하시겠습니까?</p>
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-xs font-mono break-all text-left max-h-24 overflow-y-auto">
+              {linkConfirmUrl}
+            </div>
+            <div className="flex justify-center gap-2 pt-2">
+              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-1.5 text-xs border rounded-xl">취소</button>
+              <button
+                onClick={() => {
+                  const url = linkConfirmUrl;
+                  setLinkConfirmUrl(null);
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                }}
+                className="px-5 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl"
+              >
+                접속
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 이미지 확대 모달 */}
+      {mounted && previewImageUrl && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/90" onClick={() => setPreviewImageUrl(null)}>
+          <button onClick={() => setPreviewImageUrl(null)} className="absolute top-5 right-5 text-white p-2">
+            <X className="w-6 h-6" />
+          </button>
+          <img src={previewImageUrl} alt="미리보기" className="max-h-[85vh] max-w-full rounded-2xl" onClick={(e) => e.stopPropagation()} />
+        </div>,
+        document.body
+      )}
+
+      {/* 삭제 확인 모달 */}
+      {mounted && showDeleteConfirm && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="w-full max-w-sm bg-zinc-900 p-6 rounded-2xl space-y-4 border border-zinc-800" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-white">게시글 삭제</h3>
+            <p className="text-xs text-zinc-400">게시글을 삭제하시겠습니까? 데이터가 복구되지 않습니다.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-1.5 text-xs border border-zinc-700 text-zinc-300 rounded-xl">취소</button>
+              <button onClick={handleExecuteDelete} className="px-4 py-1.5 text-xs font-bold bg-red-600 text-white rounded-xl">삭제</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <FreezeModal
+        isOpen={isFreezeModalOpen}
+        onClose={() => setIsFreezeModalOpen(false)}
+        actionText={freezeActionText}
+      />
 
       <ReportModal
         isOpen={isReportModalOpen}
