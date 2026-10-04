@@ -23,6 +23,9 @@ export default function RootLayout({
   const [nickname, setNickname] = useState<string>("");
   const [userRole, setUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null);
 
+  // 상단 프로필 버튼 빨간점 알람 상태
+  const [hasProfileBadge, setHasProfileBadge] = useState(false);
+
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
@@ -50,6 +53,35 @@ export default function RootLayout({
     }
   };
 
+  const checkProfileAlerts = async (role: string | null, email?: string) => {
+    const isCreator = role === 'creator' || email?.toLowerCase() === 'iwsamuel08@gmail.com';
+    const isSuperAdmin = role === 'super_admin';
+
+    let hasAlert = false;
+
+    // 1) 최고관리자 및 제작자: 관리자 전용 메시지(이의제기) 대기 건수
+    if (isCreator || isSuperAdmin) {
+      const { count: appealsCount } = await supabase
+        .from('blacklist_appeals')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      if (appealsCount && appealsCount > 0) hasAlert = true;
+    }
+
+    // 2) 제작자 전용: 미확인 건의사항 건수
+    if (isCreator) {
+      const { count: suggestionsCount } = await supabase
+        .from('site_suggestions')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_read', false);
+
+      if (suggestionsCount && suggestionsCount > 0) hasAlert = true;
+    }
+
+    setHasProfileBadge(hasAlert);
+  };
+
   const loadUserProfile = async (userId: string, email?: string) => {
     const { data: profileData } = await supabase
       .from('profiles')
@@ -69,7 +101,9 @@ export default function RootLayout({
       setIsTermsModalOpen(false);
     }
 
+    let resolvedRole: "creator" | "super_admin" | "admin" | null = null;
     if (email?.toLowerCase() === "iwsamuel08@gmail.com") {
+      resolvedRole = "creator";
       setUserRole("creator");
     } else {
       const { data: roleData } = await supabase
@@ -79,15 +113,17 @@ export default function RootLayout({
         .maybeSingle();
 
       if (roleData?.role) {
-        setUserRole(roleData.role as "creator" | "super_admin" | "admin");
+        resolvedRole = roleData.role as "creator" | "super_admin" | "admin";
+        setUserRole(resolvedRole);
       } else {
         setUserRole(null);
       }
     }
+
+    checkProfileAlerts(resolvedRole, email);
   };
 
   useEffect(() => {
-    // 1) 초기 세션 조회
     supabase.auth.getSession().then(({ data: { session } }) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -97,7 +133,6 @@ export default function RootLayout({
       setAuthLoading(false);
     });
 
-    // 2) 인증 상태 변경 감지
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -109,6 +144,7 @@ export default function RootLayout({
         setNickname('');
         setUserRole(null);
         setIsTermsModalOpen(false);
+        setHasProfileBadge(false);
       }
       setAuthLoading(false);
     });
@@ -117,7 +153,6 @@ export default function RootLayout({
   }, []);
 
   const handleLogin = async () => {
-    // [핵심] 로그인 완료 후 /community 로 직접 리다이렉트 (루트 경유 토큰 유실 차단)
     const redirectUrl = typeof window !== 'undefined'
       ? `${window.location.origin}/community`
       : undefined;
@@ -136,6 +171,7 @@ export default function RootLayout({
     setUser(null);
     setNickname('');
     setUserRole(null);
+    setHasProfileBadge(false);
   };
 
   const isCreatorOrSuperAdmin =
@@ -191,7 +227,6 @@ export default function RootLayout({
                 </span>
               </button>
 
-              {/* [핵심] 세션 로딩 중에는 로그인 버튼 깜빡임 방지 (스켈레톤 렌더링) */}
               {authLoading ? (
                 <div className="h-7 w-14 sm:w-16 bg-zinc-200 dark:bg-zinc-800 animate-pulse rounded-lg shrink-0" />
               ) : user ? (
@@ -204,13 +239,17 @@ export default function RootLayout({
                     <span>글쓰기</span>
                   </Link>
 
+                  {/* 프로필 버튼 (건의함 또는 관리자 메시지 알람 시 빨간점 표시) */}
                   <button
                     onClick={() => setIsUserHubOpen(true)}
-                    className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
+                    className="relative inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
                     title="마이 메뉴"
                   >
                     <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-3 h-3 shrink-0" />
                     <span className="max-w-[45px] sm:max-w-[90px] truncate">{nickname || "닉네임"}</span>
+                    {hasProfileBadge && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full ring-2 ring-white dark:ring-black animate-pulse" />
+                    )}
                   </button>
 
                   {isCreatorOrSuperAdmin && (
@@ -265,7 +304,10 @@ export default function RootLayout({
         {user && (
           <UserHubModal
             isOpen={isUserHubOpen}
-            onClose={() => setIsUserHubOpen(false)}
+            onClose={() => {
+              setIsUserHubOpen(false);
+              checkProfileAlerts(userRole, user?.email);
+            }}
             userId={user.id}
             userEmail={user.email || ""}
             userRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}

@@ -1,3 +1,12 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 건의사항/건의함 구축, 프로필 알람 및 번호재정렬 복구"
+echo "=========================================================="
+
+# 1. UserHubModal.tsx 전면 갱신 (번호재정렬 팝업 복원 + 건의사항 + 건의함 + 읽은 건의 전체삭제)
+cat << 'FILE_USER_HUB' > src/components/UserHubModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -1065,3 +1074,363 @@ export default function UserHubModal({
     </div>
   )
 }
+FILE_USER_HUB
+
+# 2. layout.tsx 에 프로필 버튼 빨간점 알람(건의사항, 관리자 전용 메시지) 연동
+cat << 'FILE_LAYOUT' > src/app/layout.tsx
+'use client'
+
+import { CrownIcon } from "@/components/CrownIcon";
+import AdminModal from "@/components/AdminModal";
+import UserHubModal from "@/components/UserHubModal";
+import BlacklistModal from "@/components/BlacklistModal";
+import TermsModal from "@/components/TermsModal";
+import AdminReplyPopup from "@/components/AdminReplyPopup";
+import './globals.css'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
+import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [user, setUser] = useState<any>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [nickname, setNickname] = useState<string>("");
+  const [userRole, setUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null);
+
+  // 상단 프로필 버튼 빨간점 알람 상태
+  const [hasProfileBadge, setHasProfileBadge] = useState(false);
+
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
+  const [isUserHubOpen, setIsUserHubOpen] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
+    if (savedTheme === 'light') {
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
+    } else {
+      setTheme('dark');
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem('theme', nextTheme);
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
+  const checkProfileAlerts = async (role: string | null, email?: string) => {
+    const isCreator = role === 'creator' || email?.toLowerCase() === 'iwsamuel08@gmail.com';
+    const isSuperAdmin = role === 'super_admin';
+
+    let hasAlert = false;
+
+    // 1) 최고관리자 및 제작자: 관리자 전용 메시지(이의제기) 대기 건수
+    if (isCreator || isSuperAdmin) {
+      const { count: appealsCount } = await supabase
+        .from('blacklist_appeals')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      if (appealsCount && appealsCount > 0) hasAlert = true;
+    }
+
+    // 2) 제작자 전용: 미확인 건의사항 건수
+    if (isCreator) {
+      const { count: suggestionsCount } = await supabase
+        .from('site_suggestions')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_read', false);
+
+      if (suggestionsCount && suggestionsCount > 0) hasAlert = true;
+    }
+
+    setHasProfileBadge(hasAlert);
+  };
+
+  const loadUserProfile = async (userId: string, email?: string) => {
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('nickname, terms_agreed')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileData?.nickname) {
+      setNickname(profileData.nickname);
+    } else {
+      setNickname('익명사용자');
+    }
+
+    if (!profileData?.terms_agreed) {
+      setIsTermsModalOpen(true);
+    } else {
+      setIsTermsModalOpen(false);
+    }
+
+    let resolvedRole: "creator" | "super_admin" | "admin" | null = null;
+    if (email?.toLowerCase() === "iwsamuel08@gmail.com") {
+      resolvedRole = "creator";
+      setUserRole("creator");
+    } else {
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .or(`user_id.eq.${userId},email.eq.${email || ''}`)
+        .maybeSingle();
+
+      if (roleData?.role) {
+        resolvedRole = roleData.role as "creator" | "super_admin" | "admin";
+        setUserRole(resolvedRole);
+      } else {
+        setUserRole(null);
+      }
+    }
+
+    checkProfileAlerts(resolvedRole, email);
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        loadUserProfile(currentUser.id, currentUser.email);
+      }
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        loadUserProfile(currentUser.id, currentUser.email);
+      } else {
+        setNickname('');
+        setUserRole(null);
+        setIsTermsModalOpen(false);
+        setHasProfileBadge(false);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogin = async () => {
+    const redirectUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/community`
+      : undefined;
+
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        queryParams: { prompt: "select_account" },
+      },
+    });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setNickname('');
+    setUserRole(null);
+    setHasProfileBadge(false);
+  };
+
+  const isCreatorOrSuperAdmin =
+    user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ||
+    userRole === "creator" ||
+    userRole === "super_admin";
+
+  const isAdminGroup = Boolean(userRole === "creator" || userRole === "super_admin" || userRole === "admin");
+
+  return (
+    <html lang="ko" className="dark">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+        <title>스틱파이터 클랜 커뮤니티</title>
+        <meta name="description" content="자신만의 클랜을 홍보하세요" />
+        <link rel="icon" href="/icon.png?v=3" sizes="any" />
+        <link rel="apple-touch-icon" href="/icon.png?v=3" />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="스틱파이터 클랜 커뮤니티" />
+        <meta property="og:title" content="스틱파이터 클랜 커뮤니티" />
+        <meta property="og:description" content="자신만의 클랜을 홍보하세요" />
+        <meta property="og:image" content="https://www.sfaclan.com/icon.png?v=3" />
+        <meta property="og:url" content="https://www.sfaclan.com/" />
+      </head>
+      <body className="min-h-screen w-full bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden flex flex-col">
+        <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md transition-colors duration-300">
+          <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 h-13 sm:h-15 flex items-center justify-between gap-1.5">
+            <Link href="/community" className="text-sm sm:text-lg font-black tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">
+              COMMUNITY
+            </Link>
+
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink min-w-0">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={theme === 'dark'}
+                onClick={toggleTheme}
+                title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+                className={`relative inline-flex h-6 w-11 sm:h-7 sm:w-13 items-center rounded-full p-0.5 transition-colors duration-300 cursor-pointer shadow-inner shrink-0 ${
+                  theme === 'dark' ? 'bg-white border border-zinc-200' : 'bg-zinc-900 border border-zinc-800'
+                }`}
+              >
+                <span
+                  className={`inline-flex h-4.5 w-4.5 sm:h-5 sm:w-5 transform items-center justify-center rounded-full shadow-md transition-transform duration-300 ease-in-out ${
+                    theme === 'dark' ? 'translate-x-5 sm:translate-x-6 bg-zinc-950' : 'translate-x-0 bg-white'
+                  }`}
+                >
+                  {theme === 'dark' ? (
+                    <Moon className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white fill-white" />
+                  ) : (
+                    <Sun className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-zinc-950 stroke-[2.5]" />
+                  )}
+                </span>
+              </button>
+
+              {authLoading ? (
+                <div className="h-7 w-14 sm:w-16 bg-zinc-200 dark:bg-zinc-800 animate-pulse rounded-lg shrink-0" />
+              ) : user ? (
+                <>
+                  <Link
+                    href="/write"
+                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-bold transition whitespace-nowrap shrink-0 shadow-sm"
+                  >
+                    <PenSquare className="w-3 h-3" />
+                    <span>글쓰기</span>
+                  </Link>
+
+                  {/* 프로필 버튼 (건의함 또는 관리자 메시지 알람 시 빨간점 표시) */}
+                  <button
+                    onClick={() => setIsUserHubOpen(true)}
+                    className="relative inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
+                    title="마이 메뉴"
+                  >
+                    <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-3 h-3 shrink-0" />
+                    <span className="max-w-[45px] sm:max-w-[90px] truncate">{nickname || "닉네임"}</span>
+                    {hasProfileBadge && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full ring-2 ring-white dark:ring-black animate-pulse" />
+                    )}
+                  </button>
+
+                  {isCreatorOrSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAdminModalOpen(true)}
+                      className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-bold rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition whitespace-nowrap shrink-0"
+                      title="관리자 지정"
+                    >
+                      <Crown className="w-3.5 h-3.5 shrink-0" />
+                      <span className="hidden sm:inline">관리자</span>
+                    </button>
+                  )}
+
+                  {isAdminGroup && (
+                    <button
+                      type="button"
+                      onClick={() => setIsBlacklistModalOpen(true)}
+                      className="!bg-black !text-white !border !border-white hover:!bg-zinc-900 inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-black rounded-none transition whitespace-nowrap shrink-0 shadow-sm"
+                      title="블랙리스트 관리"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5 !text-white shrink-0" />
+                      <span>블랙</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-[11px] sm:text-xs font-medium transition shrink-0"
+                    title="로그아웃"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleLogin}
+                  className="flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-[11px] sm:text-xs font-bold transition whitespace-nowrap shrink-0"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>로그인</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <main className="w-full flex-1 flex flex-col items-stretch">{children}</main>
+
+        <AdminReplyPopup />
+
+        {user && (
+          <UserHubModal
+            isOpen={isUserHubOpen}
+            onClose={() => {
+              setIsUserHubOpen(false);
+              checkProfileAlerts(userRole, user?.email);
+            }}
+            userId={user.id}
+            userEmail={user.email || ""}
+            userRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}
+            currentNickname={nickname}
+            onNicknameUpdated={(newNick) => setNickname(newNick)}
+          />
+        )}
+
+        <AdminModal
+          isOpen={isAdminModalOpen}
+          onClose={() => setIsAdminModalOpen(false)}
+          currentUserRole={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole}
+        />
+
+        <BlacklistModal
+          isOpen={isBlacklistModalOpen}
+          onClose={() => setIsBlacklistModalOpen(false)}
+        />
+
+        {user && (
+          <TermsModal
+            isOpen={isTermsModalOpen}
+            userId={user.id}
+            onAgreed={() => setIsTermsModalOpen(false)}
+          />
+        )}
+      </body>
+    </html>
+  )
+}
+FILE_LAYOUT
+
+echo "--> 소스코드 정비 완료. 프로덕션 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 에러 없음! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "feat: 게시글 번호 재정렬 팝업 복원, 건의사항/건의함 구현 및 헤더 프로필 알람 연동"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="
