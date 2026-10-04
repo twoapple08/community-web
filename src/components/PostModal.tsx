@@ -95,6 +95,30 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
   const contentContainerRef = useRef<HTMLDivElement>(null);
 
+  // 본문 렌더링 후 디스코드 카드들에 실제 서버 이름 비동기 자동 반영
+  useEffect(() => {
+    if (!contentContainerRef.current || !post) return;
+    const cards = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
+    cards.forEach(async (card) => {
+      const url = card.getAttribute('data-embed-url') || '';
+      const discordMatch = url.match(/(?:discord\.gg|discord\.com\/invite)\/([a-zA-Z0-9-]+)/i);
+      if (discordMatch && discordMatch[1]) {
+        const titleEl = card.querySelector('.embed-title-text');
+        if (titleEl && (!titleEl.textContent || titleEl.textContent.trim() === '디스코드 서버' || /^https?:\/\//i.test(titleEl.textContent.trim()))) {
+          try {
+            const res = await fetch(`https://discord.com/api/v9/invites/${discordMatch[1]}?with_counts=true`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data?.guild?.name) {
+                titleEl.textContent = data.guild.name;
+              }
+            }
+          } catch {}
+        }
+      }
+    });
+  }, [post, isEditing]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -423,6 +447,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
       const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
       if (kakaoMatch) {
+        let title = (a.getAttribute('data-embed-title') || a.textContent || '').trim();
+        if (!title || /^https?:\/\//i.test(title)) {
+          title = '카카오톡 오픈채팅방';
+        }
         const bar = doc.createElement('div');
         bar.className = 'my-2.5 px-4 py-2.5 bg-[#242111] dark:bg-[#1c190d] border border-[#FEE500]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
         bar.setAttribute('data-embed-url', href);
@@ -441,8 +469,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         return;
       }
 
-      const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i);
+      const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/([a-zA-Z0-9-]+)/i);
       if (discordMatch) {
+        let title = (a.getAttribute('data-embed-title') || a.textContent || '').trim();
+        if (!title || /^https?:\/\//i.test(title)) {
+          title = '디스코드 서버';
+        }
         const bar = doc.createElement('div');
         bar.className = 'my-2.5 px-4 py-2.5 bg-[#111322] dark:bg-[#0c0d18] border border-[#5865F2]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
         bar.setAttribute('data-embed-url', href);

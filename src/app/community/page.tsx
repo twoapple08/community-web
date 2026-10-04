@@ -22,6 +22,7 @@ import {
   Check
 } from 'lucide-react';
 import NoticeBanner from '@/components/NoticeBanner';
+import FeedMedia from '@/components/FeedMedia';
 import AdminReportModal from '@/components/AdminReportModal';
 import Link from 'next/link';
 
@@ -392,7 +393,7 @@ function CommunityFeedContent() {
           </button>
 
           {isViewModeDropdownOpen && (
-            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute left-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100">
               {/* 1. 목록형 (캡처 1번) */}
               <button
                 type="button"
@@ -594,11 +595,9 @@ function CommunityFeedContent() {
                       </p>
                     </div>
 
-                    {/* 가로 100% 대형 와이드 썸네일 (이미지가 있을 때 시원하게 노출) */}
+                    {/* 세로 1.7배 이상 사진 3:4 자동 크롭 FeedMedia */}
                     {thumbnail && !post.is_preview_hidden && (
-                      <div className="w-full max-h-[460px] aspect-video rounded-xl overflow-hidden bg-black/5 border border-zinc-200 dark:border-zinc-800">
-                        <img src={thumbnail} alt={post.title} className="w-full h-full object-cover" />
-                      </div>
+                      <FeedMedia src={thumbnail} alt={post.title} />
                     )}
 
                     {/* 하단 액션 바 (좋아요 + 댓글 수) */}
