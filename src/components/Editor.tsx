@@ -288,12 +288,12 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     if (!file) return
 
     // 1GB (1024MB) 초과 검사
-    const maxSizeBytes = 1024 * 1024 * 1024;
+    const maxSizeBytes = 50 * 1024 * 1024; // 50MB 제한
     if (file.size > maxSizeBytes) {
       setPopup({
         show: true,
         title: '용량 초과',
-        message: '동영상 파일 크기는 최대 1GB(1024MB)까지 첨부할 수 있습니다.',
+        message: '동영상 파일 크기는 최대 50MB까지 첨부할 수 있습니다. (고용량/긴 영상은 유튜브 링크를 이용해 주시기 바랍니다)',
       })
       if (videoInputRef.current) videoInputRef.current.value = ''
       return
@@ -556,7 +556,7 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
             onClick={() => videoInputRef.current?.click()}
             disabled={isUploading || isUploadingVideo}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 transition disabled:opacity-50 shadow-sm"
-            title="동영상 첨부 (최대 1GB, 첫 프레임 자동 썸네일)"
+            title="동영상 첨부 (최대 50MB, 첫 프레임 자동 썸네일)"
           >
             {isUploadingVideo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <VideoIcon className="w-3.5 h-3.5" />}
             <span>{isUploadingVideo ? (uploadProgressText || '전송 중...') : '동영상'}</span>
