@@ -139,26 +139,27 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
         
-        {/* 브라우저 탭 타이틀 */}
+        {/* 브라우저 타이틀 및 메타태그 */}
         <title>스틱파이터 클랜 커뮤니티</title>
         <meta name="description" content="자신만의 클랜을 홍보하세요" />
 
-        {/* 사이트 파비콘 및 앱 아이콘 */}
+        {/* 새 도메인 기준 파비콘 및 앱 아이콘 (캐시 강제 무력화 v=3) */}
         <link rel="icon" href="/icon.png?v=3" sizes="any" />
         <link rel="apple-touch-icon" href="/icon.png?v=3" />
 
-        {/* 카카오톡 / 디스코드 링크 공유 미리보기 (오픈그래프 메타태그) */}
+        {/* 카카오톡 / 디스코드 링크 공유 미리보기 (공식 도메인 sfaclan.com 연동) */}
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="스틱파이터 클랜 커뮤니티" />
         <meta property="og:title" content="스틱파이터 클랜 커뮤니티" />
         <meta property="og:description" content="자신만의 클랜을 홍보하세요" />
-        <meta property="og:image" content="/icon.png" />
+        <meta property="og:image" content="https://www.sfaclan.com/icon.png?v=3" />
+        <meta property="og:url" content="https://www.sfaclan.com/" />
 
         {/* 트위터 / X 카드 메타태그 */}
         <meta name="twitter:card" content="summary" />
         <meta name="twitter:title" content="스틱파이터 클랜 커뮤니티" />
         <meta name="twitter:description" content="자신만의 클랜을 홍보하세요" />
-        <meta name="twitter:image" content="/icon.png" />
+        <meta name="twitter:image" content="https://www.sfaclan.com/icon.png?v=3" />
       </head>
       <body className="min-h-screen w-full bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden flex flex-col">
         <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md transition-colors duration-300">

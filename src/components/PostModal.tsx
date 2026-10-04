@@ -96,24 +96,48 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     setMounted(true);
   }, []);
 
+  // 1. 현재 접속자 식별 및 역할 조회 (user_id 및 email 복합 연산)
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const email = session?.user?.email || null;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const user = session?.user ?? null;
+      if (!user) {
+        setCurrentUserId(null);
+        setCurrentUserEmail(null);
+        setCurrentUserRole(null);
+        return;
+      }
+
+      const uid = user.id;
+      const email = user.email || '';
+      setCurrentUserId(uid);
       setCurrentUserEmail(email);
-      if (email === "iwsamuel08@gmail.com") {
+
+      if (email.toLowerCase() === "iwsamuel08@gmail.com") {
         setCurrentUserRole("creator");
-      } else if (email) {
-        supabase.from("user_roles").select("role").eq("email", email).maybeSingle().then(({ data }) => {
-          if (data?.role) setCurrentUserRole(data.role as RoleType);
-        });
+      } else {
+        const { data: roleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .or(`user_id.eq.${uid},email.eq.${email}`)
+          .maybeSingle();
+
+        if (roleData?.role) {
+          setCurrentUserRole(roleData.role as RoleType);
+        } else {
+          setCurrentUserRole(null);
+        }
+      }
+
+      if (postId) {
+        fetchPost(uid);
       }
     });
-  }, []);
+  }, [postId]);
 
   const isCreator = currentUserRole === 'creator' || currentUserEmail?.toLowerCase() === 'iwsamuel08@gmail.com';
 
   const checkFrozen = async (actionText: string): Promise<boolean> => {
-    if (isCreator) return false; // 사이트 제작자는 동결 효과 무시
+    if (isCreator) return false;
     const { data } = await supabase
       .from('site_notices')
       .select('is_frozen')
@@ -128,6 +152,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     return false;
   };
 
+  // 2. 글 작성자의 프로필 및 관리자 역할 조회
   useEffect(() => {
     if (!post?.author_id) {
       setAuthorRole(null);
@@ -146,16 +171,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
     supabase
       .from("user_roles")
-      .select("role, user_id, email")
+      .select("role")
+      .eq("user_id", post.author_id)
+      .maybeSingle()
       .then(({ data }) => {
-        if (!data || data.length === 0) {
-          setAuthorRole(null);
-          return;
-        }
-
-        const matched = data.find((r: any) => r.user_id === post.author_id);
-        if (matched?.role) {
-          setAuthorRole(matched.role as RoleType);
+        if (data?.role) {
+          setAuthorRole(data.role as RoleType);
         } else {
           setAuthorRole(null);
         }
@@ -207,17 +228,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       document.body.style.overflow = originalOverflow;
     };
   }, []);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const uid = session?.user?.id ?? null;
-      setCurrentUserId(uid);
-
-      if (postId) {
-        fetchPost(uid);
-      }
-    });
-  }, [postId]);
 
   const fetchPost = async (uid?: string | null) => {
     setLoading(true);
@@ -505,14 +515,27 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
+  // 3. 관리자 권한 및 강제 수정/강제 삭제 판정 연산식
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
+  const isAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
+
   const canForceManage = Boolean((() => {
-    if (!post || isAuthor) return false;
+    if (!post || !currentUserRole || isAuthor) return false;
+    // 1) 사이트 제작자: 모든 타인 글 관리 가능
+    if (currentUserRole === 'creator') return true;
+    // 2) 제작자 작성 글은 누구도 강제 관리 불가
     if (authorRole === 'creator') return false;
-    if (authorRole === 'super_admin') return currentUserRole === 'creator';
-    if (authorRole === 'admin') return currentUserRole === 'creator' || currentUserRole === 'super_admin';
-    return currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
+    // 3) 최고관리자: 일반관리자(admin) 및 일반회원의 글 관리 가능
+    if (currentUserRole === 'super_admin') {
+      return authorRole !== 'super_admin';
+    }
+    // 4) 일반관리자: 일반회원(authorRole이 없는 경우)의 글만 관리 가능
+    if (currentUserRole === 'admin') {
+      return !authorRole;
+    }
+    return false;
   })());
+
   const canManage = isAuthor || canForceManage;
 
   const renderRichContent = (html: string) => {
@@ -637,7 +660,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <span>{copied ? '링크 복사됨' : '공유'}</span>
                 </button>
 
-                {(currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin') && post && (
+                {isAdmin && post && (
                   <button
                     onClick={handleToggleOfficial}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border transition ${
@@ -669,7 +692,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                       <span>{isAuthor ? "수정" : "강제 수정"}</span>
                     </button>
 
-                    {post?.is_official && isAuthor && !canForceManage ? (
+                    {post?.is_official && isAuthor && !isAdmin ? (
                       <button
                         onClick={async () => {
                           if (await checkFrozen('게시글 삭제를')) return;
@@ -894,7 +917,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         )}
       </div>
 
-      {/* 외부 링크 접속 확인 팝업 */}
       {mounted && linkConfirmUrl && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
@@ -948,7 +970,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 직각 하늘색 테두리 사이트 동결 차단 안내 팝업 */}
       <FreezeModal
         isOpen={isFreezeModalOpen}
         onClose={() => setIsFreezeModalOpen(false)}
