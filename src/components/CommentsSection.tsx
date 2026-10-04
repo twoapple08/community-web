@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { CrownIcon, RoleType } from './CrownIcon'
-import { ThumbsUp, ImageIcon, Trash2, Send, Loader2, X } from 'lucide-react'
+import { ThumbsUp, ImageIcon, Trash2, Send, Loader2, X, Siren, Check } from 'lucide-react'
+import CustomPopup from './CustomPopup'
 
 interface CommentItem {
   id: number
@@ -34,6 +35,18 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   const [submitting, setSubmitting] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 댓글 신고 상태
+  const [reportingCommentId, setReportingCommentId] = useState<number | null>(null)
+  const [commentReportReason, setCommentReportReason] = useState<string>('욕설 및 비방')
+  const [commentCustomReason, setCommentCustomReason] = useState<string>('')
+  const [submittingCommentReport, setSubmittingCommentReport] = useState(false)
+
+  const [popup, setPopup] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+  }>({ show: false, title: '', message: '' })
 
   useEffect(() => {
     fetchComments()
@@ -106,9 +119,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
       const { error } = await supabase.storage.from('comment-images').upload(fileName, file)
       if (!error) {
         const { data } = supabase.storage.from('comment-images').getPublicUrl(fileName)
-        if (data?.publicUrl) {
-          setAttachedImage(data.publicUrl)
-        }
+        if (data?.publicUrl) setAttachedImage(data.publicUrl)
       } else {
         const reader = new FileReader()
         reader.onload = () => setAttachedImage(reader.result as string)
@@ -126,11 +137,11 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!currentUserId) {
-      alert('댓글 작성을 위해 먼저 로그인해 주십시오.')
+      setPopup({ show: true, title: '로그인 필요', message: '댓글 작성을 위해 먼저 로그인해 주십시오.' })
       return
     }
     if (!inputContent.trim() && !attachedImage) {
-      alert('댓글 내용 또는 이미지를 첨부해 주십시오.')
+      setPopup({ show: true, title: '내용 입력', message: '댓글 내용 또는 이미지를 첨부해 주십시오.' })
       return
     }
 
@@ -146,7 +157,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     })
 
     if (error) {
-      alert(`댓글 등록 실패: ${error.message}`)
+      setPopup({ show: true, title: '등록 실패', message: error.message })
     } else {
       setInputContent('')
       setAttachedImage(null)
@@ -157,7 +168,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
 
   const handleToggleCommentLike = async (comment: CommentItem) => {
     if (!currentUserId) {
-      alert('좋아요 기능은 로그인이 필요합니다.')
+      setPopup({ show: true, title: '로그인 필요', message: '좋아요 기능은 로그인이 필요합니다.' })
       return
     }
 
@@ -178,11 +189,43 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   }
 
   const handleDeleteComment = async (commentId: number) => {
-    if (!confirm('댓글을 삭제하시겠습니까?')) return
     const { error } = await supabase.from('post_comments').delete().eq('id', commentId)
     if (error) {
-      alert(`댓글 삭제 실패: ${error.message}`)
+      setPopup({ show: true, title: '삭제 실패', message: error.message })
     } else {
+      fetchComments()
+    }
+  }
+
+  // 댓글 신고 제출 핸들러
+  const handleCommentReportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentUserId || !reportingCommentId) return
+
+    setSubmittingCommentReport(true)
+    const targetPostId = isNaN(Number(postId)) ? postId : Number(postId)
+    const finalReason = commentReportReason === '기타' ? (commentCustomReason.trim() || '기타') : commentReportReason
+
+    const { error } = await supabase.from('comment_reports').insert({
+      comment_id: reportingCommentId,
+      post_id: targetPostId,
+      reporter_id: currentUserId,
+      reasons: [finalReason],
+      custom_reason: commentReportReason === '기타' ? commentCustomReason.trim() : null
+    })
+
+    setSubmittingCommentReport(false)
+    setReportingCommentId(null)
+    setCommentCustomReason('')
+
+    if (error) {
+      if (error.code === '23505') {
+        setPopup({ show: true, title: '중복 신고', message: '이미 신고한 댓글입니다.' })
+      } else {
+        setPopup({ show: true, title: '신고 실패', message: error.message })
+      }
+    } else {
+      setPopup({ show: true, title: '신고 접수', message: '댓글 신고가 성공적으로 접수되었습니다.' })
       fetchComments()
     }
   }
@@ -296,16 +339,30 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                     </span>
                   </div>
 
-                  {canDelete && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteComment(comment.id)}
-                      className="text-zinc-400 hover:text-red-500 transition"
-                      title="댓글 삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* 댓글 신고 버튼 */}
+                    {!isCommentAuthor && (
+                      <button
+                        type="button"
+                        onClick={() => setReportingCommentId(comment.id)}
+                        className="text-zinc-400 hover:text-rose-500 transition"
+                        title="댓글 신고"
+                      >
+                        <Siren className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteComment(comment.id)}
+                        className="text-zinc-400 hover:text-red-500 transition"
+                        title="댓글 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {comment.content && (
@@ -314,12 +371,11 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                   </p>
                 )}
 
-                {/* 1/4 사이즈 이미지 렌더링 규격 적용 */}
                 {comment.image_url && (
                   <div className="pt-1">
                     <img
                       src={comment.image_url}
-                      alt="댓글 첨부 이미지"
+                      alt="댓글 이미지"
                       className="w-1/4 max-w-[140px] sm:max-w-[170px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
                       onClick={() => window.open(comment.image_url || '', '_blank')}
                       title="클릭하여 원본 보기"
@@ -346,6 +402,81 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
           })
         )}
       </div>
+
+      {/* 댓글 전용 신고 팝업 */}
+      {reportingCommentId && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setReportingCommentId(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white dark:bg-zinc-950 border-2 border-rose-600 rounded-none p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-950 pb-2.5">
+              <div className="flex items-center gap-2 text-rose-600">
+                <Siren className="w-4 h-4" />
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-white">댓글 신고</h3>
+              </div>
+              <button onClick={() => setReportingCommentId(null)} className="p-1 text-zinc-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCommentReportSubmit} className="space-y-3 text-xs">
+              <div className="space-y-1.5">
+                {['욕설 및 비방', '음란성 / 부적절한 이미지', '도배 및 광고', '기타'].map((r) => (
+                  <label key={r} className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="radio"
+                      name="commentReason"
+                      value={r}
+                      checked={commentReportReason === r}
+                      onChange={(e) => setCommentReportReason(e.target.value)}
+                      className="accent-rose-600"
+                    />
+                    <span>{r}</span>
+                  </label>
+                ))}
+              </div>
+
+              {commentReportReason === '기타' && (
+                <textarea
+                  value={commentCustomReason}
+                  onChange={(e) => setCommentCustomReason(e.target.value)}
+                  placeholder="신고 사유를 작성해 주십시오."
+                  rows={2}
+                  className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs"
+                />
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setReportingCommentId(null)}
+                  className="px-3 py-1.5 border rounded-none text-xs"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingCommentReport}
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-none text-xs"
+                >
+                  {submittingCommentReport ? '접수 중...' : '신고'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <CustomPopup
+        isOpen={popup.show}
+        title={popup.title}
+        message={popup.message}
+        onConfirm={() => setPopup({ show: false, title: '', message: '' })}
+      />
     </div>
   )
 }

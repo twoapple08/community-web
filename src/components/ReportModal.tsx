@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { Siren, X, Check } from 'lucide-react'
 import CustomPopup from './CustomPopup'
-import { formatReportNotice, formatAutoDeleteNotice } from '@/lib/koreanUtils'
 
 interface ReportModalProps {
   isOpen: boolean
@@ -68,7 +67,7 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
 
     const targetPostId = isNaN(Number(postId)) ? postId : Number(postId)
 
-    // 1) 신고 접수
+    // DB post_reports 에 1회 단독 INSERT (알림 생성 및 3회 누적 처리는 DB 트리거가 100% 원자적으로 단일 수행)
     const { error } = await supabase.from('post_reports').insert({
       post_id: targetPostId,
       reporter_id: currentUserId,
@@ -82,58 +81,9 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
       } else {
         setPopup({ show: true, title: '접수 실패', message: `신고 접수 실패: ${error.message}` })
       }
-      setSubmitting(false)
-      return
+    } else {
+      setPopup({ show: true, title: '접수 완료', message: '신고가 정상적으로 접수되었습니다.', isSuccess: true })
     }
-
-    // 2) 관리자 알림(admin_notifications) 동기화 보강
-    try {
-      const { data: pData } = await supabase.from('posts').select('id, title, feed_type, is_deleted').eq('id', targetPostId).maybeSingle()
-      const { data: uData } = await supabase.from('profiles').select('nickname').eq('id', currentUserId).maybeSingle()
-      const reporterNick = uData?.nickname || '사용자'
-      const feedLabel = pData?.feed_type === 'community' ? '커뮤니티 피드' : '클랜 피드'
-      const reasonText = isOtherSelected ? customReasonText.trim() : finalReasons[0] || '부적절한 내용'
-
-      const msg = formatReportNotice(reporterNick, feedLabel, pData?.title || '게시글', reasonText)
-
-      await supabase.from('admin_notifications').insert({
-        type: 'report',
-        post_id: targetPostId,
-        reporter_id: currentUserId,
-        reporter_nickname: reporterNick,
-        post_title: pData?.title || '게시글',
-        feed_type: pData?.feed_type || 'clan',
-        reason: reasonText,
-        message: msg,
-        is_read: false
-      })
-
-      // 누적 3회 검사 및 소프트 딜리트
-      const { count } = await supabase.from('post_reports').select('*', { count: 'exact', head: true }).eq('post_id', targetPostId)
-      if (count && count >= 3 && !pData?.is_deleted) {
-        await supabase.from('posts').update({
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          delete_reason: `누적 신고 3회 (${reasonText})`
-        }).eq('id', targetPostId)
-
-        const autoMsg = formatAutoDeleteNotice(feedLabel, pData?.title || '게시글', reasonText)
-        await supabase.from('admin_notifications').insert({
-          type: 'auto_deleted',
-          post_id: targetPostId,
-          reporter_nickname: '시스템',
-          post_title: pData?.title || '게시글',
-          feed_type: pData?.feed_type || 'clan',
-          reason: reasonText,
-          message: autoMsg,
-          is_read: false
-        })
-      }
-    } catch (err) {
-      console.warn('Notification sync handled:', err)
-    }
-
-    setPopup({ show: true, title: '접수 완료', message: '신고가 정상적으로 접수되었습니다.', isSuccess: true })
     setSubmitting(false)
   }
 
