@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { CrownIcon, RoleType } from './CrownIcon'
@@ -50,6 +51,7 @@ export default function UserHubModal({
   onNicknameUpdated,
 }: UserHubModalProps) {
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
   const [currentView, setCurrentView] = useState<ModalView>('menu')
 
   const [newNickname, setNewNickname] = useState(currentNickname)
@@ -58,12 +60,18 @@ export default function UserHubModal({
   const [posts, setPosts] = useState<PostItem[]>([])
   const [loadingPosts, setLoadingPosts] = useState(false)
 
-  // 제작자 전용 제어 상태
   const isCreator = userRole === 'creator' || userEmail?.toLowerCase() === 'iwsamuel08@gmail.com'
   const [isFrozen, setIsFrozen] = useState(false)
   const [isReindexing, setIsReindexing] = useState(false)
   const [isTogglingFreeze, setIsTogglingFreeze] = useState(false)
+
+  // 번호 재정렬(노란색) 및 사이트 동결(하늘색) 전용 모달 상태
   const [confirmReindexOpen, setConfirmReindexOpen] = useState(false)
+  const [noticeModal, setNoticeModal] = useState<{ text: string; theme: 'yellow' | 'sky' } | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -91,14 +99,16 @@ export default function UserHubModal({
     const nextStatus = !isFrozen
     const { error } = await supabase
       .from('site_notices')
-      .update({ is_frozen: nextStatus })
-      .eq('id', 1)
+      .upsert({ id: 1, is_frozen: nextStatus, updated_at: new Date().toISOString() })
 
     if (error) {
-      alert(`사이트 얼리기 상태 변경 실패: ${error.message}`)
+      setNoticeModal({ text: `사이트 얼리기 상태 변경 실패: ${error.message}`, theme: 'sky' })
     } else {
       setIsFrozen(nextStatus)
-      alert(nextStatus ? '사이트가 성공적으로 동결(얼리기)되었습니다.' : '사이트 동결이 해제되었습니다.')
+      setNoticeModal({
+        text: nextStatus ? '사이트가 성공적으로 동결(얼리기)되었습니다.' : '사이트 동결이 해제되었습니다.',
+        theme: 'sky'
+      })
     }
     setIsTogglingFreeze(false)
   }
@@ -106,11 +116,14 @@ export default function UserHubModal({
   const handleExecuteReindex = async () => {
     setIsReindexing(true)
     const { data, error } = await supabase.rpc('reindex_post_ids')
+    setConfirmReindexOpen(false)
     if (error) {
-      alert(`게시글 번호 초기화 실패: ${error.message}`)
+      setNoticeModal({ text: `게시글 번호 초기화 실패: ${error.message}`, theme: 'yellow' })
     } else {
-      setConfirmReindexOpen(false)
-      alert(`총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`)
+      setNoticeModal({
+        text: `총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`,
+        theme: 'yellow'
+      })
       router.refresh()
     }
     setIsReindexing(false)
@@ -171,8 +184,14 @@ export default function UserHubModal({
 
   const handleSaveNickname = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newNickname.trim()) return alert('닉네임을 입력해 주십시오.')
-    if (newNickname.trim().length > 15) return alert('닉네임은 15자 이하로 설정해 주십시오.')
+    if (!newNickname.trim()) {
+      setNoticeModal({ text: '닉네임을 입력해 주십시오.', theme: 'sky' })
+      return
+    }
+    if (newNickname.trim().length > 15) {
+      setNoticeModal({ text: '닉네임은 15자 이하로 설정해 주십시오.', theme: 'sky' })
+      return
+    }
 
     setUpdatingNickname(true)
     const { error } = await supabase
@@ -183,10 +202,10 @@ export default function UserHubModal({
       })
 
     if (error) {
-      alert(`닉네임 저장 실패: ${error.message}`)
+      setNoticeModal({ text: `닉네임 저장 실패: ${error.message}`, theme: 'sky' })
     } else {
       onNicknameUpdated(newNickname.trim())
-      alert('닉네임이 성공적으로 변경되었습니다.')
+      setNoticeModal({ text: '닉네임이 성공적으로 변경되었습니다.', theme: 'sky' })
       setCurrentView('menu')
     }
     setUpdatingNickname(false)
@@ -313,7 +332,6 @@ export default function UserHubModal({
               </button>
             </div>
 
-            {/* 오직 사이트 제작자에게만 표시되는 특수 관리 콘솔 */}
             {isCreator && (
               <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
                 <div className="flex items-center gap-1.5 px-1">
@@ -451,33 +469,31 @@ export default function UserHubModal({
         )}
       </div>
 
-      {/* 게시글 번호 재정렬 사전 확인 모달 */}
-      {confirmReindexOpen && (
+      {/* 1. 번호 재정렬 확인 팝업 (직각 + 노란색 테두리 + 라이트모드 색반전 + 텍스트 중앙 정렬) */}
+      {mounted && confirmReindexOpen && createPortal(
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
           onClick={() => !isReindexing && setConfirmReindexOpen(false)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white dark:bg-black border-2 border-amber-600 dark:border-yellow-400 rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2.5">
-              <RefreshCw className="w-5 h-5 text-amber-500" />
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-white">게시글 번호 재정렬</h3>
+            <div className="space-y-2 text-center">
+              <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-bold leading-relaxed">
+                모든 게시글의 번호를 1번부터 차례대로 재정렬하시겠습니까?
+              </p>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                기존 좋아요 및 신고 기록은 새 번호로 안전하게 보존됩니다.
+              </p>
             </div>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-              모든 게시글의 번호를 작성일시 순서대로 <strong className="text-emerald-500">1번부터 연속된 번호</strong>로 초기화하시겠습니까?
-              <br /><br />
-              <span className="text-[11px] text-amber-600 dark:text-amber-400">
-                ※ 과거 외부에 공유된 링크의 번호가 바뀔 수 있으며, 좋아요 및 신고 기록은 새 번호로 안전하게 보존됩니다.
-              </span>
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
+
+            <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setConfirmReindexOpen(false)}
                 disabled={isReindexing}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+                className="px-5 py-2 text-xs font-semibold rounded-none border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition disabled:opacity-50"
               >
                 취소
               </button>
@@ -485,14 +501,51 @@ export default function UserHubModal({
                 type="button"
                 onClick={handleExecuteReindex}
                 disabled={isReindexing}
-                className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition disabled:opacity-50 flex items-center gap-1.5"
+                className="px-5 py-2 text-xs font-bold rounded-none bg-amber-600 hover:bg-amber-700 dark:bg-yellow-400 dark:hover:bg-yellow-300 text-white dark:text-black transition disabled:opacity-50 flex items-center gap-1.5"
               >
-                {isReindexing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                <span>{isReindexing ? '재정렬 중...' : '번호 초기화 실행'}</span>
+                {isReindexing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                <span>{isReindexing ? '재정렬 중...' : '확인'}</span>
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 2. 커스텀 결과 알림 팝업 (테마에 따라 yellow 또는 sky 직각 테두리) */}
+      {mounted && noticeModal && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setNoticeModal(null)}
+        >
+          <div
+            className={`w-full max-w-sm bg-white dark:bg-black border-2 rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150 ${
+              noticeModal.theme === 'yellow'
+                ? 'border-amber-600 dark:border-yellow-400'
+                : 'border-sky-600 dark:border-sky-400'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-xs sm:text-sm text-zinc-900 dark:text-white leading-relaxed font-semibold">
+              {noticeModal.text}
+            </p>
+
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => setNoticeModal(null)}
+                className={`px-6 py-2 text-xs font-bold rounded-none transition shadow-sm cursor-pointer ${
+                  noticeModal.theme === 'yellow'
+                    ? 'bg-amber-600 hover:bg-amber-700 dark:bg-yellow-400 dark:hover:bg-yellow-300 text-white dark:text-black'
+                    : 'bg-sky-600 hover:bg-sky-700 dark:bg-sky-400 dark:hover:bg-sky-300 text-white dark:text-black'
+                }`}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )
