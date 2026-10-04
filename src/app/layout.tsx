@@ -144,8 +144,8 @@ export default function RootLayout({
         <meta name="description" content="자신만의 클랜을 홍보하세요" />
 
         {/* 사이트 파비콘 및 앱 아이콘 */}
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="apple-touch-icon" href="/icon.png" />
+        <link rel="icon" href="/icon.png?v=3" sizes="any" />
+        <link rel="apple-touch-icon" href="/icon.png?v=3" />
 
         {/* 카카오톡 / 디스코드 링크 공유 미리보기 (오픈그래프 메타태그) */}
         <meta property="og:type" content="website" />

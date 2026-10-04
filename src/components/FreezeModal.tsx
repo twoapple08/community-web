@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Snowflake } from 'lucide-react'
 
 interface FreezeModalProps {
   isOpen: boolean
@@ -25,22 +24,14 @@ export default function FreezeModal({ isOpen, onClose, actionText }: FreezeModal
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm bg-white dark:bg-zinc-950 border-2 border-sky-800 dark:border-sky-400 rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+        className="w-full max-w-sm bg-white dark:bg-black border-2 border-sky-600 dark:border-sky-400 rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-center">
-          <div className="p-3 bg-sky-100 dark:bg-sky-950/70 text-sky-800 dark:text-sky-400 rounded-none border border-sky-800/30 dark:border-sky-400/30">
-            <Snowflake className="w-6 h-6 animate-pulse" />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <h3 className="text-sm font-extrabold text-zinc-900 dark:text-white">
-            사이트 일시 중지 안내
-          </h3>
-          <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed font-medium">
+        <div className="space-y-1.5 text-center">
+          <p className="text-xs sm:text-sm text-zinc-900 dark:text-white leading-relaxed font-semibold">
             현재 사이트가 중지되어 {actionText} 하실 수 없습니다.
-            <br />
+          </p>
+          <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed font-semibold">
             잠시 후 다시 시도해주시길 바랍니다.
           </p>
         </div>
@@ -49,7 +40,7 @@ export default function FreezeModal({ isOpen, onClose, actionText }: FreezeModal
           <button
             type="button"
             onClick={onClose}
-            className="px-6 py-2 text-xs font-bold rounded-none bg-sky-800 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-400 text-white transition shadow-sm"
+            className="px-6 py-2 text-xs font-bold rounded-none bg-sky-600 hover:bg-sky-700 dark:bg-sky-400 dark:hover:bg-sky-300 text-white dark:text-black transition shadow-sm cursor-pointer"
           >
             확인
           </button>
