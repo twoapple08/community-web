@@ -429,7 +429,13 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                       {!isCommentAuthor && (
                         <button
                           type="button"
-                          onClick={() => setReportingCommentId(comment.id)}
+                          onClick={() => {
+                          if (!currentUserId) {
+                            setPopup({ show: true, title: '로그인 필요', message: '신고 기능은 로그인 후 이용 가능합니다.' });
+                            return;
+                          }
+                          setReportingCommentId(comment.id);
+                        }}
                           className="text-zinc-400 hover:text-rose-500 transition p-0.5"
                           title="댓글 신고"
                         >
@@ -612,7 +618,13 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                               {!isReplyAuthor && (
                                 <button
                                   type="button"
-                                  onClick={() => setReportingCommentId(reply.id)}
+                                  onClick={() => {
+                                  if (!currentUserId) {
+                                    setPopup({ show: true, title: '로그인 필요', message: '신고 기능은 로그인 후 이용 가능합니다.' });
+                                    return;
+                                  }
+                                  setReportingCommentId(reply.id);
+                                }}
                                   className="text-zinc-400 hover:text-rose-500 transition p-0.5"
                                   title="답글 신고"
                                 >

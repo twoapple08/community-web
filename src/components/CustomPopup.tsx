@@ -1,7 +1,7 @@
 'use client'
 
 import { createPortal } from 'react-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 interface CustomPopupProps {
   isOpen: boolean
@@ -27,6 +27,7 @@ export default function CustomPopup({
   isDanger = false,
 }: CustomPopupProps) {
   const [mounted, setMounted] = useState(false)
+  const isBackdropMouseDownRef = useRef(false)
 
   useEffect(() => {
     setMounted(true)
@@ -37,10 +38,16 @@ export default function CustomPopup({
   return createPortal(
     <div
       className="fixed inset-0 z-[12000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) isBackdropMouseDownRef.current = true;
+        else isBackdropMouseDownRef.current = false;
+      }}
       onClick={(e) => {
-        e.stopPropagation();
-        if (type === 'alert') onConfirm();
-        else if (onCancel) onCancel();
+        if (e.target === e.currentTarget && isBackdropMouseDownRef.current) {
+          if (type === 'alert') onConfirm();
+          else if (onCancel) onCancel();
+        }
+        isBackdropMouseDownRef.current = false;
       }}
     >
       <div
@@ -58,10 +65,7 @@ export default function CustomPopup({
           {type === 'confirm' && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onCancel) onCancel();
-              }}
+              onClick={onCancel}
               className="px-4 py-1.5 text-xs font-bold rounded-none border border-zinc-400 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition"
             >
               {cancelText}
@@ -69,10 +73,7 @@ export default function CustomPopup({
           )}
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onConfirm();
-            }}
+            onClick={onConfirm}
             className={`px-5 py-1.5 text-xs font-black rounded-none transition shadow-sm ${
               isDanger
                 ? 'bg-red-600 hover:bg-red-700 text-white'

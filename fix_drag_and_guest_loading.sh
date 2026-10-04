@@ -1,3 +1,12 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 드래그 창꺼짐 차단 및 비로그인 게시글 로딩 복구 패치"
+echo "=========================================================="
+
+# 1. PostModal.tsx: 비로그인 로딩 차단 해제 및 마우스 드래그 오버레이 판정 적용
+cat << 'FILE_POST_MODAL' > src/components/PostModal.tsx
 'use client'
 
 import { CrownIcon, RoleType } from "./CrownIcon";
@@ -827,3 +836,149 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     </div>
   );
 }
+FILE_POST_MODAL
+
+# 2. CommentsSection.tsx: 댓글 신고 시 비로그인 유저 사전 차단 팝업 추가
+cat << 'FILE_PATCH_COMMENTS' > patch_comments.py
+with open("src/components/CommentsSection.tsx", "r", encoding="utf-8") as f:
+    code = f.read()
+
+# 댓글 신고 버튼 클릭 시 비로그인 사전 차단 로직 적용
+old_report_btn = """onClick={() => setReportingCommentId(comment.id)}"""
+new_report_btn = """onClick={() => {
+                          if (!currentUserId) {
+                            setPopup({ show: true, title: '로그인 필요', message: '신고 기능은 로그인 후 이용 가능합니다.' });
+                            return;
+                          }
+                          setReportingCommentId(comment.id);
+                        }}"""
+
+old_reply_report_btn = """onClick={() => setReportingCommentId(reply.id)}"""
+new_reply_report_btn = """onClick={() => {
+                                  if (!currentUserId) {
+                                    setPopup({ show: true, title: '로그인 필요', message: '신고 기능은 로그인 후 이용 가능합니다.' });
+                                    return;
+                                  }
+                                  setReportingCommentId(reply.id);
+                                }}"""
+
+if old_report_btn in code:
+    code = code.replace(old_report_btn, new_report_btn)
+if old_reply_report_btn in code:
+    code = code.replace(old_reply_report_btn, new_reply_report_btn)
+
+with open("src/components/CommentsSection.tsx", "w", encoding="utf-8") as f:
+    f.write(code)
+print("CommentsSection.tsx: 비로그인 댓글 신고 방지 패치 완료")
+FILE_PATCH_COMMENTS
+python3 patch_comments.py || true
+rm -f patch_comments.py
+
+# 3. CustomPopup.tsx 드래그 이탈 닫힘 방지 적용
+cat << 'FILE_CUSTOM_POPUP' > src/components/CustomPopup.tsx
+'use client'
+
+import { createPortal } from 'react-dom'
+import { useEffect, useState, useRef } from 'react'
+
+interface CustomPopupProps {
+  isOpen: boolean
+  title: string
+  message: string
+  type?: 'alert' | 'confirm'
+  onConfirm: () => void
+  onCancel?: () => void
+  confirmText?: string
+  cancelText?: string
+  isDanger?: boolean
+}
+
+export default function CustomPopup({
+  isOpen,
+  title,
+  message,
+  type = 'alert',
+  onConfirm,
+  onCancel,
+  confirmText = '확인',
+  cancelText = '취소',
+  isDanger = false,
+}: CustomPopupProps) {
+  const [mounted, setMounted] = useState(false)
+  const isBackdropMouseDownRef = useRef(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!isOpen || !mounted) return null
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[12000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) isBackdropMouseDownRef.current = true;
+        else isBackdropMouseDownRef.current = false;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && isBackdropMouseDownRef.current) {
+          if (type === 'alert') onConfirm();
+          else if (onCancel) onCancel();
+        }
+        isBackdropMouseDownRef.current = false;
+      }}
+    >
+      <div
+        className="w-full max-w-sm bg-white dark:bg-black border-2 border-zinc-900 dark:border-white rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-black text-zinc-900 dark:text-white uppercase tracking-wider">
+          {title}
+        </h3>
+        <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed font-semibold whitespace-pre-wrap">
+          {message}
+        </p>
+
+        <div className="flex items-center justify-center gap-2 pt-2">
+          {type === 'confirm' && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-1.5 text-xs font-bold rounded-none border border-zinc-400 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition"
+            >
+              {cancelText}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`px-5 py-1.5 text-xs font-black rounded-none transition shadow-sm ${
+              isDanger
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black'
+            }`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+FILE_CUSTOM_POPUP
+
+echo "--> 소스코드 정비 완료. 프로덕션 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 에러 없음! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "fix: 텍스트 드래그 시 모달 꺼짐 차단 및 비로그인 게시글 정상 로딩 복원"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="
