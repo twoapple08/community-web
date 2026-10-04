@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Editor from '@/components/Editor'
 import FreezeModal from '@/components/FreezeModal'
-import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, Loader2, AlertCircle } from 'lucide-react'
+import CustomPopup from '@/components/CustomPopup'
+import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, ShieldAlert, Mail } from 'lucide-react'
 import Link from 'next/link'
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -39,28 +40,71 @@ function WriteContent() {
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userNickname, setUserNickname] = useState<string>('')
   const [existingDraft, setExistingDraft] = useState<DraftData | null>(null)
   const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false)
+
+  // 블랙리스트 전용 상태
+  const [isBlacklisted, setIsBlacklisted] = useState(false)
+  const [showBlacklistModal, setShowBlacklistModal] = useState(false)
+  const [showAppealModal, setShowAppealModal] = useState(false)
+  const [appealMessage, setAppealMessage] = useState('')
+  const [sendingAppeal, setSendingAppeal] = useState(false)
+
+  // 관리자 답장 수신 팝업 상태
+  const [adminReplyNotice, setAdminReplyNotice] = useState<{ id: number; reply: string } | null>(null)
+
+  // 커스텀 팝업 상태
+  const [customPopup, setCustomPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'alert' | 'confirm';
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} })
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) {
-        alert('로그인이 필요한 기능입니다. 메인 피드로 이동합니다.')
-        router.push('/')
+        setCustomPopup({
+          isOpen: true,
+          title: '로그인 필요',
+          message: '로그인이 필요한 기능입니다. 메인 피드로 이동합니다.',
+          onConfirm: () => router.push('/')
+        })
       } else {
         const uid = session.user.id
         setUserId(uid)
         setUserEmail(session.user.email || null)
 
+        const { data: prof } = await supabase.from('profiles').select('nickname').eq('id', uid).maybeSingle()
+        setUserNickname(prof?.nickname || '사용자')
+
+        // 1) 관리자 답장 미확인 확인
+        const { data: replyRecord } = await supabase
+          .from('blacklist_appeals')
+          .select('id, admin_reply')
+          .eq('user_id', uid)
+          .eq('status', 'resolved_kept')
+          .eq('user_notified', false)
+          .order('resolved_at', { ascending: false })
+          .maybeSingle()
+
+        if (replyRecord?.admin_reply) {
+          setAdminReplyNotice({ id: replyRecord.id, reply: replyRecord.admin_reply })
+        }
+
+        // 2) 블랙리스트 여부 확인
         const { data: blackRecord } = await supabase
           .from('blacklists')
-          .select('reason')
+          .select('user_id')
           .eq('user_id', uid)
           .maybeSingle()
 
         if (blackRecord) {
-          alert(`귀하는 블랙리스트로 등록되어 있어 게시글 작성이 금지되었습니다.\n사유: ${blackRecord.reason}`)
-          router.push('/')
+          setIsBlacklisted(true)
+          setShowBlacklistModal(true)
           return
         }
 
@@ -76,9 +120,84 @@ function WriteContent() {
       .eq('user_id', uid)
       .maybeSingle()
 
-    if (data) {
-      setExistingDraft(data as DraftData)
+    if (data) setExistingDraft(data as DraftData)
+  }
+
+  // 이의제기 제출 함수
+  const handleSendAppeal = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!userId) return
+    if (!appealMessage.trim()) {
+      setCustomPopup({
+        isOpen: true,
+        title: '내용 입력',
+        message: '이의제기 및 문의 내용을 작성해 주십시오.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
+      return
     }
+
+    setSendingAppeal(true)
+
+    // 이미 대기 중인 문의가 있는지 확인 (1회 제한)
+    const { data: existingAppeal } = await supabase
+      .from('blacklist_appeals')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .maybeSingle()
+
+    if (existingAppeal) {
+      setSendingAppeal(false)
+      setShowAppealModal(false)
+      setCustomPopup({
+        isOpen: true,
+        title: '접수 안내',
+        message: '이미 검토 대기 중인 이의제기가 존재합니다. 관리자 확인 후 통보됩니다.',
+        onConfirm: () => {
+          setCustomPopup((p) => ({ ...p, isOpen: false }))
+          router.push('/')
+        }
+      })
+      return
+    }
+
+    const { error } = await supabase.from('blacklist_appeals').insert({
+      user_id: userId,
+      user_nickname: userNickname,
+      user_email: userEmail,
+      message: appealMessage.trim(),
+      status: 'pending'
+    })
+
+    setSendingAppeal(false)
+    setShowAppealModal(false)
+
+    if (error) {
+      setCustomPopup({
+        isOpen: true,
+        title: '전송 실패',
+        message: `전송 실패: ${error.message}`,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
+    } else {
+      setCustomPopup({
+        isOpen: true,
+        title: '전송 완료',
+        message: '관리자에게 이의제기 및 문의가 안전하게 전달되었습니다. 관리자 검토 후 결과가 통보됩니다.',
+        onConfirm: () => {
+          setCustomPopup((p) => ({ ...p, isOpen: false }))
+          router.push('/')
+        }
+      })
+    }
+  }
+
+  // 관리자 답장 확인 완료 처리
+  const handleConfirmReplyNotice = async () => {
+    if (!adminReplyNotice) return
+    await supabase.from('blacklist_appeals').update({ user_notified: true }).eq('id', adminReplyNotice.id)
+    setAdminReplyNotice(null)
   }
 
   const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map(
@@ -94,7 +213,12 @@ function WriteContent() {
   const handleSaveDraft = async () => {
     if (!userId) return
     if (!title.trim() && (!content.trim() || content === '<p></p>')) {
-      alert('제목 또는 내용이 비어있어 임시보관할 수 없습니다.')
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 불가',
+        message: '제목 또는 내용이 비어있어 보관할 수 없습니다.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
       return
     }
 
@@ -114,7 +238,12 @@ function WriteContent() {
     )
 
     if (error) {
-      alert(`임시보관 실패: ${error.message}`)
+      setCustomPopup({
+        isOpen: true,
+        title: '보관 실패',
+        message: error.message,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
     } else {
       setExistingDraft({
         title: title.trim(),
@@ -124,7 +253,12 @@ function WriteContent() {
         is_preview_hidden: isPreviewHidden,
         updated_at: nowIso,
       })
-      alert('현재 작성 내용이 안전하게 임시보관되었습니다. (최대 1개 유지)')
+      setCustomPopup({
+        isOpen: true,
+        title: '임시보관 완료',
+        message: '현재 작성 내용이 안전하게 임시보관되었습니다. (최대 1개 유지)',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
     }
     setIsSavingDraft(false)
   }
@@ -139,11 +273,20 @@ function WriteContent() {
     setEditorKey((prev) => prev + 1)
   }
 
-  const handleDeleteDraft = async () => {
+  const handleDeleteDraft = () => {
     if (!userId) return
-    if (!confirm('보관 중인 임시 게시글을 완전히 삭제하시겠습니까?')) return
-    await supabase.from('post_drafts').delete().eq('user_id', userId)
-    setExistingDraft(null)
+    setCustomPopup({
+      isOpen: true,
+      type: 'confirm',
+      title: '임시글 삭제',
+      message: '보관 중인 임시 게시글을 완전히 삭제하시겠습니까?',
+      onConfirm: async () => {
+        await supabase.from('post_drafts').delete().eq('user_id', userId)
+        setExistingDraft(null)
+        setCustomPopup((p) => ({ ...p, isOpen: false }))
+      },
+      onCancel: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -152,12 +295,7 @@ function WriteContent() {
 
     const isCreator = userEmail?.toLowerCase() === 'iwsamuel08@gmail.com'
     if (!isCreator) {
-      const { data: noticeData } = await supabase
-        .from('site_notices')
-        .select('is_frozen')
-        .eq('id', 1)
-        .maybeSingle()
-
+      const { data: noticeData } = await supabase.from('site_notices').select('is_frozen').eq('id', 1).maybeSingle()
       if (noticeData?.is_frozen) {
         setIsFreezeModalOpen(true)
         return
@@ -165,17 +303,32 @@ function WriteContent() {
     }
 
     if (feedType === 'community' && !selectedBoard) {
-      alert('커뮤니티 게시판을 반드시 하나 선택해야 합니다.')
+      setCustomPopup({
+        isOpen: true,
+        title: '게시판 선택 필요',
+        message: '커뮤니티 게시판을 반드시 하나 선택해야 합니다.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
       return
     }
 
     if (!title.trim()) {
-      alert('게시글 제목을 입력해 주십시오.')
+      setCustomPopup({
+        isOpen: true,
+        title: '제목 입력',
+        message: '게시글 제목을 입력해 주십시오.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
       return
     }
 
     if (!content.trim() || content === '<p></p>') {
-      alert('본문 내용을 작성해 주십시오.')
+      setCustomPopup({
+        isOpen: true,
+        title: '내용 입력',
+        message: '본문 내용을 작성해 주십시오.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
       return
     }
 
@@ -196,7 +349,12 @@ function WriteContent() {
     ])
 
     if (error) {
-      alert(`게시글 등록 실패: ${error.message}`)
+      setCustomPopup({
+        isOpen: true,
+        title: '등록 실패',
+        message: error.message,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      })
       setIsSubmitting(false)
     } else {
       await supabase.from('post_drafts').delete().eq('user_id', userId)
@@ -216,7 +374,6 @@ function WriteContent() {
           <span>피드로 돌아가기</span>
         </Link>
 
-        {/* 피드 대상 선택 탭 */}
         <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-none text-xs font-bold">
           <button
             type="button"
@@ -262,7 +419,6 @@ function WriteContent() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* 커뮤니티 전용 필수 게시판 선택 */}
         {feedType === 'community' ? (
           <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-2">
             <label className="block text-xs font-bold text-blue-400">
@@ -397,10 +553,158 @@ function WriteContent() {
         </div>
       </form>
 
+      {/* 블랙리스트 제재 전용 UI 팝업 (사유 삭제 + 직각 + 흑백 규격) */}
+      {showBlacklistModal && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => router.push('/')}
+        >
+          <div
+            className="w-full max-w-sm !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-5 text-center animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center">
+              <div className="p-3 bg-white text-black rounded-none">
+                <ShieldAlert className="w-7 h-7" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-base font-black tracking-wide text-white">
+                게시글 작성 제한 안내
+              </h3>
+              <p className="text-xs text-zinc-300 leading-relaxed font-semibold">
+                귀하는 커뮤니티 이용 규정 위반으로 인해 블랙리스트로 등록되어 있어 게시글 작성이 영구히 금지되었습니다.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBlacklistModal(false)
+                  setShowAppealModal(true)
+                }}
+                className="px-4 py-2 text-xs font-bold rounded-none border border-white text-white hover:bg-zinc-900 transition flex items-center gap-1.5"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>이의제기 및 문의</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="px-5 py-2 text-xs font-black rounded-none bg-white text-black hover:bg-zinc-200 transition"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 블랙리스트 이의제기 및 문의 작성 창 */}
+      {showAppealModal && (
+        <div
+          className="fixed inset-0 z-[10010] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => {
+            setShowAppealModal(false)
+            router.push('/')
+          }}
+        >
+          <div
+            className="w-full max-w-md !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-white" />
+                <h3 className="text-sm font-black text-white">이의제기 및 문의 작성</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              관리진(사이트 제작자, 최고 관리자)에게 소명 내용 및 문의를 전달합니다. (해제 전까지 1회만 전송 가능)
+            </p>
+
+            <form onSubmit={handleSendAppeal} className="space-y-4">
+              <textarea
+                value={appealMessage}
+                onChange={(e) => setAppealMessage(e.target.value)}
+                placeholder="상세 문의 및 소명 내용을 입력하세요"
+                rows={5}
+                className="w-full p-3 text-xs !bg-zinc-950 !border !border-zinc-700 !text-white rounded-none focus:outline-none focus:!border-white"
+              />
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAppealModal(false)
+                    router.push('/')
+                  }}
+                  disabled={sendingAppeal}
+                  className="px-4 py-2 text-xs font-bold rounded-none border border-zinc-600 text-zinc-300 hover:bg-zinc-900 transition"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingAppeal}
+                  className="px-5 py-2 text-xs font-black rounded-none bg-white text-black hover:bg-zinc-200 transition disabled:opacity-40"
+                >
+                  {sendingAppeal ? '전송 중...' : '전송'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 답장 수신 팝업 ("답장" 제목 + 확인 버튼) */}
+      {adminReplyNotice && (
+        <div
+          className="fixed inset-0 z-[10020] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={handleConfirmReplyNotice}
+        >
+          <div
+            className="w-full max-w-sm !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-black text-white border-b border-zinc-800 pb-2">
+              답장
+            </h3>
+            <div className="p-3 !bg-zinc-950 !border !border-zinc-800 text-xs text-zinc-200 text-left whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+              {adminReplyNotice.reply}
+            </div>
+            <p className="text-[11px] text-zinc-400">
+              관리자의 검토 결과 블랙리스트 상태가 유지되었습니다.
+            </p>
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmReplyNotice}
+                className="px-6 py-2 text-xs font-black rounded-none bg-white text-black hover:bg-zinc-200 transition"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <FreezeModal
         isOpen={isFreezeModalOpen}
         onClose={() => setIsFreezeModalOpen(false)}
         actionText="게시글 작성을"
+      />
+
+      <CustomPopup
+        isOpen={customPopup.isOpen}
+        type={customPopup.type}
+        title={customPopup.title}
+        message={customPopup.message}
+        onConfirm={customPopup.onConfirm}
+        onCancel={customPopup.onCancel}
       />
     </div>
   )

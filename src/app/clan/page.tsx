@@ -118,11 +118,17 @@ function ClanFeedContent() {
       const uid = session?.user?.id ?? null;
       setCurrentUserId(uid);
 
-      if (email === "iwsamuel08@gmail.com") {
+      if (email?.toLowerCase() === "iwsamuel08@gmail.com") {
         setCurrentUserRole("creator");
-      } else if (email) {
-        supabase.from("user_roles").select("role").eq("email", email).maybeSingle().then(({ data }) => {
-          if (data?.role) setCurrentUserRole(data.role as RoleType);
+        checkUnreadReports();
+      } else if (uid) {
+        supabase.from("user_roles").select("role").or(`user_id.eq.${uid},email.eq.${email || ''}`).maybeSingle().then(({ data }) => {
+          if (data?.role) {
+            setCurrentUserRole(data.role as RoleType);
+            if (data.role === 'creator' || data.role === 'super_admin') {
+              checkUnreadReports();
+            }
+          }
         });
       }
     });

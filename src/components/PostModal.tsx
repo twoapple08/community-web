@@ -9,6 +9,7 @@ import ReportModal from './ReportModal';
 import FreezeModal from './FreezeModal';
 import Editor from './Editor';
 import CommentsSection from './CommentsSection';
+import CustomPopup from './CustomPopup';
 import {
   X,
   Calendar,
@@ -71,18 +72,26 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // 공식글 삭제 신청 전용 모달 상태
   const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
   const [deleteReasonText, setDeleteReasonText] = useState("");
   const [requestSubmitting, setRequestSubmitting] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [linkConfirmUrl, setLinkConfirmUrl] = useState<string | null>(null);
 
   const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
   const [freezeActionText, setFreezeActionText] = useState('');
+
+  // 공통 커스텀 팝업
+  const [customPopup, setCustomPopup] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'alert' | 'confirm';
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const contentContainerRef = useRef<HTMLDivElement>(null);
 
@@ -181,31 +190,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       });
   }, [post?.author_id]);
 
-  useEffect(() => {
-    if (!post?.content || !contentContainerRef.current) return;
-
-    const embedElements = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
-    embedElements.forEach(async (el) => {
-      const url = el.getAttribute('data-embed-url');
-      if (!url) return;
-      try {
-        const res = await fetch(`/api/embed-metadata?url=${encodeURIComponent(url)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.title) {
-            const titleEl = el.querySelector<HTMLElement>('.embed-title-text');
-            if (titleEl) titleEl.textContent = data.title;
-          }
-        }
-      } catch (err) {
-        console.error('Metadata resolve error:', err);
-      }
-    });
-  }, [post?.content, isEditing]);
-
   const handleToggleLike = async () => {
     if (!currentUserId) {
-      alert('좋아요 기능은 로그인이 필요합니다.');
+      setCustomPopup({
+        isOpen: true,
+        title: '로그인 필요',
+        message: '좋아요 기능은 로그인이 필요합니다.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
       return;
     }
     if (await checkFrozen('좋아요를')) return;
@@ -233,13 +225,19 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     const nextStatus = !post.is_official;
     const { error } = await supabase.from('posts').update({ is_official: nextStatus }).eq('id', postId);
     if (error) {
-      alert(`공식 상태 변경 실패: ${error.message}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '오류',
+        message: `공식 상태 변경 실패: ${error.message}`,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
     } else {
       setPost({ ...post, is_official: nextStatus });
       if (onDeleted) onDeleted();
     }
   };
 
+  // 공식 게시글 삭제 신청 제출
   const handleSubmitDeleteRequest = async () => {
     if (!post) return;
     if (await checkFrozen('게시글 삭제를')) return;
@@ -254,21 +252,49 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      alert(`신청 실패: ${error.message}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '신청 실패',
+        message: `신청 실패: ${error.message}`,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
       setRequestSubmitting(false);
     } else {
-      alert('관리자에게 삭제 신청이 접수되었습니다. 검토 전까지 비공개 상태로 전환됩니다.');
       setShowRequestDeleteModal(false);
-      onClose();
-      if (onDeleted) onDeleted();
-      router.refresh();
+      setCustomPopup({
+        isOpen: true,
+        title: '삭제 신청 접수',
+        message: '관리자에게 삭제 신청이 접수되었습니다. 검토 전까지 비공개 상태로 전환됩니다.',
+        onConfirm: () => {
+          setCustomPopup((p) => ({ ...p, isOpen: false }));
+          onClose();
+          if (onDeleted) onDeleted();
+          router.refresh();
+        }
+      });
     }
   };
 
   const handleSaveEdit = async () => {
     if (await checkFrozen('게시글 수정을')) return;
-    if (!editTitle.trim()) return alert('제목을 입력해 주십시오.');
-    if (!editContent.trim() || editContent === '<p></p>') return alert('내용을 입력해 주십시오.');
+    if (!editTitle.trim()) {
+      setCustomPopup({
+        isOpen: true,
+        title: '제목 입력',
+        message: '게시글 제목을 입력해 주십시오.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
+      return;
+    }
+    if (!editContent.trim() || editContent === '<p></p>') {
+      setCustomPopup({
+        isOpen: true,
+        title: '내용 입력',
+        message: '본문 내용을 작성해 주십시오.',
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
+      return;
+    }
 
     setSaving(true);
     const { error } = await supabase
@@ -280,7 +306,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
       .eq('id', postId);
 
     if (error) {
-      alert(`수정 실패: ${error.message}`);
+      setCustomPopup({
+        isOpen: true,
+        title: '수정 실패',
+        message: `수정 실패: ${error.message}`,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
       setSaving(false);
     } else {
       setPost((prev) => (prev ? { ...prev, title: editTitle.trim(), content: editContent } : null));
@@ -295,7 +326,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     if (await checkFrozen('게시글 삭제를')) return;
     const { error } = await supabase.from('posts').delete().eq('id', postId);
     if (error) {
-      setDeleteError(error.message);
+      setCustomPopup({
+        isOpen: true,
+        title: '삭제 실패',
+        message: error.message,
+        onConfirm: () => setCustomPopup((p) => ({ ...p, isOpen: false }))
+      });
     } else {
       setShowDeleteConfirm(false);
       onClose();
@@ -462,7 +498,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <span>{copied ? '복사됨' : '공유'}</span>
                 </button>
 
-                {/* 공식 지정 버튼 (클랜 피드에서만 동작) */}
                 {post?.feed_type === 'clan' && isAdmin && (
                   <button
                     onClick={handleToggleOfficial}
@@ -583,7 +618,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 </button>
               </div>
 
-              {/* 커뮤니티 피드 글일 때만 댓글 시스템 활성화 */}
               {post.feed_type === 'community' && (
                 <CommentsSection
                   postId={post.id}
@@ -612,24 +646,85 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         )}
       </div>
 
+      {/* 공식 게시글 삭제 신청 모달 (복구 완료!) */}
+      {mounted && showRequestDeleteModal && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={() => !requestSubmitting && setShowRequestDeleteModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white dark:bg-zinc-900 border-2 border-amber-500 rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-none bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white">공식 게시글 삭제 신청</h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">관리자 승인 후 최종 삭제 처리됩니다.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              공식 게시글은 관리자 승인 절차를 거칩니다. 신청 즉시 일반 사용자에게 비공개 처리되며 관리자 검토 후 삭제가 최종 결정됩니다.
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                삭제 사유 (선택 사항)
+              </label>
+              <textarea
+                value={deleteReasonText}
+                onChange={(e) => setDeleteReasonText(e.target.value)}
+                placeholder="삭제 사유를 상세히 입력해 주십시오."
+                rows={3}
+                className="w-full px-3 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setShowRequestDeleteModal(false)}
+                disabled={requestSubmitting}
+                className="px-4 py-1.5 text-xs font-semibold rounded-none border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitDeleteRequest}
+                disabled={requestSubmitting}
+                className="px-5 py-1.5 text-xs font-bold rounded-none bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{requestSubmitting ? '신청 중...' : '신청 전송'}</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* 외부 링크 확인 모달 */}
       {mounted && linkConfirmUrl && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setLinkConfirmUrl(null)}>
-          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-2xl p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-none p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold">외부 링크 접속 확인</h3>
             <p className="text-xs text-zinc-400">이 링크로 이동하시겠습니까?</p>
-            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-xs font-mono break-all text-left max-h-24 overflow-y-auto">
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-none text-xs font-mono break-all text-left max-h-24 overflow-y-auto">
               {linkConfirmUrl}
             </div>
             <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-1.5 text-xs border rounded-xl">취소</button>
+              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-1.5 text-xs border rounded-none">취소</button>
               <button
                 onClick={() => {
                   const url = linkConfirmUrl;
                   setLinkConfirmUrl(null);
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
-                className="px-5 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-xl"
+                className="px-5 py-1.5 text-xs font-bold bg-emerald-600 text-white rounded-none"
               >
                 접속
               </button>
@@ -645,20 +740,20 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
           <button onClick={() => setPreviewImageUrl(null)} className="absolute top-5 right-5 text-white p-2">
             <X className="w-6 h-6" />
           </button>
-          <img src={previewImageUrl} alt="미리보기" className="max-h-[85vh] max-w-full rounded-2xl" onClick={(e) => e.stopPropagation()} />
+          <img src={previewImageUrl} alt="미리보기" className="max-h-[85vh] max-w-full rounded-none" onClick={(e) => e.stopPropagation()} />
         </div>,
         document.body
       )}
 
-      {/* 삭제 확인 모달 */}
+      {/* 영구 삭제 확인 모달 */}
       {mounted && showDeleteConfirm && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="w-full max-w-sm bg-zinc-900 p-6 rounded-2xl space-y-4 border border-zinc-800" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm bg-zinc-900 p-6 rounded-none space-y-4 border border-zinc-800" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold text-white">게시글 삭제</h3>
             <p className="text-xs text-zinc-400">게시글을 삭제하시겠습니까? 데이터가 복구되지 않습니다.</p>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-1.5 text-xs border border-zinc-700 text-zinc-300 rounded-xl">취소</button>
-              <button onClick={handleExecuteDelete} className="px-4 py-1.5 text-xs font-bold bg-red-600 text-white rounded-xl">삭제</button>
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-1.5 text-xs border border-zinc-700 text-zinc-300 rounded-none">취소</button>
+              <button onClick={handleExecuteDelete} className="px-4 py-1.5 text-xs font-bold bg-red-600 text-white rounded-none">삭제</button>
             </div>
           </div>
         </div>,
@@ -676,6 +771,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         onClose={() => setIsReportModalOpen(false)}
         postId={postId}
         currentUserId={currentUserId}
+      />
+
+      <CustomPopup
+        isOpen={customPopup.isOpen}
+        title={customPopup.title}
+        message={customPopup.message}
+        onConfirm={customPopup.onConfirm}
       />
     </div>
   );
