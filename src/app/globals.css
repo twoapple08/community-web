@@ -82,3 +82,72 @@ p, h1, h2, h3, h4, h5, h6, span, a {
 .animate-notice-out {
   animation: noticeSlideUpFadeOut 0.35s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
+
+/* =========================================================
+   리치 텍스트 본문 줄바꿈 및 문단 여백 1:1 보존 스타일
+   ========================================================= */
+.prose p,
+.editor-content p,
+.tiptap p {
+  margin-top: 0;
+  margin-bottom: 0.85em;
+  min-height: 1.5em;
+  line-height: 1.7;
+}
+
+/* 엔터로 생긴 빈 문단도 브라우저가 접지 않고 온전히 1줄 높이 유지 */
+.prose p:empty,
+.editor-content p:empty,
+.tiptap p:empty {
+  min-height: 1.5em;
+  display: block;
+}
+
+.prose p:empty::before,
+.editor-content p:empty::before,
+.tiptap p:empty::before {
+  content: "\00a0";
+  display: inline-block;
+}
+
+.prose p:has(> br:only-child) {
+  min-height: 1.5em;
+}
+
+/* 표 기본 스타일 정돈 */
+.prose table,
+.tiptap table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1.2em 0;
+  overflow: hidden;
+}
+
+.prose table td,
+.prose table th,
+.tiptap table td,
+.tiptap table th {
+  min-width: 1em;
+  border: 1px solid #71717a;
+  padding: 8px 10px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.prose table th,
+.tiptap table th {
+  font-weight: bold;
+  text-align: left;
+  background-color: rgba(120, 120, 120, 0.1);
+}
+
+.selectedCell:after {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(59, 130, 246, 0.15);
+  pointer-events: none;
+}

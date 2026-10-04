@@ -373,6 +373,9 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   };
 
   const renderRichContent = (html: string) => {
+    if (!html) return '';
+    // 빈 문단이 접히지 않도록 공백 강제 보존
+    html = html.replace(/<p><\/p>/g, '<p>&nbsp;</p>').replace(/<p><br><\/p>/g, '<p>&nbsp;</p>');
     if (typeof window === 'undefined') return html;
 
     const parser = new DOMParser();
@@ -617,7 +620,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               <div
                 ref={contentContainerRef}
                 onClick={handleContentClick}
-                className="prose dark:prose-invert max-w-none break-words whitespace-pre-wrap text-zinc-800 dark:text-zinc-200 text-sm leading-relaxed [&_img]:rounded-xl [&_img]:my-3 [&_img]:cursor-pointer"
+                className="prose dark:prose-invert max-w-none break-words text-zinc-800 dark:text-zinc-200 text-sm leading-relaxed [&_img]:rounded-xl [&_img]:my-3 [&_img]:cursor-pointer"
                 dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
               />
 

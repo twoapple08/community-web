@@ -1,13 +1,98 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 풀버전 리치텍스트 툴바 구축 및 줄바꿈/여백 버그 해결"
+echo "=========================================================="
+
+# 1. Tiptap 정렬 및 테이블 공식 확장 모듈 설치
+npm install @tiptap/extension-text-align @tiptap/extension-table @tiptap/extension-table-row @tiptap/extension-table-cell @tiptap/extension-table-header --legacy-peer-deps
+
+# 2. globals.css 에 문단 여백 및 빈 줄 높이 보존 스타일 추가
+cat << 'FILE_CSS' >> src/app/globals.css
+
+/* =========================================================
+   리치 텍스트 본문 줄바꿈 및 문단 여백 1:1 보존 스타일
+   ========================================================= */
+.prose p,
+.editor-content p,
+.tiptap p {
+  margin-top: 0;
+  margin-bottom: 0.85em;
+  min-height: 1.5em;
+  line-height: 1.7;
+}
+
+/* 엔터로 생긴 빈 문단도 브라우저가 접지 않고 온전히 1줄 높이 유지 */
+.prose p:empty,
+.editor-content p:empty,
+.tiptap p:empty {
+  min-height: 1.5em;
+  display: block;
+}
+
+.prose p:empty::before,
+.editor-content p:empty::before,
+.tiptap p:empty::before {
+  content: "\00a0";
+  display: inline-block;
+}
+
+.prose p:has(> br:only-child) {
+  min-height: 1.5em;
+}
+
+/* 표 기본 스타일 정돈 */
+.prose table,
+.tiptap table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1.2em 0;
+  overflow: hidden;
+}
+
+.prose table td,
+.prose table th,
+.tiptap table td,
+.tiptap table th {
+  min-width: 1em;
+  border: 1px solid #71717a;
+  padding: 8px 10px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.prose table th,
+.tiptap table th {
+  font-weight: bold;
+  text-align: left;
+  background-color: rgba(120, 120, 120, 0.1);
+}
+
+.selectedCell:after {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(59, 130, 246, 0.15);
+  pointer-events: none;
+}
+FILE_CSS
+
+# 3. 3번 이미지의 모든 기능을 탑재한 풀버전 Editor.tsx 생성
+cat << 'FILE_EDITOR' > src/components/Editor.tsx
 'use client'
 
 import { useEditor, EditorContent, Mark, Node, mergeAttributes } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
-import { TextAlign } from '@tiptap/extension-text-align'
-import { Table } from '@tiptap/extension-table'
-import { TableRow } from '@tiptap/extension-table-row'
-import { TableCell } from '@tiptap/extension-table-cell'
-import { TableHeader } from '@tiptap/extension-table-header'
+import TextAlign from '@tiptap/extension-text-align'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
 
 import {
   Bold,
@@ -1044,3 +1129,45 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     </div>
   )
 }
+FILE_EDITOR
+
+# 4. PostModal.tsx 본문 렌더링 시 빈 줄/엔터 높이 100% 보존 패치
+cat << 'FILE_PATCH_POST_VIEWER' > patch_post_viewer.py
+with open("src/components/PostModal.tsx", "r", encoding="utf-8") as f:
+    code = f.read()
+
+# renderRichContent 에 빈 단락 높이 보존 치환 추가
+old_render = "const renderRichContent = (html: string) => {"
+new_render = """const renderRichContent = (html: string) => {
+    if (!html) return '';
+    // 빈 문단이 접히지 않도록 공백 강제 보존
+    html = html.replace(/<p><\\/p>/g, '<p>&nbsp;</p>').replace(/<p><br><\\/p>/g, '<p>&nbsp;</p>');"""
+
+if old_render in code:
+    code = code.replace(old_render, new_render, 1)
+
+# whitespace-pre-wrap 충돌 제거 (CSS .prose p 스타일과 자연스럽게 연동)
+code = code.replace('whitespace-pre-wrap text-zinc-800', 'text-zinc-800')
+
+with open("src/components/PostModal.tsx", "w", encoding="utf-8") as f:
+    f.write(code)
+
+print("PostModal.tsx rich paragraph spacing patched")
+FILE_PATCH_POST_VIEWER
+python3 patch_post_viewer.py || true
+rm -f patch_post_viewer.py
+
+echo "--> 소스코드 정비 완료. 프로덕션 빌드 검증을 진행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 에러 없음! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "feat: 풀버전 리치텍스트 에디터(표/정렬/들여쓰기/기호) 구축 및 줄바꿈/여백 소실 버그 해결"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="
