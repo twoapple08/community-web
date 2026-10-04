@@ -6,7 +6,7 @@ import UserHubModal from "@/components/UserHubModal";
 import BlacklistModal from "@/components/BlacklistModal";
 import TermsModal from "@/components/TermsModal";
 import './globals.css'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
@@ -25,42 +25,6 @@ export default function RootLayout({
   const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
-
-  // 실버 팰리스 스타일: 모바일 및 PC 브라우저 확대/축소(50%~200%) 역보정 스케일러
-  const initialDprRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    // 모바일 브라우저의 텍스트 강제 비대화 방지
-    document.documentElement.style.webkitTextSizeAdjust = '100%';
-    (document.documentElement.style as any).textSizeAdjust = '100%';
-
-    if (!initialDprRef.current) {
-      const saved = sessionStorage.getItem('base_app_dpr');
-      if (saved) {
-        initialDprRef.current = parseFloat(saved);
-      } else {
-        initialDprRef.current = window.devicePixelRatio || 1;
-        sessionStorage.setItem('base_app_dpr', String(initialDprRef.current));
-      }
-    }
-
-    // 마스터께서 최적으로 지정하신 75% 수준의 밀도 높은 콤팩트 스케일 기준 계수
-    const OPTIMAL_DENSITY = 0.85;
-
-    const adjustResponsiveZoom = () => {
-      const baseDpr = initialDprRef.current || 1;
-      const currentDpr = window.devicePixelRatio || 1;
-      const zoomRatio = currentDpr / baseDpr;
-      // 브라우저 줌 배율의 역수를 취하여 확대/축소 영향을 상쇄하고 최적 비율 유지
-      const effectiveZoom = (1 / (zoomRatio || 1)) * OPTIMAL_DENSITY;
-      const clampedZoom = Math.max(0.4, Math.min(2.0, effectiveZoom));
-      (document.body.style as any).zoom = clampedZoom;
-    };
-
-    window.addEventListener('resize', adjustResponsiveZoom);
-    adjustResponsiveZoom();
-    return () => window.removeEventListener('resize', adjustResponsiveZoom);
-  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
@@ -173,7 +137,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
       </head>
       <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300">
         <header className="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md transition-colors duration-300">
