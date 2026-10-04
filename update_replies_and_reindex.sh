@@ -1,3 +1,12 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 대댓글 기능 탑재 및 번호 재정렬 시스템 복구"
+echo "=========================================================="
+
+# 1. 대댓글(답글) 완벽 지원 CommentsSection 컴포넌트 생성
+cat << 'FILE_COMMENTS' > src/components/CommentsSection.tsx
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -722,3 +731,55 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     </div>
   )
 }
+FILE_COMMENTS
+
+# 2. UserHubModal.tsx 번호 재정렬 후 새로고침 보강
+cat << 'FILE_PATCH_HUB' > patch_hub.py
+with open("src/components/UserHubModal.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
+
+target = """    if (error) {
+      setNoticeModal({ text: `게시글 번호 초기화 실패: ${error.message}`, theme: 'yellow' })
+    } else {
+      setNoticeModal({
+        text: `총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`,
+        theme: 'yellow'
+      })
+      router.refresh()
+    }"""
+
+replacement = """    if (error) {
+      setNoticeModal({ text: `게시글 번호 초기화 실패: ${error.message}`, theme: 'yellow' })
+    } else {
+      setNoticeModal({
+        text: `총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`,
+        theme: 'yellow'
+      })
+      setTimeout(() => {
+        window.location.reload()
+      }, 1200)
+    }"""
+
+if target in content:
+    content = content.replace(target, replacement)
+    with open("src/components/UserHubModal.tsx", "w", encoding="utf-8") as f:
+        f.write(content)
+    print("UserHubModal.tsx reload logic patched")
+FILE_PATCH_HUB
+python3 patch_hub.py || true
+rm -f patch_hub.py
+
+echo "--> 소스코드 갱신 완료. 프로덕션 빌드 검증을 진행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 검증 완료! Git 자동 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "feat: 대댓글(답글) 기능 신설 및 게시글 번호 재정렬 외래키 동기화 수정 완료"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="

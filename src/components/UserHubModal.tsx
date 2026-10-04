@@ -208,7 +208,9 @@ export default function UserHubModal({
         text: `총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`,
         theme: 'yellow'
       })
-      router.refresh()
+      setTimeout(() => {
+        window.location.reload()
+      }, 1200)
     }
     setIsReindexing(false)
   }
