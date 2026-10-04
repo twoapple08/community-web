@@ -1,3 +1,11 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] UserHubModal.tsx TS18047 타입 에러 완전 해결 및 빌드"
+echo "=========================================================="
+
+cat << 'FILE_USER_HUB' > src/components/UserHubModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -1179,3 +1187,19 @@ export default function UserHubModal({
     </div>
   )
 }
+FILE_USER_HUB
+
+echo "--> 소스코드 정비 완료. 프로덕션 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 검증 완료! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "fix: UserHubModal.tsx null 안전성 보장 및 프로덕션 빌드 성공"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="

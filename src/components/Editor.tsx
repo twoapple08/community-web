@@ -220,6 +220,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
   const [inputLinkUrl, setInputLinkUrl] = useState('')
   const [inputLinkText, setInputLinkText] = useState('')
+  const [fetchingTitle, setFetchingTitle] = useState(false)
 
   const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
   const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false)
@@ -394,6 +395,19 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     if (videoInputRef.current) videoInputRef.current.value = ''
   }
 
+  const fetchAutoTitle = async (url: string) => {
+    if (!url.startsWith('http')) return
+    setFetchingTitle(true)
+    try {
+      const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+      const data = await res.json()
+      if (data?.title) {
+        setInputLinkText(data.title)
+      }
+    } catch {}
+    setFetchingTitle(false)
+  }
+
   const handleOpenLinkModal = () => {
     const selected = editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)
     setInputLinkText(selected || '')
@@ -410,12 +424,13 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
       finalUrl = 'https://' + finalUrl
     }
 
-    const displayText = detectedEmbedType ? finalUrl : (inputLinkText.trim() || finalUrl)
+    const titleAttr = inputLinkText.trim() ? ` data-embed-title="${inputLinkText.trim().replace(/"/g, '&quot;')}"` : ''
+    const displayText = inputLinkText.trim() || finalUrl
 
     if (editor.state.selection.empty) {
-      editor.chain().focus().insertContent(`<a href="${finalUrl}" target="_blank" rel="noopener noreferrer">${displayText}</a> `).run()
+      editor.chain().focus().insertContent(`<a href="${finalUrl}"${titleAttr} target="_blank" rel="noopener noreferrer">${displayText}</a> `).run()
     } else {
-      editor.chain().focus().setMark('customLink', { href: finalUrl }).run()
+      editor.chain().focus().insertContent(`<a href="${finalUrl}"${titleAttr} target="_blank" rel="noopener noreferrer">${displayText}</a> `).run()
     }
 
     setIsLinkModalOpen(false)
@@ -996,21 +1011,44 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             </div>
 
             <form onSubmit={handleApplyLink} className="space-y-3">
-              <input
-                type="text"
-                value={inputLinkUrl}
-                onChange={(e) => setInputLinkUrl(e.target.value)}
-                placeholder="https://example.com"
-                required
-                className="w-full px-3 py-2 text-xs bg-zinc-800 border rounded-none font-mono text-white"
-              />
-              <input
-                type="text"
-                value={inputLinkText}
-                onChange={(e) => setInputLinkText(e.target.value)}
-                placeholder="표시할 텍스트 (선택)"
-                className="w-full px-3 py-2 text-xs bg-zinc-800 border rounded-none text-white"
-              />
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 mb-1">링크 URL</label>
+                <input
+                  type="text"
+                  value={inputLinkUrl}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setInputLinkUrl(val)
+                    if (val.startsWith('http')) fetchAutoTitle(val)
+                  }}
+                  onBlur={() => {
+                    if (inputLinkUrl.startsWith('http') && !inputLinkText) fetchAutoTitle(inputLinkUrl)
+                  }}
+                  placeholder="https://example.com"
+                  required
+                  className="w-full px-3 py-2 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none font-mono text-zinc-900 dark:text-white"
+                />
+              </div>
+
+              {detectedEmbedType && (
+                <div className="p-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-400/50 rounded-none text-[11px] text-blue-600 dark:text-blue-400 leading-snug">
+                  ℹ️ {detectedEmbedType === 'youtube' ? 'YouTube 영상' : detectedEmbedType === 'discord' ? 'Discord 서버 초대' : '카카오톡 오픈채팅'} 링크는 전용 임베드 카드로 표시됩니다.
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-400 mb-1">
+                  {detectedEmbedType === 'discord' ? '서버 이름 (자동 또는 직접 입력)' : detectedEmbedType === 'kakaotalk' ? '오픈채팅방 이름 (자동 또는 직접 입력)' : '표시할 텍스트 (선택)'}
+                  {fetchingTitle && <span className="ml-2 text-blue-500 animate-pulse text-[10px]">정보 가져오는 중...</span>}
+                </label>
+                <input
+                  type="text"
+                  value={inputLinkText}
+                  onChange={(e) => setInputLinkText(e.target.value)}
+                  placeholder={detectedEmbedType === 'discord' ? '디스코드 서버 이름' : detectedEmbedType === 'kakaotalk' ? '카카오톡 오픈채팅방 이름' : '표시할 텍스트'}
+                  className="w-full px-3 py-2 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white"
+                />
+              </div>
               <div className="flex justify-end gap-2 pt-2 border-t">
                 <button type="button" onClick={() => setIsLinkModalOpen(false)} className="px-3 py-1.5 border text-xs">취소</button>
                 <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white text-xs font-bold">적용</button>

@@ -9,7 +9,7 @@ import {
   Heart,
   Calendar,
   Image as ImageIcon,
-  MessageSquare,
+  MessageSquare, LayoutGrid, List, Rows3, CheckCircle2,
   Search,
   Filter,
   EyeOff,
@@ -77,6 +77,20 @@ function ClanFeedContent() {
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
 
   const [sortType, setSortType] = useState<SortType>('latest');
+  type ViewMode = 'list' | 'feed' | 'album';
+  const [viewMode, setViewMode] = useState<ViewMode>('feed');
+  const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('view_mode_clan') as ViewMode | null;
+    if (saved && ['list', 'feed', 'album'].includes(saved)) setViewMode(saved);
+  }, []);
+
+  const handleSelectViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    setIsViewModeDropdownOpen(false);
+    localStorage.setItem('view_mode_clan', mode);
+  };
   const [officialFilter, setOfficialFilter] = useState<OfficialFilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
@@ -429,7 +443,82 @@ function ClanFeedContent() {
         </div>
       ) : (
         <div className="space-y-3.5 w-full">
-          {paginatedPosts.map((post) => {
+          {/* 1. 목록형 (컴팩트 리스트) */}
+          {viewMode === 'list' && (
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800/80 overflow-hidden shadow-sm">
+              {paginatedPosts.map((post) => (
+                <div
+                  key={post.id}
+                  onClick={() => router.push(`/clan/${post.id}`)}
+                  className="flex items-center justify-between gap-3 p-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition select-none text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {post.is_official && (
+                      <span className="text-[10px] font-black text-emerald-500 shrink-0">[공식]</span>
+                    )}
+                    <span className="font-bold text-zinc-900 dark:text-white truncate">
+                      {post.title}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0 text-zinc-400 text-[11px]">
+                    <span className="text-zinc-600 dark:text-zinc-300 font-medium hidden sm:inline">{post.author_nickname}</span>
+                    <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                    <span className="text-rose-500 font-semibold flex items-center gap-0.5">
+                      <Heart className="w-3 h-3 fill-current" /> {post.likes_count ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 2. 앨범형 (그리드 갤러리) */}
+          {viewMode === 'album' && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 w-full">
+              {paginatedPosts.map((post) => {
+                const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
+                return (
+                  <div
+                    key={post.id}
+                    onClick={() => router.push(`/clan/${post.id}`)}
+                    className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-400 transition cursor-pointer select-none flex flex-col shadow-sm"
+                  >
+                    <div className="aspect-video w-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden relative">
+                      {thumbnail ? (
+                        <img src={thumbnail} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">
+                          <ImageIcon className="w-6 h-6 stroke-1 text-zinc-400" />
+                        </div>
+                      )}
+                      {post.is_official && (
+                        <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow">
+                          공식
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3 flex-1 flex flex-col justify-between space-y-1.5">
+                      <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white line-clamp-1 group-hover:text-emerald-500 transition">
+                        {post.title}
+                      </h3>
+                      <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                        <span className="truncate max-w-[80px]">{post.author_nickname}</span>
+                        <span className="text-rose-500 font-semibold flex items-center gap-0.5">
+                          <Heart className="w-3 h-3 fill-current" /> {post.likes_count ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 3. 피드형 (기본 카드 리스트) */}
+          {viewMode === 'feed' && (
+            <div className="space-y-3.5 w-full">
+            {paginatedPosts.map((post) => {
             const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
             const plainText = extractPlainText(post.content);
             const imageCount = countImages(post.content);
@@ -496,11 +585,7 @@ function ClanFeedContent() {
                         <span>{post.likes_count ?? 0}</span>
                       </span>
 
-                      {/* 댓글 및 답글 통합 수 표시 */}
-                      <span className="flex items-center gap-1 text-blue-500 dark:text-blue-400 font-medium">
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>{post.comments_count ?? 0}</span>
-                      </span>
+                      
 
                       {imageCount > 1 && (
                         <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50">
@@ -553,6 +638,8 @@ function ClanFeedContent() {
             );
           })}
         </div>
+        )}
+      </div>
       )}
 
       {/* 페이지네이션 */}

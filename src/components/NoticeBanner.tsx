@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Megaphone, Pencil, X } from 'lucide-react'
+import CustomPopup from './CustomPopup'
 import { RoleType } from './CrownIcon'
 
 interface SiteNotice {
@@ -87,7 +88,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   const handleSaveNotice = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editNoticeTitle.trim() || !editNoticeContent.trim()) {
-      alert('제목과 내용을 모두 입력해 주십시오.')
+      showTopToast('제목과 내용을 모두 입력해 주십시오.')
       return
     }
 
@@ -103,7 +104,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
       .eq('id', 1)
 
     if (error) {
-      alert(`공지사항 수정 실패: ${error.message}`)
+      showTopToast(`공지사항 수정 실패: ${error.message}`)
     } else {
       setNotice({
         id: 1,

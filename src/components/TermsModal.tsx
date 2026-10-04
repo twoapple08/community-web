@@ -28,7 +28,7 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
     if (!error) {
       onAgreed()
     } else {
-      alert(`약관 동의 처리 실패: ${error.message}`)
+      console.error(error.message)
     }
     setLoading(false)
   }

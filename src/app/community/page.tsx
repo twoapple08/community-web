@@ -9,7 +9,7 @@ import {
   Heart,
   Calendar,
   Image as ImageIcon,
-  MessageSquare,
+  MessageSquare, LayoutGrid, List, Rows3, ChevronDown,
   Search,
   EyeOff,
   ChevronLeft,
@@ -71,6 +71,20 @@ function CommunityFeedContent() {
   const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
 
   const [sortType, setSortType] = useState<SortType>('latest');
+  type ViewMode = 'list' | 'feed' | 'album';
+  const [viewMode, setViewMode] = useState<ViewMode>('feed');
+  const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('view_mode_comm') as ViewMode | null;
+    if (saved && ['list', 'feed', 'album'].includes(saved)) setViewMode(saved);
+  }, []);
+
+  const handleSelectViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    setIsViewModeDropdownOpen(false);
+    localStorage.setItem('view_mode_comm', mode);
+  };
   const [selectedBoard, setSelectedBoard] = useState<string>('모두');
   const [isBoardDropdownOpen, setIsBoardDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -363,7 +377,82 @@ function CommunityFeedContent() {
         </div>
       ) : (
         <div className="space-y-3.5 w-full">
-          {paginatedPosts.map((post) => {
+          {/* 1. 목록형 (컴팩트 리스트) */}
+          {viewMode === 'list' && (
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl divide-y divide-zinc-100 dark:divide-zinc-800/80 overflow-hidden shadow-sm">
+              {paginatedPosts.map((post) => (
+                <div
+                  key={post.id}
+                  onClick={() => router.push(`/community/${post.id}`)}
+                  className="flex items-center justify-between gap-3 p-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer transition select-none text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-bold text-zinc-900 dark:text-white truncate">
+                      {post.title}
+                    </span>
+                    {(post.comments_count ?? 0) > 0 && (
+                      <span className="text-[11px] font-bold text-blue-500">[{post.comments_count}]</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0 text-zinc-400 text-[11px]">
+                    <span className="text-zinc-600 dark:text-zinc-300 font-medium hidden sm:inline">{post.author_nickname}</span>
+                    <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                    <span className="text-rose-500 font-semibold flex items-center gap-0.5">
+                      <Heart className="w-3 h-3 fill-current" /> {post.likes_count ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 2. 앨범형 (그리드 갤러리) */}
+          {viewMode === 'album' && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 w-full">
+              {paginatedPosts.map((post) => {
+                const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
+                return (
+                  <div
+                    key={post.id}
+                    onClick={() => router.push(`/community/${post.id}`)}
+                    className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-400 transition cursor-pointer select-none flex flex-col shadow-sm"
+                  >
+                    <div className="aspect-video w-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden relative">
+                      {thumbnail ? (
+                        <img src={thumbnail} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">
+                          <ImageIcon className="w-6 h-6 stroke-1 text-zinc-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 flex-1 flex flex-col justify-between space-y-1.5">
+                      <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white line-clamp-1 group-hover:text-blue-500 transition">
+                        {post.title}
+                      </h3>
+                      <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                        <span className="truncate max-w-[80px]">{post.author_nickname}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-rose-500 font-semibold flex items-center gap-0.5">
+                            <Heart className="w-3 h-3 fill-current" /> {post.likes_count ?? 0}
+                          </span>
+                          <span className="text-blue-500 font-semibold flex items-center gap-0.5">
+                            <MessageSquare className="w-3 h-3" /> {post.comments_count ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 3. 피드형 (기본 카드 리스트) */}
+          {viewMode === 'feed' && (
+            <div className="space-y-3.5 w-full">
+            {paginatedPosts.map((post) => {
             const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
             const plainText = extractPlainText(post.content);
             const imageCount = countImages(post.content);
@@ -428,6 +517,8 @@ function CommunityFeedContent() {
             );
           })}
         </div>
+        )}
+      </div>
       )}
 
       {/* 페이지네이션 */}
