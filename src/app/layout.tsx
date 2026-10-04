@@ -137,11 +137,12 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
       </head>
-      <body className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300">
-        <header className="sticky top-0 z-50 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md transition-colors duration-300">
-          <div className="max-w-6xl mx-auto px-2 sm:px-4 h-16 flex items-center justify-between gap-2">
+      <body className="min-h-screen w-full bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden flex flex-col">
+        {/* 헤더: 어떤 화면비에서도 100% 폭을 품으며 중앙 max-w-5xl 유지 */}
+        <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/85 dark:bg-zinc-950/85 backdrop-blur-md transition-colors duration-300">
+          <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2">
             <Link href="/" className="text-base sm:text-xl font-bold tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">
               COMMUNITY
             </Link>
@@ -178,7 +179,7 @@ export default function RootLayout({
                 <>
                   <Link
                     href="/write"
-                    className="inline-flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium transition duration-300 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold transition duration-300 whitespace-nowrap shrink-0 shadow-sm"
                   >
                     <PenSquare className="w-3.5 h-3.5" />
                     <span>글쓰기</span>
@@ -186,18 +187,18 @@ export default function RootLayout({
 
                   <button
                     onClick={() => setIsUserHubOpen(true)}
-                    className="inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition duration-300 text-xs font-medium text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition duration-300 text-xs font-medium text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0"
                     title="마이 메뉴"
                   >
-                    <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                    <span className="max-w-[55px] sm:max-w-[110px] truncate">{nickname || "닉네임"}</span>
+                    <CrownIcon role={user?.email?.toLowerCase() === "iwsamuel08@gmail.com" ? "creator" : userRole} className="w-3.5 h-3.5 shrink-0" />
+                    <span className="max-w-[70px] sm:max-w-[110px] truncate">{nickname || "닉네임"}</span>
                   </button>
 
                   {isCreatorOrSuperAdmin && (
                     <button
                       type="button"
                       onClick={() => setIsAdminModalOpen(true)}
-                      className="inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition duration-300 whitespace-nowrap shrink-0"
+                      className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition duration-300 whitespace-nowrap shrink-0"
                       title="관리자 지정"
                     >
                       <Crown className="w-3.5 h-3.5 shrink-0" />
@@ -209,7 +210,7 @@ export default function RootLayout({
                     <button
                       type="button"
                       onClick={() => setIsBlacklistModalOpen(true)}
-                      className="!bg-black !text-white !border !border-white hover:!bg-zinc-900 inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 text-xs font-bold rounded-none transition whitespace-nowrap shrink-0 shadow-sm"
+                      className="!bg-black !text-white !border !border-white hover:!bg-zinc-900 inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 text-xs font-bold rounded-none transition whitespace-nowrap shrink-0 shadow-sm"
                       title="블랙리스트 관리"
                     >
                       <ShieldAlert className="w-3.5 h-3.5 !text-white shrink-0" />
@@ -219,10 +220,10 @@ export default function RootLayout({
 
                   <button
                     onClick={handleLogout}
-                    className="inline-flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-xs sm:text-sm font-medium transition duration-300 shrink-0"
+                    className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-xs sm:text-sm font-medium transition duration-300 shrink-0"
                     title="로그아웃"
                   >
-                    <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <LogOut className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">로그아웃</span>
                   </button>
                 </>
@@ -231,7 +232,7 @@ export default function RootLayout({
                   onClick={handleLogin}
                   className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-xs sm:text-sm font-semibold transition duration-300 whitespace-nowrap shrink-0"
                 >
-                  <LogIn className="w-4 h-4" />
+                  <LogIn className="w-3.5 h-3.5" />
                   <span>로그인</span>
                 </button>
               )}
@@ -239,7 +240,8 @@ export default function RootLayout({
           </div>
         </header>
 
-        <main>{children}</main>
+        {/* 메인: 화면 전체 폭을 채우며 하위 컨텐츠 중앙 정렬 보장 */}
+        <main className="w-full flex-1 flex flex-col items-stretch">{children}</main>
 
         {user && (
           <UserHubModal

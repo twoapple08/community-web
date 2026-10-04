@@ -97,12 +97,10 @@ function FeedContent() {
   const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  // 페이지네이션 및 드롭업 상태
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [postsPerPage, setPostsPerPage] = useState<number>(10);
   const [isPageSizeDropupOpen, setIsPageSizeDropupOpen] = useState(false);
 
-  // 공지사항 상태
   const [notice, setNotice] = useState<SiteNotice | null>(null);
   const [isNoticeDetailOpen, setIsNoticeDetailOpen] = useState(false);
   const [isNoticeAutoPopup, setIsNoticeAutoPopup] = useState(false);
@@ -112,7 +110,6 @@ function FeedContent() {
   const [savingNotice, setSavingNotice] = useState(false);
   const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false);
 
-  // 상단 공지 알림 토스트 (CSS 애니메이션으로 페이드인 & 페이드아웃 보장)
   const [toastState, setToastState] = useState<{
     visible: boolean;
     animatingOut: boolean;
@@ -412,26 +409,25 @@ function FeedContent() {
   }, [filteredPosts, currentPage, postsPerPage]);
 
   return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
-      {/* 상단 공지 알림 토스트 (top-20, 순수 CSS 애니메이션으로 완벽한 페이드인 & 페이드아웃) */}
+    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 flex-1 flex flex-col min-w-0">
       {toastState.visible && (
         <div
-          className={`fixed top-20 left-1/2 z-[100] px-5 py-2.5 bg-blue-600 text-white border border-blue-400 rounded-none text-xs font-bold tracking-wide pointer-events-none shadow-2xl flex items-center gap-2 ${
+          className={`fixed top-16 sm:top-20 left-1/2 z-[100] px-4 py-2 bg-blue-600 text-white border border-blue-400 rounded-none text-xs font-bold tracking-wide pointer-events-none shadow-2xl flex items-center gap-2 max-w-[90vw] truncate ${
             toastState.animatingOut ? 'animate-notice-out' : 'animate-notice-in'
           }`}
         >
-          <Megaphone className="w-3.5 h-3.5" />
-          <span>{toastState.text}</span>
+          <Megaphone className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">{toastState.text}</span>
         </div>
       )}
 
       {/* 헤더 타이틀 및 새로고침 */}
-      <div className="flex items-center justify-between gap-3 pb-3 mb-2">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white transition-colors duration-300">
+      <div className="flex items-center justify-between gap-3 pb-3 mb-2 min-w-0">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white truncate">
             커뮤니티 피드
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 transition-colors duration-300">
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
             자유롭게 소통하고 게시글을 공유하세요.
           </p>
         </div>
@@ -439,7 +435,7 @@ function FeedContent() {
         <button
           onClick={handleManualRefresh}
           disabled={isRefreshing}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors duration-300 shadow-sm disabled:opacity-50 shrink-0"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition shadow-sm disabled:opacity-50 shrink-0"
           title="피드 새로고침"
         >
           <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
@@ -447,26 +443,26 @@ function FeedContent() {
         </button>
       </div>
 
-      {/* 공지사항 배너 (배경 채움 해제 + 투명 틴트 + X축 수평 중심선 일치) */}
+      {/* 공지사항 배너 */}
       {notice && (
         <div
           onClick={() => {
             setIsNoticeAutoPopup(false);
             setIsNoticeDetailOpen(true);
           }}
-          className="w-full rounded-none bg-blue-50/40 dark:bg-blue-950/20 border border-blue-500/40 dark:border-blue-500/40 hover:bg-blue-100/40 dark:hover:bg-blue-950/40 px-3.5 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-colors duration-300 group select-none mb-3"
+          className="w-full rounded-none bg-blue-50/40 dark:bg-blue-950/20 border border-blue-500/40 hover:bg-blue-100/40 dark:hover:bg-blue-950/40 px-3.5 py-2.5 flex items-center justify-between gap-2.5 cursor-pointer transition group select-none mb-3 min-w-0"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-6 h-6 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 bg-blue-100/70 dark:bg-blue-900/40 border border-blue-500/30 rounded-none transition-colors duration-300">
-              <Megaphone className="w-3.5 h-3.5 transition-colors duration-300" />
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-6 h-6 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 bg-blue-100/70 dark:bg-blue-900/40 border border-blue-500/30 rounded-none">
+              <Megaphone className="w-3.5 h-3.5" />
             </div>
-            <span className="text-sm font-black text-blue-600 dark:text-blue-400 shrink-0 leading-normal transition-colors duration-300">
+            <span className="text-xs sm:text-sm font-black text-blue-600 dark:text-blue-400 shrink-0">
               [공지사항]
             </span>
-            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate group-hover:underline leading-normal transition-colors duration-300">
+            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate group-hover:underline">
               {notice.title}
             </span>
-            <span className="text-xs font-semibold text-zinc-500 dark:text-white shrink-0 hidden sm:inline leading-normal transition-colors duration-300">
+            <span className="text-xs font-semibold text-zinc-500 dark:text-white shrink-0 hidden md:inline">
               ({new Date(notice.updated_at).toLocaleDateString()})
             </span>
           </div>
@@ -479,7 +475,7 @@ function FeedContent() {
                   e.stopPropagation();
                   setIsNoticeEditOpen(true);
                 }}
-                className="inline-flex items-center justify-center gap-1 h-7 px-2.5 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-500 text-white transition-colors duration-300 shadow-sm shrink-0 leading-normal"
+                className="inline-flex items-center justify-center gap-1 h-7 px-2 sm:px-2.5 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm shrink-0 whitespace-nowrap"
               >
                 <Pencil className="w-3 h-3" />
                 <span>공지 수정</span>
@@ -489,24 +485,24 @@ function FeedContent() {
         </div>
       )}
 
-      <hr className="border-zinc-200 dark:border-zinc-800 mb-5 transition-colors duration-300" />
+      <hr className="border-zinc-200 dark:border-zinc-800 mb-4 transition-colors duration-300" />
 
       {/* 검색창 및 필터 바 */}
-      <div className="flex items-center gap-2 mb-4">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-2 mb-3.5 min-w-0">
+        <div className="relative flex-1 min-w-0">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="제목, 작성자, 내용 검색 (공백 무시)"
-            className="w-full pl-9 pr-8 py-2.5 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors duration-300"
+            className="w-full pl-9 pr-8 py-2 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors duration-300"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -516,7 +512,7 @@ function FeedContent() {
         <button
           type="button"
           onClick={handleOpenFilterModal}
-          className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold rounded-xl border transition-colors duration-300 shadow-sm shrink-0 ${
+          className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border transition shadow-sm shrink-0 ${
             selectedFilterTags.length > 0
               ? 'bg-emerald-500 text-white border-emerald-600 shadow-emerald-500/20'
               : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -534,18 +530,18 @@ function FeedContent() {
       </div>
 
       {selectedFilterTags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+        <div className="flex flex-wrap items-center gap-1.5 mb-3 min-w-0">
           <span className="text-[11px] text-zinc-400 font-medium">선택된 태그:</span>
           {selectedFilterTags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition-colors duration-300"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 transition"
             >
               #{tag}
               <button
                 type="button"
                 onClick={() => setSelectedFilterTags((prev) => prev.filter((t) => t !== tag))}
-                className="hover:text-rose-500 transition-colors duration-300"
+                className="hover:text-rose-500 transition"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -554,7 +550,7 @@ function FeedContent() {
           <button
             type="button"
             onClick={() => setSelectedFilterTags([])}
-            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1 transition-colors duration-300"
+            className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 underline ml-1 transition"
           >
             초기화
           </button>
@@ -562,11 +558,11 @@ function FeedContent() {
       )}
 
       {/* 필터 탭 바 */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-6">
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold transition-colors duration-300">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-5 min-w-0">
+        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
             onClick={() => setOfficialFilter('all')}
-            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap ${
               officialFilter === 'all'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -576,7 +572,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setOfficialFilter('official')}
-            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap ${
               officialFilter === 'official'
                 ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -586,7 +582,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setOfficialFilter('unofficial')}
-            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap ${
               officialFilter === 'unofficial'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -596,10 +592,10 @@ function FeedContent() {
           </button>
         </div>
 
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold transition-colors duration-300">
+        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 text-xs font-semibold">
           <button
             onClick={() => setSortType('latest')}
-            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap ${
               sortType === 'latest'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -609,7 +605,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setSortType('popular')}
-            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap ${
               sortType === 'popular'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -619,7 +615,7 @@ function FeedContent() {
           </button>
           <button
             onClick={() => setSortType('oldest')}
-            className={`px-3 py-1.5 rounded-lg transition-colors duration-300 whitespace-nowrap ${
+            className={`px-2.5 sm:px-3 py-1 rounded-lg transition whitespace-nowrap ${
               sortType === 'oldest'
                 ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm'
                 : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
@@ -630,6 +626,7 @@ function FeedContent() {
         </div>
       </div>
 
+      {/* 피드 목록 영역 */}
       {loading ? (
         <div className="py-20 text-center text-zinc-400 dark:text-zinc-500">게시글 목록을 불러오는 중...</div>
       ) : filteredPosts.length === 0 ? (
@@ -638,7 +635,7 @@ function FeedContent() {
           <p className="text-zinc-700 dark:text-zinc-300 font-medium">해당 조건에 일치하는 게시글이 없습니다.</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3.5 w-full min-w-0">
           {paginatedPosts.map((post) => {
             const thumbnail = post.thumbnail_url || extractFirstImage(post.content);
             const plainText = extractPlainText(post.content);
@@ -648,29 +645,29 @@ function FeedContent() {
               <article
                 key={post.id}
                 onClick={() => handleOpenPost(post.id)}
-                className={`group p-4 sm:p-6 rounded-2xl transition duration-300 shadow-sm dark:shadow-md cursor-pointer select-none relative ${
+                className={`group p-3.5 sm:p-5 rounded-2xl transition duration-300 shadow-sm cursor-pointer select-none relative w-full min-w-0 overflow-hidden ${
                   post.delete_requested
                     ? 'bg-amber-50/70 dark:bg-amber-950/20 border-2 border-amber-400 dark:border-amber-600'
                     : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600'
                 }`}
               >
                 {post.delete_requested && (
-                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-amber-200 dark:border-amber-900/60">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
-                      <AlertCircle className="w-4 h-4" />
-                      <span>비공개 처리됨 (삭제 신청 대기 중)</span>
+                  <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-amber-200 dark:border-amber-900/60 min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400 truncate">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span className="truncate">비공개 처리됨 (삭제 신청 대기 중)</span>
                     </div>
-                    <span className="text-xs font-extrabold px-2.5 py-1 rounded-md bg-amber-500 text-white shadow-sm">
-                      &lt;삭제 신청 게시글&gt;
+                    <span className="text-[10px] sm:text-xs font-extrabold px-2 py-0.5 rounded bg-amber-500 text-white shrink-0">
+                      삭제 신청
                     </span>
                   </div>
                 )}
 
-                <div className="flex items-start justify-between gap-3 sm:gap-6">
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <h2 className="text-base sm:text-xl font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-300 line-clamp-1">
+                <div className="flex items-start justify-between gap-3 sm:gap-5 w-full min-w-0">
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <h2 className="text-sm sm:text-base md:text-lg font-bold text-zinc-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1 break-words break-all">
                       {post.is_official && (
-                        <span className="inline-block text-emerald-600 dark:text-emerald-400 mr-1.5 font-extrabold">
+                        <span className="inline-block text-emerald-600 dark:text-emerald-400 mr-1.5 font-extrabold shrink-0">
                           [공식]
                         </span>
                       )}
@@ -678,11 +675,11 @@ function FeedContent() {
                     </h2>
 
                     {post.tags && post.tags.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
                         {post.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50 transition-colors duration-300"
+                            className="text-[10px] sm:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200/80 dark:border-emerald-900/50"
                           >
                             #{tag}
                           </span>
@@ -690,25 +687,25 @@ function FeedContent() {
                       </div>
                     )}
 
-                    <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed transition-colors duration-300">
+                    <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed break-words break-all">
                       {plainText || '내용이 없습니다.'}
                     </p>
 
-                    <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs text-zinc-500 pt-1">
-                      <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium leading-normal transition-colors duration-300">
-                        <CrownIcon role={post.author_role} className="w-4 h-4 shrink-0" />
-                        <span>{post.author_nickname}</span>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3.5 text-xs text-zinc-500 pt-1">
+                      <span className="inline-flex items-center gap-1 text-zinc-700 dark:text-zinc-300 font-medium truncate max-w-[120px] sm:max-w-none">
+                        <CrownIcon role={post.author_role} className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{post.author_nickname}</span>
                       </span>
-                      <span className="inline-flex items-center gap-1 text-zinc-400 dark:text-zinc-500 leading-normal transition-colors duration-300">
+                      <span className="inline-flex items-center gap-1 text-zinc-400 dark:text-zinc-500 shrink-0">
                         <Calendar className="w-3.5 h-3.5" />
                         <span>{new Date(post.created_at).toLocaleDateString()}</span>
                       </span>
-                      <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium leading-normal transition-colors duration-300">
+                      <span className="inline-flex items-center gap-1 text-rose-500 dark:text-rose-400 font-medium shrink-0">
                         <Heart className="w-3.5 h-3.5 fill-rose-500/20" />
                         <span>{post.likes_count ?? 0}</span>
                       </span>
                       {imageCount > 1 && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-900/50 leading-normal transition-colors duration-300">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 shrink-0">
                           <ImageIcon className="w-3 h-3" />
                           <span>+{imageCount}</span>
                         </span>
@@ -717,12 +714,12 @@ function FeedContent() {
                   </div>
 
                   {post.is_preview_hidden ? (
-                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none transition-colors duration-300">
-                      <EyeOff className="w-5 h-5 sm:w-6 sm:h-6 text-zinc-400 dark:text-zinc-500" />
-                      <span className="text-[9px] sm:text-[10px] font-medium text-zinc-500 dark:text-zinc-400">미리보기 가림</span>
+                    <div className="relative w-18 h-18 sm:w-24 sm:h-24 md:w-28 md:h-28 aspect-square shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-1 select-none">
+                      <EyeOff className="w-5 h-5 text-zinc-400" />
+                      <span className="text-[9px] font-medium">가림</span>
                     </div>
                   ) : thumbnail ? (
-                    <div className="relative w-20 h-20 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80 transition-colors duration-300">
+                    <div className="relative w-18 h-18 sm:w-24 sm:h-24 md:w-28 md:h-28 aspect-square shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800/80">
                       <img
                         src={thumbnail}
                         alt={post.title}
@@ -736,13 +733,13 @@ function FeedContent() {
                 {post.delete_requested && isAdmin && (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="mt-4 pt-3 border-t border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+                    className="mt-3 pt-2.5 border-t border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs"
                   >
                     <div className="flex items-center gap-2 order-2 sm:order-1">
                       <button
                         type="button"
                         onClick={() => setConfirmModal({ type: 'approve', post })}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold transition duration-300 shadow-sm"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold transition shadow-sm"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         허락 (삭제)
@@ -750,16 +747,16 @@ function FeedContent() {
                       <button
                         type="button"
                         onClick={() => setConfirmModal({ type: 'reject', post })}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-800 text-white font-bold transition duration-300 shadow-sm"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-700 hover:bg-zinc-800 text-white font-bold transition shadow-sm"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         거절 (복구)
                       </button>
                     </div>
 
-                    <div className="text-zinc-700 dark:text-zinc-300 font-medium order-1 sm:order-2 bg-amber-100/80 dark:bg-amber-900/40 px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-800 max-w-full break-words">
+                    <div className="text-zinc-700 dark:text-zinc-300 font-medium order-1 sm:order-2 bg-amber-100/80 dark:bg-amber-900/40 px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-800 max-w-full break-words">
                       <span className="font-bold text-amber-900 dark:text-amber-200">삭제사유: </span>
-                      {post.delete_reason || '사유가 입력되지 않았습니다.'}
+                      {post.delete_reason || '사유 미입력'}
                     </div>
                   </div>
                 )}
@@ -769,18 +766,18 @@ function FeedContent() {
         </div>
       )}
 
-      {/* 하단 페이지네이션 및 우측 드롭업 */}
+      {/* 하단 페이지네이션 및 드롭업 */}
       {filteredPosts.length > 0 && (
-        <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors duration-300">
-          <div className="hidden sm:block text-xs text-zinc-400 w-32 transition-colors duration-300">
+        <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 w-full min-w-0">
+          <div className="text-xs text-zinc-400 shrink-0">
             전체 {filteredPosts.length}개
           </div>
 
-          <div className="flex items-center gap-1 justify-center">
+          <div className="flex items-center gap-1 justify-center flex-wrap">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition duration-300"
+              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition"
               title="이전 페이지"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -803,7 +800,7 @@ function FeedContent() {
                     {hasGap && <span className="px-1 text-xs text-zinc-400">...</span>}
                     <button
                       onClick={() => setCurrentPage(page)}
-                      className={`min-w-8 h-8 px-2 text-xs font-semibold rounded-lg transition duration-300 ${
+                      className={`min-w-7 h-7 px-2 text-xs font-semibold rounded-lg transition ${
                         currentPage === page
                           ? 'bg-emerald-600 text-white shadow-sm'
                           : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -818,16 +815,16 @@ function FeedContent() {
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition duration-300"
+              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:pointer-events-none transition"
               title="다음 페이지"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="relative self-end sm:self-auto">
+          <div className="relative shrink-0">
             {isPageSizeDropupOpen && (
-              <div className="absolute bottom-full mb-1.5 right-0 z-30 w-36 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute bottom-full mb-1.5 right-0 z-30 w-36 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl py-1 overflow-hidden">
                 {PAGE_SIZE_OPTIONS.map((size) => {
                   const isSelected = postsPerPage === size;
                   return (
@@ -835,7 +832,7 @@ function FeedContent() {
                       key={size}
                       type="button"
                       onClick={() => handlePageSizeChange(size)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition duration-300 ${
+                      className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold transition ${
                         isSelected
                           ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
                           : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
@@ -852,7 +849,7 @@ function FeedContent() {
             <button
               type="button"
               onClick={() => setIsPageSizeDropupOpen(!isPageSizeDropupOpen)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold transition duration-300 shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white font-semibold transition shadow-sm"
             >
               <span>{postsPerPage}개씩 보기</span>
               <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
@@ -864,11 +861,11 @@ function FeedContent() {
       {/* 공지 상세 모달 */}
       {isNoticeDetailOpen && notice && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300"
+          className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm"
           onClick={handleCloseNoticePopup}
         >
           <div
-            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-300"
+            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-blue-100 dark:border-blue-900/60 pb-3">
@@ -883,20 +880,20 @@ function FeedContent() {
               <button
                 type="button"
                 onClick={handleCloseNoticePopup}
-                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition duration-300"
+                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-sm font-extrabold text-blue-700 dark:text-blue-400">
+              <h4 className="text-sm font-extrabold text-blue-700 dark:text-blue-400 break-words">
                 {notice.title}
               </h4>
               <p className="text-[11px] text-zinc-400">
                 최종 갱신일: {new Date(notice.updated_at).toLocaleString()}
               </p>
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto rounded-none">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto rounded-none break-words">
                 {notice.content}
               </div>
             </div>
@@ -910,14 +907,14 @@ function FeedContent() {
                     onChange={(e) => setDontShowAgainChecked(e.target.checked)}
                     className="rounded-none border-zinc-400 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                   />
-                  <span>다음 공지사항 갱신 까지 보지 않기</span>
+                  <span>다음 공지 갱신 시까지 보지 않기</span>
                 </label>
               )}
 
               <button
                 type="button"
                 onClick={handleCloseNoticePopup}
-                className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-none transition duration-300 shadow-sm"
+                className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-none transition shadow-sm"
               >
                 닫기
               </button>
@@ -929,11 +926,11 @@ function FeedContent() {
       {/* 관리자 공지 수정 팝업 */}
       {isNoticeEditOpen && (
         <div
-          className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300"
+          className="fixed inset-0 z-[75] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md"
           onClick={() => !savingNotice && setIsNoticeEditOpen(false)}
         >
           <div
-            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-300"
+            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-blue-100 dark:border-blue-900/60 pb-3">
@@ -944,7 +941,7 @@ function FeedContent() {
               <button
                 type="button"
                 onClick={() => setIsNoticeEditOpen(false)}
-                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition duration-300"
+                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -960,7 +957,7 @@ function FeedContent() {
                   value={editNoticeTitle}
                   onChange={(e) => setEditNoticeTitle(e.target.value)}
                   placeholder="공지사항 제목을 입력하세요"
-                  className="w-full px-3.5 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-300"
+                  className="w-full px-3.5 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -973,7 +970,7 @@ function FeedContent() {
                   onChange={(e) => setEditNoticeContent(e.target.value)}
                   placeholder="상세 공지 내용을 입력하세요"
                   rows={6}
-                  className="w-full px-3.5 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-300"
+                  className="w-full px-3.5 py-2 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -982,14 +979,14 @@ function FeedContent() {
                   type="button"
                   onClick={() => setIsNoticeEditOpen(false)}
                   disabled={savingNotice}
-                  className="px-4 py-2 text-xs font-semibold rounded-none border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition duration-300 disabled:opacity-50"
+                  className="px-4 py-2 text-xs font-semibold rounded-none border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={savingNotice}
-                  className="px-5 py-2 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-700 text-white transition duration-300 disabled:opacity-50"
+                  className="px-5 py-2 text-xs font-bold rounded-none bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50"
                 >
                   {savingNotice ? '갱신 중...' : '공지 갱신 완료'}
                 </button>
@@ -1002,11 +999,11 @@ function FeedContent() {
       {/* 태그 필터 팝업 */}
       {isFilterModalOpen && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300"
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
           onClick={() => setIsFilterModalOpen(false)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-300"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
@@ -1017,17 +1014,17 @@ function FeedContent() {
               <button
                 type="button"
                 onClick={() => setIsFilterModalOpen(false)}
-                className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition duration-300"
+                className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              선택한 태그가 하나라도 포함된 게시글이 피드에 표시됩니다. (다중 선택 가능)
+              선택한 태그가 하나라도 포함된 게시글이 피드에 표시됩니다.
             </p>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {AVAILABLE_TAGS.map((tag) => {
                 const isSelected = tempFilterTags.includes(tag);
                 return (
@@ -1041,7 +1038,7 @@ function FeedContent() {
                         setTempFilterTags((prev) => [...prev, tag]);
                       }
                     }}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition duration-300 border ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition border ${
                       isSelected
                         ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
                         : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
@@ -1058,7 +1055,7 @@ function FeedContent() {
               <button
                 type="button"
                 onClick={handleResetFilterModal}
-                className="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:underline transition duration-300"
+                className="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:underline transition"
               >
                 전체 해제
               </button>
@@ -1066,14 +1063,14 @@ function FeedContent() {
                 <button
                   type="button"
                   onClick={() => setIsFilterModalOpen(false)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition duration-300"
+                  className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
                 >
                   취소
                 </button>
                 <button
                   type="button"
                   onClick={handleApplyFilterModal}
-                  className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition duration-300 shadow-sm"
+                  className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
                 >
                   확인
                 </button>
@@ -1086,11 +1083,11 @@ function FeedContent() {
       {/* 관리자 확인 팝업 */}
       {confirmModal && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300"
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
           onClick={() => !actionProcessing && setConfirmModal(null)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-300"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-bold text-zinc-900 dark:text-white">
@@ -1106,7 +1103,7 @@ function FeedContent() {
                 type="button"
                 onClick={() => setConfirmModal(null)}
                 disabled={actionProcessing}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition duration-300 disabled:opacity-50"
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition disabled:opacity-50"
               >
                 아니오
               </button>
@@ -1114,7 +1111,7 @@ function FeedContent() {
                 type="button"
                 onClick={confirmModal.type === 'approve' ? handleApproveDelete : handleRejectDelete}
                 disabled={actionProcessing}
-                className={`px-4 py-2 text-xs font-semibold rounded-xl text-white transition duration-300 disabled:opacity-50 ${
+                className={`px-4 py-2 text-xs font-semibold rounded-xl text-white transition disabled:opacity-50 ${
                   confirmModal.type === 'approve' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
                 }`}
               >
