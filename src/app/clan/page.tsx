@@ -9,17 +9,14 @@ import {
   Heart,
   Calendar,
   Image as ImageIcon,
+  MessageSquare,
   Search,
   Filter,
   EyeOff,
-  X,
-  Check,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   AlertCircle,
-  CheckCircle2,
-  XCircle,
   ArrowLeftRight,
   Siren
 } from 'lucide-react';
@@ -40,6 +37,7 @@ interface Post {
   created_at: string;
   author_id: string;
   likes_count?: number;
+  comments_count?: number;
   author_nickname?: string;
   author_role?: RoleType;
   is_official?: boolean;
@@ -137,7 +135,6 @@ function ClanFeedContent() {
     });
 
     fetchPosts();
-    checkUnreadReports();
   }, []);
 
   const checkUnreadReports = async () => {
@@ -187,10 +184,25 @@ function ClanFeedContent() {
         if (r.email === 'iwsamuel08@gmail.com' && r.user_id) roleMap[r.user_id] = 'creator';
       });
 
+      // 댓글 + 답글 수 조회 (DB 컬럼 및 실시간 count fallback)
+      const postIds = postsData.map((p) => p.id);
+      const commentCountMap: Record<string, number> = {};
+      if (postIds.length > 0) {
+        const { data: commentsCountData } = await supabase
+          .from('post_comments')
+          .select('post_id')
+          .in('post_id', postIds);
+        commentsCountData?.forEach((c: any) => {
+          const pid = String(c.post_id);
+          commentCountMap[pid] = (commentCountMap[pid] || 0) + 1;
+        });
+      }
+
       setPosts(
         postsData.map((post) => ({
           ...post,
           likes_count: post.likes_count ?? 0,
+          comments_count: post.comments_count !== undefined ? post.comments_count : (commentCountMap[String(post.id)] || 0),
           author_nickname: profileMap[post.author_id] || '작성자',
           author_role: roleMap[post.author_id] || null,
           is_official: Boolean(post.is_official),
@@ -278,7 +290,6 @@ function ClanFeedContent() {
 
   return (
     <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 flex-1 flex flex-col min-w-0">
-      {/* 교체 버튼 및 헤더 */}
       <div className="flex items-center justify-between gap-3 pb-3 mb-2 min-w-0">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
@@ -332,12 +343,10 @@ function ClanFeedContent() {
         </div>
       </div>
 
-      {/* 공지사항 배너 컴포넌트 탑재 */}
       <NoticeBanner currentUserRole={currentUserRole} />
 
       <hr className="border-zinc-200 dark:border-zinc-800 mb-4" />
 
-      {/* 검색 및 필터 바 */}
       <div className="flex items-center gap-2 mb-3.5 min-w-0">
         <div className="relative flex-1 min-w-0">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -368,7 +377,6 @@ function ClanFeedContent() {
         </button>
       </div>
 
-      {/* 공식/비공식 탭 및 정렬 탭 */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-semibold">
           <button
@@ -413,7 +421,6 @@ function ClanFeedContent() {
         </div>
       </div>
 
-      {/* 피드 목록 */}
       {loading ? (
         <div className="py-20 text-center text-zinc-400">클랜 피드를 불러오는 중...</div>
       ) : filteredPosts.length === 0 ? (
@@ -488,9 +495,16 @@ function ClanFeedContent() {
                         <Heart className="w-3.5 h-3.5 fill-rose-500/20" />
                         <span>{post.likes_count ?? 0}</span>
                       </span>
+
+                      {/* 댓글 및 답글 통합 수 표시 */}
+                      <span className="flex items-center gap-1 text-blue-500 dark:text-blue-400 font-medium">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>{post.comments_count ?? 0}</span>
+                      </span>
+
                       {imageCount > 1 && (
                         <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50">
-                          <ImageIcon className="w-3 h-3" />
+                          <ImageIcon className="w-3.5 h-3.5" />
                           <span>+{imageCount}</span>
                         </span>
                       )}
@@ -541,7 +555,7 @@ function ClanFeedContent() {
         </div>
       )}
 
-      {/* 페이지네이션 및 드롭업 */}
+      {/* 페이지네이션 */}
       {filteredPosts.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 w-full">
           <div className="text-xs text-zinc-400">전체 {filteredPosts.length}개</div>
@@ -641,7 +655,6 @@ function ClanFeedContent() {
         </div>
       )}
 
-      {/* 삭제 승인/거절 모달 */}
       {confirmModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"

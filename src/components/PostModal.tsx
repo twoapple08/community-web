@@ -18,12 +18,10 @@ import {
   Check,
   AlertTriangle,
   Pencil,
-  Loader2,
   Heart,
   ShieldCheck,
   Send,
-  Siren,
-  ExternalLink
+  Siren
 } from 'lucide-react';
 
 interface Post {
@@ -33,6 +31,7 @@ interface Post {
   created_at: string;
   author_id: string;
   likes_count?: number;
+  comments_count?: number;
   is_official?: boolean;
   delete_requested?: boolean;
   delete_reason?: string | null;
@@ -72,7 +71,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // 공식글 삭제 신청 전용 모달 상태
   const [showRequestDeleteModal, setShowRequestDeleteModal] = useState(false);
   const [deleteReasonText, setDeleteReasonText] = useState("");
   const [requestSubmitting, setRequestSubmitting] = useState(false);
@@ -84,7 +82,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false);
   const [freezeActionText, setFreezeActionText] = useState('');
 
-  // 공통 커스텀 팝업
   const [customPopup, setCustomPopup] = useState<{
     isOpen: boolean;
     title: string;
@@ -237,7 +234,6 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
-  // 공식 게시글 삭제 신청 제출
   const handleSubmitDeleteRequest = async () => {
     if (!post) return;
     if (await checkFrozen('게시글 삭제를')) return;
@@ -476,7 +472,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
   return (
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-3 sm:p-6 sm:py-8 flex justify-center items-start"
-      onClick={onClose}
+      onClick={(e) => {
+        // [핵심 가드] 오직 게시글 오버레이 배경 자체를 직접 클릭했을 때만 닫힘 (팝업 버블링 완벽 차단)
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
         className="relative w-full max-w-3xl my-auto sm:my-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden pb-16"
@@ -646,11 +647,14 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         )}
       </div>
 
-      {/* 공식 게시글 삭제 신청 모달 (복구 완료!) */}
+      {/* 공식 게시글 삭제 신청 모달 (전파 차단 적용) */}
       {mounted && showRequestDeleteModal && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
-          onClick={() => !requestSubmitting && setShowRequestDeleteModal(false)}
+          className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!requestSubmitting) setShowRequestDeleteModal(false);
+          }}
         >
           <div
             className="w-full max-w-md bg-white dark:bg-zinc-900 border-2 border-amber-500 rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
@@ -686,7 +690,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
               <button
                 type="button"
-                onClick={() => setShowRequestDeleteModal(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowRequestDeleteModal(false);
+                }}
                 disabled={requestSubmitting}
                 className="px-4 py-1.5 text-xs font-semibold rounded-none border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
               >
@@ -694,7 +701,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               </button>
               <button
                 type="button"
-                onClick={handleSubmitDeleteRequest}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSubmitDeleteRequest();
+                }}
                 disabled={requestSubmitting}
                 className="px-5 py-1.5 text-xs font-bold rounded-none bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-1.5"
               >
@@ -707,9 +717,15 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 외부 링크 확인 모달 */}
+      {/* 외부 링크 확인 모달 (전파 차단 적용) */}
       {mounted && linkConfirmUrl && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setLinkConfirmUrl(null)}>
+        <div
+          className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setLinkConfirmUrl(null);
+          }}
+        >
           <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-none p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold">외부 링크 접속 확인</h3>
             <p className="text-xs text-zinc-400">이 링크로 이동하시겠습니까?</p>
@@ -717,9 +733,18 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
               {linkConfirmUrl}
             </div>
             <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-1.5 text-xs border rounded-none">취소</button>
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLinkConfirmUrl(null);
+                }}
+                className="px-4 py-1.5 text-xs border rounded-none"
+              >
+                취소
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
                   const url = linkConfirmUrl;
                   setLinkConfirmUrl(null);
                   window.open(url, '_blank', 'noopener,noreferrer');
@@ -734,10 +759,22 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 이미지 확대 모달 */}
+      {/* 이미지 확대 모달 (전파 차단 적용) */}
       {mounted && previewImageUrl && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/90" onClick={() => setPreviewImageUrl(null)}>
-          <button onClick={() => setPreviewImageUrl(null)} className="absolute top-5 right-5 text-white p-2">
+        <div
+          className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/90"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPreviewImageUrl(null);
+          }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewImageUrl(null);
+            }}
+            className="absolute top-5 right-5 text-white p-2"
+          >
             <X className="w-6 h-6" />
           </button>
           <img src={previewImageUrl} alt="미리보기" className="max-h-[85vh] max-w-full rounded-none" onClick={(e) => e.stopPropagation()} />
@@ -745,15 +782,37 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         document.body
       )}
 
-      {/* 영구 삭제 확인 모달 */}
+      {/* 영구 삭제 확인 모달 (전파 차단 적용) */}
       {mounted && showDeleteConfirm && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80" onClick={() => setShowDeleteConfirm(false)}>
+        <div
+          className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/80"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDeleteConfirm(false);
+          }}
+        >
           <div className="w-full max-w-sm bg-zinc-900 p-6 rounded-none space-y-4 border border-zinc-800" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold text-white">게시글 삭제</h3>
             <p className="text-xs text-zinc-400">게시글을 삭제하시겠습니까? 데이터가 복구되지 않습니다.</p>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-1.5 text-xs border border-zinc-700 text-zinc-300 rounded-none">취소</button>
-              <button onClick={handleExecuteDelete} className="px-4 py-1.5 text-xs font-bold bg-red-600 text-white rounded-none">삭제</button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteConfirm(false);
+                }}
+                className="px-4 py-1.5 text-xs border border-zinc-700 text-zinc-300 rounded-none"
+              >
+                취소
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExecuteDelete();
+                }}
+                className="px-4 py-1.5 text-xs font-bold bg-red-600 text-white rounded-none"
+              >
+                삭제
+              </button>
             </div>
           </div>
         </div>,

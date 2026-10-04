@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom'
 interface FreezeModalProps {
   isOpen: boolean
   onClose: () => void
-  actionText: string // "좋아요를", "신고를", "게시글 작성을", "게시글 수정을", "게시글 삭제를"
+  actionText: string
 }
 
 export default function FreezeModal({ isOpen, onClose, actionText }: FreezeModalProps) {
@@ -20,8 +20,11 @@ export default function FreezeModal({ isOpen, onClose, actionText }: FreezeModal
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
+      className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="w-full max-w-sm bg-white dark:bg-black border-2 border-sky-600 dark:border-sky-400 rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
@@ -39,7 +42,10 @@ export default function FreezeModal({ isOpen, onClose, actionText }: FreezeModal
         <div className="flex justify-center pt-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="px-6 py-2 text-xs font-bold rounded-none bg-sky-600 hover:bg-sky-700 dark:bg-sky-400 dark:hover:bg-sky-300 text-white dark:text-black transition shadow-sm cursor-pointer"
           >
             확인
