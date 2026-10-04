@@ -1,3 +1,58 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 동영상 첨부 및 아카라이브식 플레이어 시스템 구축"
+echo "=========================================================="
+
+# 1. 동영상 첫 프레임 캡처 유틸리티 (src/lib/videoUtils.ts)
+cat << 'FILE_VIDEO_UTILS' > src/lib/videoUtils.ts
+export async function captureVideoFirstFrame(file: File): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+
+    // 첫 프레임 디코딩을 위해 0.05초 시점으로 이동
+    video.onloadedmetadata = () => {
+      video.currentTime = 0.05;
+    };
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            URL.revokeObjectURL(url);
+            resolve(blob);
+          }, 'image/jpeg', 0.85);
+        } else {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        }
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }
+    };
+
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+  });
+}
+FILE_VIDEO_UTILS
+
+# 2. 에디터 컴포넌트 (Editor.tsx) - 동영상 업로드 버튼 및 TipTap 비디오 노드 탑재
+cat << 'FILE_EDITOR' > src/components/Editor.tsx
 'use client'
 
 import { useEditor, EditorContent, Mark, Node, mergeAttributes } from '@tiptap/react'
@@ -756,3 +811,93 @@ export default function Editor({ content, onChange, minHeight = '300px' }: Edito
     </div>
   )
 }
+FILE_EDITOR
+
+# 3. write/page.tsx: 동영상 첫 프레임(poster) 자동 감지 및 썸네일 우선 등록
+cat << 'FILE_PATCH_WRITE' > patch_write_media.py
+with open("src/app/write/page.tsx", "r", encoding="utf-8") as f:
+    content = f.read()
+
+old_detected = """  const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map(
+    (m) => m[1]
+  );
+
+  useEffect(() => {
+    if (detectedImages.length > 0 && !selectedThumbnail) {
+      setSelectedThumbnail(detectedImages[0]);
+    }
+  }, [content]);"""
+
+new_detected = """  // 이미지 src 및 비디오 첫 프레임 poster 동시 추출
+  const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map((m) => m[1]);
+  const detectedPosters: string[] = Array.from(content.matchAll(/<video[^>]+poster=['"]([^'"]+)['"]/gi)).map((m) => m[1]);
+  const allDetectedMedia = Array.from(new Set([...detectedImages, ...detectedPosters]));
+
+  useEffect(() => {
+    if (allDetectedMedia.length > 0 && !selectedThumbnail) {
+      setSelectedThumbnail(allDetectedMedia[0]);
+    }
+  }, [content]);"""
+
+if old_detected in content:
+    content = content.replace(old_detected, new_detected)
+
+# detectedImages.length > 0 바인딩 교체
+content = content.replace("detectedImages.length > 0", "allDetectedMedia.length > 0")
+content = content.replace("detectedImages.map", "allDetectedMedia.map")
+content = content.replace("(detectedImages.length > 0 ? detectedImages[0] : null)", "(allDetectedMedia.length > 0 ? allDetectedMedia[0] : null)")
+
+with open("src/app/write/page.tsx", "w", encoding="utf-8") as f:
+    f.write(content)
+print("write/page.tsx video poster thumbnail logic successfully updated")
+FILE_PATCH_WRITE
+python3 patch_write_media.py || true
+rm -f patch_write_media.py
+
+# 4. 피드 목록 썸네일 추출에 poster fallback 추가 (clan & community)
+cat << 'FILE_PATCH_FEEDS' > patch_feed_posters.py
+def patch_feed(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        code = f.read()
+    
+    old_extract = """const extractFirstImage = (html: string): string | null => {
+  if (!html) return null;
+  const match = html.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
+  return match ? match[1] : null;
+};"""
+
+    new_extract = """const extractFirstImage = (html: string): string | null => {
+  if (!html) return null;
+  const imgMatch = html.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
+  if (imgMatch) return imgMatch[1];
+  const posterMatch = html.match(/<video[^>]+poster=['"]([^'"]+)['"]/i);
+  if (posterMatch) return posterMatch[1];
+  return null;
+};"""
+
+    if old_extract in code:
+        code = code.replace(old_extract, new_extract)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(code)
+        print(f"{file_path} patched with video poster fallback")
+
+patch_feed("src/app/clan/page.tsx")
+patch_feed("src/app/community/page.tsx")
+FILE_PATCH_FEEDS
+python3 patch_feed_posters.py || true
+rm -f patch_feed_posters.py
+
+echo "--> 소스코드 정비 완료. 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 에러 없음! Git 실서버(Vercel) 배포를 시작합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "feat: 동영상 전용 버킷 분리, 최대 1GB 지원, 첫프레임 썸네일 자동 캡처 및 아카라이브 플레이어 구현"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="

@@ -43,8 +43,11 @@ interface Post {
 
 const extractFirstImage = (html: string): string | null => {
   if (!html) return null;
-  const match = html.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
-  return match ? match[1] : null;
+  const imgMatch = html.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
+  if (imgMatch) return imgMatch[1];
+  const posterMatch = html.match(/<video[^>]+poster=['"]([^'"]+)['"]/i);
+  if (posterMatch) return posterMatch[1];
+  return null;
 };
 
 const extractPlainText = (html: string): string => {

@@ -172,13 +172,14 @@ function WriteContent() {
     }
   }
 
-  const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map(
-    (m) => m[1]
-  );
+  // 이미지 src 및 비디오 첫 프레임 poster 동시 추출
+  const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map((m) => m[1]);
+  const detectedPosters: string[] = Array.from(content.matchAll(/<video[^>]+poster=['"]([^'"]+)['"]/gi)).map((m) => m[1]);
+  const allDetectedMedia = Array.from(new Set([...detectedImages, ...detectedPosters]));
 
   useEffect(() => {
-    if (detectedImages.length > 0 && !selectedThumbnail) {
-      setSelectedThumbnail(detectedImages[0]);
+    if (allDetectedMedia.length > 0 && !selectedThumbnail) {
+      setSelectedThumbnail(allDetectedMedia[0]);
     }
   }, [content]);
 
@@ -315,7 +316,7 @@ function WriteContent() {
         feed_type: feedType,
         board_category: feedType === 'community' ? selectedBoard : null,
         tags: feedType === 'clan' ? selectedTags : [],
-        thumbnail_url: selectedThumbnail || (detectedImages.length > 0 ? detectedImages[0] : null),
+        thumbnail_url: selectedThumbnail || (allDetectedMedia.length > 0 ? detectedImages[0] : null),
         is_preview_hidden: isPreviewHidden,
       },
     ])
@@ -460,7 +461,7 @@ function WriteContent() {
           />
         </div>
 
-        {detectedImages.length > 0 && (
+        {allDetectedMedia.length > 0 && (
           <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-300">
@@ -482,7 +483,7 @@ function WriteContent() {
             </div>
 
             <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
-              {detectedImages.map((src, idx) => {
+              {allDetectedMedia.map((src, idx) => {
                 const isMain = selectedThumbnail === src && !isPreviewHidden;
                 return (
                   <div
