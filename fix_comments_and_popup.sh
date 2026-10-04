@@ -1,3 +1,11 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 댓글 세로폭 축소, 답글 접기/펼치기, 신고팝업 중앙배치 적용"
+echo "=========================================================="
+
+cat << 'FILE_COMMENTS' > src/components/CommentsSection.tsx
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
@@ -753,3 +761,19 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     </div>
   )
 }
+FILE_COMMENTS
+
+echo "--> 소스코드 정비 완료. 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 에러 없음! 실서버(Vercel) 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "fix: 댓글/답글 세로폭 축소, 답글 기본 접힘 토글, 신고 팝업 중앙 포털화"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="
