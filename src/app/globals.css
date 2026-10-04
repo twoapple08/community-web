@@ -6,6 +6,8 @@ html {
   -webkit-text-size-adjust: 100%;
   -moz-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* 실버 팰리스 핵심 메커니즘: 화면 폭에 연동되는 뷰포트 클램프 (줌 슬라이더 조작에도 실물 크기 불변) */
+  font-size: clamp(12px, 3.8vw, 15px);
   width: 100%;
   min-height: 100%;
   transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), color 300ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -38,7 +40,6 @@ html:not(.dark) {
   transition-duration: 300ms;
 }
 
-/* 텍스트 줄바꿈 전역 안정화 */
 p, h1, h2, h3, h4, h5, h6, span, a {
   overflow-wrap: anywhere;
   word-break: break-word;
