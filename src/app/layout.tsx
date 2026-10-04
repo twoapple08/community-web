@@ -5,6 +5,7 @@ import AdminModal from "@/components/AdminModal";
 import UserHubModal from "@/components/UserHubModal";
 import BlacklistModal from "@/components/BlacklistModal";
 import TermsModal from "@/components/TermsModal";
+import AdminReplyPopup from "@/components/AdminReplyPopup";
 import './globals.css'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -138,28 +139,16 @@ export default function RootLayout({
     <html lang="ko" className="dark">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-        
-        {/* 브라우저 타이틀 및 메타태그 */}
         <title>스틱파이터 클랜 커뮤니티</title>
         <meta name="description" content="자신만의 클랜을 홍보하세요" />
-
-        {/* 새 도메인 기준 파비콘 및 앱 아이콘 (캐시 강제 무력화 v=3) */}
         <link rel="icon" href="/icon.png?v=3" sizes="any" />
         <link rel="apple-touch-icon" href="/icon.png?v=3" />
-
-        {/* 카카오톡 / 디스코드 링크 공유 미리보기 (공식 도메인 sfaclan.com 연동) */}
         <meta property="og:type" content="website" />
         <meta property="og:site_name" content="스틱파이터 클랜 커뮤니티" />
         <meta property="og:title" content="스틱파이터 클랜 커뮤니티" />
         <meta property="og:description" content="자신만의 클랜을 홍보하세요" />
         <meta property="og:image" content="https://www.sfaclan.com/icon.png?v=3" />
         <meta property="og:url" content="https://www.sfaclan.com/" />
-
-        {/* 트위터 / X 카드 메타태그 */}
-        <meta name="twitter:card" content="summary" />
-        <meta name="twitter:title" content="스틱파이터 클랜 커뮤니티" />
-        <meta name="twitter:description" content="자신만의 클랜을 홍보하세요" />
-        <meta name="twitter:image" content="https://www.sfaclan.com/icon.png?v=3" />
       </head>
       <body className="min-h-screen w-full bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden flex flex-col">
         <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md transition-colors duration-300">
@@ -176,16 +165,12 @@ export default function RootLayout({
                 onClick={toggleTheme}
                 title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
                 className={`relative inline-flex h-6 w-11 sm:h-7 sm:w-13 items-center rounded-full p-0.5 transition-colors duration-300 cursor-pointer shadow-inner shrink-0 ${
-                  theme === 'dark'
-                    ? 'bg-white border border-zinc-200'
-                    : 'bg-zinc-900 border border-zinc-800'
+                  theme === 'dark' ? 'bg-white border border-zinc-200' : 'bg-zinc-900 border border-zinc-800'
                 }`}
               >
                 <span
                   className={`inline-flex h-4.5 w-4.5 sm:h-5 sm:w-5 transform items-center justify-center rounded-full shadow-md transition-transform duration-300 ease-in-out ${
-                    theme === 'dark'
-                      ? 'translate-x-5 sm:translate-x-6 bg-zinc-950'
-                      : 'translate-x-0 bg-white'
+                    theme === 'dark' ? 'translate-x-5 sm:translate-x-6 bg-zinc-950' : 'translate-x-0 bg-white'
                   }`}
                 >
                   {theme === 'dark' ? (
@@ -261,6 +246,9 @@ export default function RootLayout({
         </header>
 
         <main className="w-full flex-1 flex flex-col items-stretch">{children}</main>
+
+        {/* 전역 실시간 답장 수신 팝업 */}
+        <AdminReplyPopup />
 
         {user && (
           <UserHubModal

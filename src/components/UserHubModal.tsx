@@ -188,7 +188,7 @@ export default function UserHubModal({
           admin_id: userId,
           admin_nickname: currentNickname,
           resolved_at: nowIso,
-          user_notified: true
+          user_notified: false
         })
         .eq('id', selectedAppeal.id)
 
