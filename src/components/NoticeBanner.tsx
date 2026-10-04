@@ -45,7 +45,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   const fetchNotice = async () => {
     const { data } = await supabase
       .from('site_notices')
-      .select('*')
+      .select('id, title, content, updated_at')
       .eq('id', 1)
       .maybeSingle()
 
@@ -54,8 +54,11 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
       setEditNoticeTitle(data.title)
       setEditNoticeContent(data.content)
 
-      const hiddenTimestamp = localStorage.getItem('hide_notice_until')
-      if (!hiddenTimestamp || new Date(hiddenTimestamp) < new Date(data.updated_at)) {
+      // [핵심] 실제 공지 내용(제목+내용) 서명 기반 비교 (동결 토글이나 타임스탬프 오류로 인한 재노출 차단)
+      const currentSignature = `${data.title}:::${data.content}`
+      const savedSignature = localStorage.getItem('hide_notice_signature')
+
+      if (savedSignature !== currentSignature) {
         setIsNoticeAutoPopup(true)
         setIsNoticeDetailOpen(true)
       }
@@ -63,7 +66,9 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   }
 
   const handleCloseNoticePopup = () => {
-    if (isNoticeAutoPopup && dontShowAgainChecked && notice) {
+    if (dontShowAgainChecked && notice) {
+      const currentSignature = `${notice.title}:::${notice.content}`
+      localStorage.setItem('hide_notice_signature', currentSignature)
       localStorage.setItem('hide_notice_until', notice.updated_at)
     }
     setIsNoticeDetailOpen(false)
@@ -90,12 +95,12 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
     const nowIso = new Date().toISOString()
     const { error } = await supabase
       .from('site_notices')
-      .upsert({
-        id: 1,
+      .update({
         title: editNoticeTitle.trim(),
         content: editNoticeContent.trim(),
         updated_at: nowIso,
       })
+      .eq('id', 1)
 
     if (error) {
       alert(`공지사항 수정 실패: ${error.message}`)

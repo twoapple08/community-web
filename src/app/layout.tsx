@@ -19,6 +19,7 @@ export default function RootLayout({
 }) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [user, setUser] = useState<any>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [nickname, setNickname] = useState<string>("");
   const [userRole, setUserRole] = useState<"creator" | "super_admin" | "admin" | null>(null);
 
@@ -86,14 +87,17 @@ export default function RootLayout({
   };
 
   useEffect(() => {
+    // 1) 초기 세션 조회
     supabase.auth.getSession().then(({ data: { session } }) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
         loadUserProfile(currentUser.id, currentUser.email);
       }
+      setAuthLoading(false);
     });
 
+    // 2) 인증 상태 변경 감지
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -106,16 +110,22 @@ export default function RootLayout({
         setUserRole(null);
         setIsTermsModalOpen(false);
       }
+      setAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
   const handleLogin = async () => {
+    // [핵심] 로그인 완료 후 /community 로 직접 리다이렉트 (루트 경유 토큰 유실 차단)
+    const redirectUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/community`
+      : undefined;
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: redirectUrl,
         queryParams: { prompt: "select_account" },
       },
     });
@@ -153,7 +163,7 @@ export default function RootLayout({
       <body className="min-h-screen w-full bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100 antialiased selection:bg-emerald-500 selection:text-white transition-colors duration-300 overflow-x-hidden flex flex-col">
         <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md transition-colors duration-300">
           <div className="w-full max-w-5xl mx-auto px-2 sm:px-4 h-13 sm:h-15 flex items-center justify-between gap-1.5">
-            <Link href="/" className="text-sm sm:text-lg font-black tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">
+            <Link href="/community" className="text-sm sm:text-lg font-black tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition shrink-0">
               COMMUNITY
             </Link>
 
@@ -181,7 +191,10 @@ export default function RootLayout({
                 </span>
               </button>
 
-              {user ? (
+              {/* [핵심] 세션 로딩 중에는 로그인 버튼 깜빡임 방지 (스켈레톤 렌더링) */}
+              {authLoading ? (
+                <div className="h-7 w-14 sm:w-16 bg-zinc-200 dark:bg-zinc-800 animate-pulse rounded-lg shrink-0" />
+              ) : user ? (
                 <>
                   <Link
                     href="/write"
@@ -247,7 +260,6 @@ export default function RootLayout({
 
         <main className="w-full flex-1 flex flex-col items-stretch">{children}</main>
 
-        {/* 전역 실시간 답장 수신 팝업 */}
         <AdminReplyPopup />
 
         {user && (

@@ -19,10 +19,11 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
   const handleConfirm = async () => {
     if (!agreed) return
     setLoading(true)
+
+    // 신규 유저 레코드 부재 시에도 확실히 저장되도록 upsert 적용
     const { error } = await supabase
       .from('profiles')
-      .update({ terms_agreed: true })
-      .eq('id', userId)
+      .upsert({ id: userId, terms_agreed: true }, { onConflict: 'id' })
 
     if (!error) {
       onAgreed()
@@ -64,7 +65,7 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
 
           <p className="font-bold text-white">제3조 (신고 및 게시물 자동 삭제 조치)</p>
           <p>
-            1. 게시글은 사용자 신고를 통해 접수되며, 동일한 사유(선정성/폭력성 이미지, 욕설, 혐오 발언, 도배)로 <strong>3회 누적 신고</strong> 시 해당 게시글은 별도 경고 없이 시스템에 의해 <strong>즉시 자동 영구 삭제</strong>됩니다.
+            1. 게시글은 사용자 신고를 통해 접수되며, 동일한 사유로 <strong>3회 누적 신고</strong> 시 해당 게시글은 별도 경고 없이 시스템에 의해 <strong>즉시 자동 영구 삭제</strong>됩니다.
           </p>
 
           <p className="font-bold text-white">제4조 (영구 블랙리스트 제재)</p>

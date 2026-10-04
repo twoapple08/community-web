@@ -183,7 +183,8 @@ export default function UserHubModal({
     const nextStatus = !isFrozen
     const { error } = await supabase
       .from('site_notices')
-      .upsert({ id: 1, is_frozen: nextStatus, updated_at: new Date().toISOString() })
+      .update({ is_frozen: nextStatus })
+      .eq('id', 1)
 
     if (error) {
       setNoticeModal({ text: `사이트 얼리기 상태 변경 실패: ${error.message}`, theme: 'sky' })
