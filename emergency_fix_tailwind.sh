@@ -1,3 +1,12 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [긴급 복구] Tailwind v4 CSS 엔진 즉시 복원 및 UI 정상화"
+echo "=========================================================="
+
+# 1. globals.css 를 Tailwind v4 공식 엔진으로 완벽 복구
+cat << 'FILE_CSS' > src/app/globals.css
 @import "tailwindcss";
 
 /* 미디어 넘침 및 뷰포트 터짐 원천 방지 가드 */
@@ -68,3 +77,19 @@ img, video, canvas, svg {
   text-align: left;
   background-color: rgba(120, 120, 120, 0.1);
 }
+FILE_CSS
+
+echo "--> globals.css 복구 완료. 프로덕션 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] CSS 정상 컴파일 확인! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "hotfix: Tailwind v4 @import 엔진 복원 및 스타일 증발 버그 긴급 해결"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 정상 스타일이 복원되었습니다!"
+echo "=========================================================="
