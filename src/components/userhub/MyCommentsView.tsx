@@ -73,12 +73,13 @@ export default function MyCommentsView({ userId, onNavigate }: MyCommentsViewPro
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    fetchMyComments(userId).then((list) => {
-      if (cancelled) return
-      setItems(list)
-      setLoading(false)
-    })
+    fetchMyComments(userId)
+      .catch(() => [] as MyCommentItem[])
+      .then((list) => {
+        if (cancelled) return
+        setItems(list)
+        setLoading(false)
+      })
     return () => {
       cancelled = true
     }

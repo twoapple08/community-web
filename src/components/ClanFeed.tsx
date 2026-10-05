@@ -1,7 +1,7 @@
 'use client'
 
 import { CrownIcon, RoleType } from "@/components/CrownIcon";
-import { useEffect, useState, Suspense, useMemo, useRef, useCallback, useDeferredValue } from 'react';
+import { useEffect, useState, Suspense, useMemo, useRef, useCallback, useDeferredValue, type MouseEvent as ReactMouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
@@ -24,10 +24,12 @@ import NoticeBanner from '@/components/NoticeBanner';
 import FeedMedia from '@/components/FeedMedia';
 import AdminReportModal from '@/components/AdminReportModal';
 import CustomPopup from '@/components/CustomPopup';
+import Avatar from '@/components/Avatar';
 import Link from 'next/link';
 import { extractFirstImage, extractPlainText, countImages, normalizeForSearch } from '@/lib/htmlText';
 import { fetchMyRole, fetchRoleMap } from '@/lib/roles';
 import { getPostPath } from '@/lib/postRoute';
+import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile';
 import {
   FEED_CACHE_FRESH_MS,
   getFeedCache,
@@ -54,6 +56,7 @@ interface Post {
   likes_count?: number;
   author_nickname?: string;
   author_role?: RoleType;
+  author_avatar?: string | null;
   is_official?: boolean;
   delete_requested?: boolean;
   delete_reason?: string | null;
@@ -69,6 +72,41 @@ interface Post {
   _searchAuthor: string;
   _searchContent: string;
   _time: number;
+}
+
+// 마지막으로 받아 온 작성자 프로필 사진 (목록을 다시 불러올 때 사진이 사라졌다 다시 뜨는 깜빡임 방지)
+const lastKnownAvatars: Record<string, string | null> = {};
+
+const isCrownRole = (role: RoleType) => role === 'creator' || role === 'super_admin' || role === 'admin';
+
+// 작성자 닉네임 클릭 → 프로필 열기 (게시글이 같이 열리지 않도록 전파 차단)
+const openAuthorProfile = (e: ReactMouseEvent, authorId: string) => {
+  e.stopPropagation();
+  openUserProfile(authorId);
+};
+
+// 피드형 작성자 원: 프로필 사진이 있으면 사진 + 오른쪽 아래 작은 왕관(관리자만), 없거나 못 불러오면 기존 모양(가운데 왕관) 그대로
+function FeedAuthorCircle({ src, role, nickname }: { src?: string | null; role?: RoleType; nickname?: string }) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const circle = (
+    <span className="w-8 h-8 shrink-0 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+      <CrownIcon role={role} className="w-4 h-4" />
+    </span>
+  );
+  if (!src || failedSrc === src) return circle;
+
+  return (
+    // 사진 로드 실패(onError 는 React 에서 부모로 전달됨) 시 왕관 배지가 가운데 왕관과 겹치지 않게 기존 원으로 되돌림
+    <span className="relative flex w-8 h-8 shrink-0" onError={() => setFailedSrc(src)}>
+      {/* Avatar 는 px 크기라 rem 기반인 w-8 과 맞추기 위해 크기를 강제 */}
+      <Avatar src={src} alt={`${nickname ?? '작성자'} 프로필 사진`} className="w-8! h-8!" fallback={circle} />
+      {isCrownRole(role) && (
+        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+          <CrownIcon role={role} className="w-2.5 h-2.5" />
+        </span>
+      )}
+    </span>
+  );
 }
 
 const sortPosts = (list: Post[], sortType: SortType): Post[] => {
@@ -203,6 +241,7 @@ function ClanFeedContent() {
           likes_count: post.likes_count ?? 0,
           author_nickname: nickname,
           author_role: roleMap[post.author_id] || null,
+          author_avatar: lastKnownAvatars[post.author_id] ?? null,
           is_official: Boolean(post.is_official),
           delete_requested: Boolean(post.delete_requested),
           delete_reason: post.delete_reason || null,
@@ -221,6 +260,32 @@ function ClanFeedContent() {
 
       setPosts(nextPosts);
       setFeedCache('clan', nextPosts);
+
+      // 프로필 사진은 첫 화면을 막지 않도록 목록을 먼저 보여 준 뒤 따로 불러와 합침
+      // (SQL 미적용으로 avatar_url 컬럼이 없으면 빈 결과 → 기존 화면 그대로)
+      if (authorIds.length > 0) {
+        fetchAvatarMap(authorIds)
+          .then((avatarMap) => {
+            Object.assign(lastKnownAvatars, avatarMap);
+            const applyAvatars = (list: Post[]): Post[] => {
+              let changed = false;
+              const next = list.map((p) => {
+                const url = avatarMap[p.author_id];
+                if (url === undefined || p.author_avatar === url) return p;
+                changed = true;
+                return { ...p, author_avatar: url };
+              });
+              return changed ? next : list;
+            };
+            setPosts(applyAvatars);
+            const cached = getFeedCache<Post>('clan');
+            if (cached) {
+              const nextCached = applyAvatars(cached.posts);
+              if (nextCached !== cached.posts) setFeedCache('clan', nextCached);
+            }
+          })
+          .catch(() => {});
+      }
     }
     setLoading(false);
   }, []);
@@ -588,7 +653,6 @@ function ClanFeedContent() {
             <div className="space-y-3.5 w-full">
               {paginatedPosts.map((post) => {
                 const thumbnail = post._thumb;
-                const plainText = post._plain;
                 const imageCount = post._imageCount;
 
                 return (
@@ -635,15 +699,15 @@ function ClanFeedContent() {
                           </div>
                         )}
 
-                        <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
-                          {plainText || '내용이 없습니다.'}
-                        </p>
-
                         <div className="flex flex-wrap items-center gap-2 sm:gap-3.5 text-xs sm:text-sm text-zinc-500 pt-1 font-semibold">
-                          <span className="flex items-center gap-1 font-medium text-zinc-700 dark:text-zinc-300 min-w-0">
+                          <button
+                            type="button"
+                            onClick={(e) => openAuthorProfile(e, post.author_id)}
+                            className="group/author flex items-center gap-1 font-medium text-zinc-700 dark:text-zinc-300 min-w-0 text-left cursor-pointer"
+                          >
                             <CrownIcon role={post.author_role} className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate">{post.author_nickname}</span>
-                          </span>
+                            <span className="truncate group-hover/author:underline">{post.author_nickname}</span>
+                          </button>
                           <span className="flex items-center gap-1 text-zinc-400">
                             <Calendar className="w-3.5 h-3.5" />
                             <span>{new Date(post.created_at).toLocaleDateString()}</span>
@@ -711,7 +775,6 @@ function ClanFeedContent() {
             <div className="space-y-4 w-full">
               {paginatedPosts.map((post) => {
                 const thumbnail = post._thumb;
-                const plainText = post._plain;
 
                 return (
                   <article
@@ -721,19 +784,21 @@ function ClanFeedContent() {
                   >
                     {/* 상단 프로필 헤더 */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-8 h-8 shrink-0 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
-                          <CrownIcon role={post.author_role} className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-zinc-900 dark:text-white block truncate">
+                      <button
+                        type="button"
+                        onClick={(e) => openAuthorProfile(e, post.author_id)}
+                        className="group/author flex items-center gap-2 min-w-0 text-left cursor-pointer"
+                      >
+                        <FeedAuthorCircle src={post.author_avatar} role={post.author_role} nickname={post.author_nickname} />
+                        <span className="min-w-0">
+                          <span className="text-xs font-bold text-zinc-900 dark:text-white block truncate group-hover/author:underline">
                             {post.author_nickname}
                           </span>
                           <span className="text-[10px] text-zinc-400">
                             {new Date(post.created_at).toLocaleDateString()}
                           </span>
-                        </div>
-                      </div>
+                        </span>
+                      </button>
 
                       {post.is_official && (
                         <span className="text-[11px] font-black px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 shrink-0">
@@ -742,14 +807,11 @@ function ClanFeedContent() {
                       )}
                     </div>
 
-                    {/* 제목 및 본문 요약 */}
+                    {/* 제목 (본문 미리보기 글자는 표시하지 않음) */}
                     <div className="space-y-1">
                       <h2 className="text-lg sm:text-xl md:text-2xl font-black text-zinc-900 dark:text-white tracking-tight">
                         {post.title}
                       </h2>
-                      <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-3 leading-relaxed">
-                        {plainText || '내용이 없습니다.'}
-                      </p>
                     </div>
 
                     {/* 세로 1.7배 이상 사진 3:4 자동 크롭 FeedMedia */}
@@ -829,7 +891,13 @@ function ClanFeedContent() {
                         {post.title}
                       </h3>
                       <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 pt-1 border-t border-zinc-100 dark:border-zinc-800">
-                        <span className="truncate max-w-[80px] min-w-0">{post.author_nickname}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => openAuthorProfile(e, post.author_id)}
+                          className="max-w-[80px] min-w-0 text-left cursor-pointer"
+                        >
+                          <span className="block truncate hover:underline">{post.author_nickname}</span>
+                        </button>
                         <span className="text-rose-500 font-semibold flex items-center gap-0.5 shrink-0">
                           <Heart className="w-3 h-3 fill-current" /> {post.likes_count ?? 0}
                         </span>

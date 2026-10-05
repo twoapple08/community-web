@@ -1,7 +1,7 @@
 'use client'
 
 import { CrownIcon, RoleType } from "@/components/CrownIcon";
-import { useEffect, useState, Suspense, useMemo, useRef, useCallback, useDeferredValue } from 'react';
+import { useEffect, useState, Suspense, useMemo, useRef, useCallback, useDeferredValue, type MouseEvent as ReactMouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
@@ -77,7 +77,7 @@ const lastKnownAvatars: Record<string, string | null> = {};
 const isCrownRole = (role: RoleType) => role === 'creator' || role === 'super_admin' || role === 'admin';
 
 // 작성자 닉네임 클릭 → 프로필 열기 (게시글이 같이 열리지 않도록 전파 차단)
-const openAuthorProfile = (e: React.MouseEvent, authorId: string) => {
+const openAuthorProfile = (e: ReactMouseEvent, authorId: string) => {
   e.stopPropagation();
   openUserProfile(authorId);
 };

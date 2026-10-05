@@ -112,7 +112,8 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
 
   // 닉네임
   const [nickname, setNickname] = useState(currentNickname)
-  const [nickStatus, setNickStatus] = useState<NicknameStatus>('idle')
+  // 마지막으로 확인한 닉네임과 결과 (null = DB 함수 없음 → 표시 안 함)
+  const [nickCheck, setNickCheck] = useState<{ name: string; available: boolean | null } | null>(null)
   const [savingNick, setSavingNick] = useState(false)
   const [nickMessage, setNickMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -141,7 +142,6 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     fetchMySettings(userId)
       .catch(() => null)
       .then((data) => {
@@ -157,26 +157,34 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
     }
   }, [userId])
 
+  const cleanNickname = nickname.trim()
+  const nicknameUnchanged = cleanNickname === currentNickname.trim()
+
   // 닉네임 중복 확인 (입력 멈춘 뒤 0.4초)
   useEffect(() => {
-    const clean = nickname.trim()
-    if (!clean || clean === currentNickname.trim()) {
-      setNickStatus('idle')
-      return
-    }
-    setNickStatus('checking')
+    if (!cleanNickname || nicknameUnchanged) return
     let cancelled = false
     const timer = setTimeout(async () => {
-      const available = await checkNicknameAvailable(clean)
-      if (cancelled) return
-      // DB 함수가 없으면(null) 아무것도 표시하지 않음 → 저장 시 다시 확인
-      setNickStatus(available === null ? 'idle' : available ? 'available' : 'duplicate')
+      const available = await checkNicknameAvailable(cleanNickname)
+      if (!cancelled) setNickCheck({ name: cleanNickname, available })
     }, 400)
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [nickname, currentNickname])
+  }, [cleanNickname, nicknameUnchanged])
+
+  // 표시 상태는 입력값과 마지막 확인 결과로 계산 (DB 함수가 없으면 아무것도 표시하지 않고 저장 시 다시 확인)
+  const nickStatus: NicknameStatus =
+    !cleanNickname || nicknameUnchanged
+      ? 'idle'
+      : nickCheck?.name !== cleanNickname
+        ? 'checking'
+        : nickCheck.available === null
+          ? 'idle'
+          : nickCheck.available
+            ? 'available'
+            : 'duplicate'
 
   const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -213,8 +221,6 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
     })
   }
 
-  const cleanNickname = nickname.trim()
-  const nicknameUnchanged = cleanNickname === currentNickname.trim()
   const canSaveNickname = Boolean(cleanNickname) && !nicknameUnchanged && nickStatus !== 'duplicate' && !savingNick
 
   const handleSaveNickname = async () => {
@@ -228,7 +234,7 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
       onNicknameUpdated(result.nickname)
       setNickMessage({ ok: true, text: '닉네임이 변경되었습니다.' })
     } else {
-      if (result.reason === 'duplicate') setNickStatus('duplicate')
+      if (result.reason === 'duplicate') setNickCheck({ name: cleanNickname, available: false })
       setNickMessage({ ok: false, text: result.message })
     }
   }

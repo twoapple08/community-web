@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 interface CreditsPopupProps {
@@ -17,18 +16,17 @@ const CREDITS: { label: string; values: string[] }[] = [
 
 /** 마이 프로필 맨 아래 '크레딧' 팝업 (CustomPopup 과 같은 각진 흑백 디자인) */
 export default function CreditsPopup({ isOpen, onClose }: CreditsPopupProps) {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!isOpen || !mounted) return null
+  // 버튼을 눌러야 열리므로 서버 렌더링 시점에는 그려지지 않음 (document 없으면 생략)
+  if (!isOpen || typeof document === 'undefined') return null
 
   return createPortal(
     <div
       className="fixed inset-0 z-[12000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
+      onClick={(e) => {
+        // 포털이어도 React 이벤트는 부모(마이 프로필 배경)로 전달되므로 여기서 멈춰 허브까지 닫히지 않게 함
+        e.stopPropagation()
+        onClose()
+      }}
     >
       <div
         role="dialog"
