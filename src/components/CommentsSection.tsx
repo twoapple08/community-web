@@ -314,7 +314,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
       {/* 댓글 헤더 */}
       <div className="flex items-center justify-between">
-        <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white">
+        <h3 className="text-sm sm:text-base font-black text-zinc-900 dark:text-white">
           댓글 ({comments.length})
         </h3>
         <div className="flex items-center gap-1 text-[10px] font-semibold bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-none border border-zinc-200 dark:border-zinc-700">
@@ -346,7 +346,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
           onChange={(e) => setInputContent(e.target.value)}
           placeholder="댓글을 작성해 보세요 (이미지 및 GIF 첨부 가능)"
           rows={2}
-          className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-none text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="w-full p-3 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-none text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
 
         {attachedImage && (
@@ -383,7 +383,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-none transition disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-4 py-1.5 text-xs sm:text-sm font-black bg-emerald-600 hover:bg-emerald-500 text-white rounded-none transition disabled:opacity-50"
           >
             <Send className="w-3 h-3" />
             <span>{submitting ? '등록 중...' : '등록'}</span>
@@ -419,7 +419,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-zinc-200">
                       <CrownIcon role={comment.author_role} className="w-3 h-3 shrink-0" />
-                      <span className="text-[11px] sm:text-xs">{comment.author_nickname}</span>
+                      <span className="text-xs sm:text-sm font-bold">{comment.author_nickname}</span>
                       <span className="text-[10px] text-zinc-400 font-normal">
                         {new Date(comment.created_at).toLocaleDateString()}
                       </span>
@@ -456,7 +456,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                   </div>
 
                   {comment.content && (
-                    <p className="text-zinc-700 dark:text-zinc-300 leading-snug whitespace-pre-wrap break-words text-[11px] sm:text-xs">
+                    <p className="text-zinc-700 dark:text-zinc-300 leading-snug whitespace-pre-wrap break-words text-xs sm:text-sm font-bold">
                       {comment.content}
                     </p>
                   )}
