@@ -93,3 +93,14 @@ export const resolveNotificationPostPath = async (postId: number | null): Promis
   if (!row) return null
   return getPostPath(row)
 }
+
+/** 게시글 주소 + 해당 댓글 위치(#comment-번호). 댓글 알림을 누르면 그 댓글로 바로 스크롤 */
+export const commentAnchor = (commentId: number | string | null | undefined): string =>
+  commentId ? `#comment-${commentId}` : ''
+
+/** 알림을 눌렀을 때 이동할 주소 (댓글/답글 알림은 해당 댓글 위치까지) */
+export const resolveNotificationPath = async (n: Pick<UserNotification, 'post_id' | 'comment_id' | 'type'>): Promise<string | null> => {
+  const path = await resolveNotificationPostPath(n.post_id)
+  if (!path) return null
+  return n.type === 'post_like' ? path : `${path}${commentAnchor(n.comment_id)}`
+}
