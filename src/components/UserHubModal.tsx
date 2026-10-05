@@ -3,24 +3,30 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { CrownIcon, RoleType } from './CrownIcon'
 import CustomPopup from './CustomPopup'
+import Avatar from './Avatar'
+import SettingsView from './userhub/SettingsView'
+import MyCommentsView from './userhub/MyCommentsView'
+import CreditsPopup from './userhub/CreditsPopup'
 import { isCreatorEmail } from '@/lib/roles'
 import { getPostPath, selectPostsWithNo } from '@/lib/postRoute'
+import { fetchMySettings, onProfileChanged, openUserProfile } from '@/lib/userProfile'
 import {
   deleteReadNotifications,
   describeNotification,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  resolveNotificationPostPath,
+  resolveNotificationPath,
   type UserNotification,
 } from '@/lib/notifications'
 import {
   X,
   ArrowLeft,
-  User,
+  Settings,
   FileText,
   Heart,
   ChevronRight,
@@ -36,10 +42,11 @@ import {
   Bell,
   CheckCheck,
   MessageSquare,
-  CornerDownRight
+  CornerDownRight,
+  Info
 } from 'lucide-react'
 
-type ModalView = 'menu' | 'notifications' | 'nickname' | 'my_posts' | 'liked_posts' | 'appeals' | 'suggestion_write' | 'suggestion_inbox'
+type ModalView = 'menu' | 'notifications' | 'settings' | 'my_posts' | 'liked_posts' | 'my_comments' | 'appeals' | 'suggestion_write' | 'suggestion_inbox'
 
 interface PostItem {
   id: string
@@ -102,8 +109,9 @@ export default function UserHubModal({
   const [mounted, setMounted] = useState(false)
   const [currentView, setCurrentView] = useState<ModalView>('menu')
 
-  const [newNickname, setNewNickname] = useState(currentNickname)
-  const [updatingNickname, setUpdatingNickname] = useState(false)
+  // 상단 프로필 카드의 내 프로필 사진
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null)
+  const [creditsOpen, setCreditsOpen] = useState(false)
 
   const [posts, setPosts] = useState<PostItem[]>([])
   const [loadingPosts, setLoadingPosts] = useState(false)
@@ -164,10 +172,10 @@ export default function UserHubModal({
     setMounted(true)
   }, [])
 
+  // 닉네임이 바뀔 때마다 메뉴로 돌아가지 않도록 currentNickname 은 의존성에서 제외 (개인 설정 화면 유지)
   useEffect(() => {
     if (isOpen) {
       setCurrentView('menu')
-      setNewNickname(currentNickname)
       if (isCreator) {
         checkFreezeStatus()
         fetchSuggestions()
@@ -176,7 +184,25 @@ export default function UserHubModal({
         fetchAppeals()
       }
     }
-  }, [isOpen, currentNickname, isCreator, isCreatorOrSuperAdmin])
+  }, [isOpen, isCreator, isCreatorOrSuperAdmin])
+
+  useEffect(() => {
+    if (!isOpen || !userId) return
+    let cancelled = false
+    fetchMySettings(userId).then((data) => {
+      if (!cancelled) setMyAvatarUrl(data?.avatar_url ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, userId])
+
+  // 개인 설정에서 사진을 바꾸면 상단 카드에도 바로 반영
+  useEffect(() => {
+    return onProfileChanged((event) => {
+      if (event.userId === userId && event.avatar_url !== undefined) setMyAvatarUrl(event.avatar_url ?? null)
+    })
+  }, [userId])
 
   const checkFreezeStatus = async () => {
     const { data } = await supabase.from('site_notices').select('is_frozen').eq('id', 1).maybeSingle()
@@ -461,13 +487,19 @@ export default function UserHubModal({
     router.push(getPostPath(post))
   }
 
+  // 내가 쓴 댓글 → 해당 게시글의 댓글 위치로 이동
+  const handleOpenCommentPath = (path: string) => {
+    onClose()
+    router.push(path)
+  }
+
   const handleOpenNotification = async (item: UserNotification) => {
     if (!item.is_read) {
       setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n)))
       onUnreadNotificationCountChange(Math.max(0, unreadNotificationCount - 1))
       await markNotificationRead(item.id)
     }
-    const path = await resolveNotificationPostPath(item.post_id)
+    const path = await resolveNotificationPath(item)
     if (!path) {
       setCustomPopupState({
         isOpen: true,
@@ -533,11 +565,12 @@ export default function UserHubModal({
               </button>
             )}
             <h2 className="text-base font-bold text-zinc-900 dark:text-white">
-              {currentView === 'menu' && '마이 메뉴'}
+              {currentView === 'menu' && '마이 프로필'}
               {currentView === 'notifications' && '알림'}
-              {currentView === 'nickname' && '닉네임 변경'}
+              {currentView === 'settings' && '개인 설정'}
               {currentView === 'my_posts' && '내가 쓴 게시글'}
               {currentView === 'liked_posts' && '좋아요 누른 게시글'}
+              {currentView === 'my_comments' && '내가 쓴 댓글'}
               {currentView === 'appeals' && '관리자 전용 메시지'}
               {currentView === 'suggestion_write' && '건의사항 작성'}
               {currentView === 'suggestion_inbox' && '제작자 건의함'}
@@ -549,23 +582,40 @@ export default function UserHubModal({
         </div>
 
         {currentView === 'menu' && (
-          <div className="p-5 space-y-4">
-            <div className="flex items-center gap-3 p-3.5 bg-zinc-50 dark:bg-zinc-800/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
-              <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
-                <CrownIcon role={userRole} className="w-5 h-5" />
-              </div>
+          <div className="p-5 space-y-4 max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain">
+            {/* 누르면 내 공개 프로필 (허브는 닫지 않고 그 위에 프로필 창이 뜸) */}
+            <button
+              type="button"
+              onClick={() => openUserProfile(userId)}
+              className="w-full flex items-center gap-3 p-3.5 bg-zinc-50 dark:bg-zinc-800/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 transition text-left cursor-pointer group"
+            >
+              <Avatar
+                src={myAvatarUrl}
+                size={44}
+                alt={`${currentNickname || '익명사용자'} 프로필 사진`}
+                fallback={
+                  <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <CrownIcon role={userRole} className="w-5 h-5" />
+                  </div>
+                }
+              />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <span className="text-sm font-bold text-zinc-900 dark:text-white truncate min-w-0 max-w-full">
                     {currentNickname || '익명사용자'}
                   </span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 shrink-0">
                     {userRole === 'creator' ? '제작자' : userRole === 'super_admin' ? '최고관리자' : userRole === 'admin' ? '일반관리자' : '일반회원'}
                   </span>
                 </div>
-                <p className="text-xs text-zinc-400 truncate mt-0.5">{userEmail}</p>
+                <span className="block text-xs text-zinc-400 truncate mt-0.5">{userEmail}</span>
               </div>
-            </div>
+              <span className="shrink-0 flex items-center gap-0.5 text-[10px] font-semibold text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition">
+                {/* 아주 좁은 화면(360px 미만)에서는 닉네임 공간을 위해 화살표만 표시 */}
+                <span className="hidden min-[360px]:inline whitespace-nowrap">프로필 보기</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </span>
+            </button>
 
             <div className="space-y-2">
               <button
@@ -597,16 +647,16 @@ export default function UserHubModal({
 
               <button
                 type="button"
-                onClick={() => handleSelectView('nickname')}
+                onClick={() => handleSelectView('settings')}
                 className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-800 transition group text-left"
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
-                    <User className="w-4 h-4" />
+                    <Settings className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-zinc-900 dark:text-white">닉네임 변경</h3>
-                    <p className="text-[11px] text-zinc-400">활동 프로필 닉네임을 수정합니다.</p>
+                    <h3 className="text-xs font-bold text-zinc-900 dark:text-white">개인 설정</h3>
+                    <p className="text-[11px] text-zinc-400">프로필 사진, 닉네임, 공개 범위, 알림을 설정합니다.</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -698,6 +748,23 @@ export default function UserHubModal({
                 <ChevronRight className="w-4 h-4 text-zinc-400" />
               </button>
 
+              <button
+                type="button"
+                onClick={() => handleSelectView('my_comments')}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-800 transition group text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-zinc-900 dark:text-white">내가 쓴 댓글</h3>
+                    <p className="text-[11px] text-zinc-400">내가 단 댓글과 답글을 모아봅니다.</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-400" />
+              </button>
+
               {isCreatorOrSuperAdmin && (
                 <button
                   type="button"
@@ -757,50 +824,34 @@ export default function UserHubModal({
                 </div>
               </div>
             )}
+
+            {/* 메뉴 맨 아래: 크레딧 / 개인정보처리방침 */}
+            <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+              <button
+                type="button"
+                onClick={() => setCreditsOpen(true)}
+                className="inline-flex items-center gap-1 px-2 py-1.5 hover:text-zinc-700 dark:hover:text-zinc-300 transition"
+              >
+                <Info className="w-3.5 h-3.5" />
+                <span>크레딧</span>
+              </button>
+              <span className="w-px h-3 bg-zinc-300 dark:bg-zinc-700" aria-hidden="true" />
+              <Link
+                href="/privacy"
+                onClick={onClose}
+                className="px-2 py-1.5 hover:text-zinc-700 dark:hover:text-zinc-300 transition"
+              >
+                개인정보처리방침
+              </Link>
+            </div>
           </div>
         )}
 
-        {currentView === 'nickname' && (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault()
-              if (!newNickname.trim()) return
-              setUpdatingNickname(true)
-              await supabase.from('profiles').upsert({ id: userId, nickname: newNickname.trim() })
-              onNicknameUpdated(newNickname.trim())
-              setUpdatingNickname(false)
-              setCurrentView('menu')
-            }}
-            className="p-5 space-y-4"
-          >
-            <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1">새 닉네임</label>
-              <input
-                type="text"
-                value={newNickname}
-                onChange={(e) => setNewNickname(e.target.value)}
-                maxLength={15}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-sm"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setCurrentView('menu')}
-                className="px-4 py-2 text-xs border rounded-xl"
-              >
-                취소
-              </button>
-              <button
-                type="submit"
-                disabled={updatingNickname}
-                className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl"
-              >
-                저장
-              </button>
-            </div>
-          </form>
+        {currentView === 'settings' && (
+          <SettingsView userId={userId} currentNickname={currentNickname} onNicknameUpdated={onNicknameUpdated} />
         )}
+
+        {currentView === 'my_comments' && <MyCommentsView userId={userId} onNavigate={handleOpenCommentPath} />}
 
         {currentView === 'suggestion_write' && (
           <form onSubmit={handleSubmitSuggestion} className="p-5 space-y-4">
@@ -1081,19 +1132,19 @@ export default function UserHubModal({
                     }}
                     className={`p-3 rounded-none border cursor-pointer transition text-xs space-y-1.5 ${
                       item.status === 'pending'
-                        ? '!bg-black !border-2 !border-red-600 !text-white'
-                        : '!bg-zinc-950 !border !border-zinc-800 !text-zinc-300'
+                        ? 'bg-white dark:bg-black border-2 border-red-600 text-zinc-900 dark:text-white'
+                        : 'bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-black text-white">{item.user_nickname}</span>
+                      <span className="font-black text-zinc-900 dark:text-white">{item.user_nickname}</span>
                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-none ${
-                        item.status === 'pending' ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400'
+                        item.status === 'pending' ? 'bg-red-600 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
                       }`}>
                         {item.status === 'pending' ? '답변 대기' : item.status === 'resolved_unbanned' ? '해제 완료' : '유지 처리됨'}
                       </span>
                     </div>
-                    <p className="line-clamp-2 text-zinc-400 text-[11px]">{item.message}</p>
+                    <p className="line-clamp-2 text-zinc-600 dark:text-zinc-400 text-[11px]">{item.message}</p>
                     <span className="text-[10px] text-zinc-500 block">{new Date(item.created_at).toLocaleString()}</span>
                   </div>
                 ))
@@ -1196,26 +1247,26 @@ export default function UserHubModal({
           onClick={() => setResolvedNoticePopup(null)}
         >
           <div
-            className="w-full max-w-sm bg-black text-white border-2 border-white rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white text-zinc-900 border-2 border-zinc-900 dark:bg-black dark:text-white dark:border-white rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-none bg-zinc-800 text-zinc-300">
+              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-none bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                 {resolvedNoticePopup.status === 'resolved_unbanned' ? '블랙리스트 해제 완료' : '블랙리스트 유지 처리됨'}
               </span>
-              <h3 className="text-sm font-black text-white pt-1">
+              <h3 className="text-sm font-black text-zinc-900 dark:text-white pt-1">
                 이미 처리된 이의제기 및 문의입니다
               </h3>
             </div>
 
-            <div className="p-3 bg-zinc-950 border border-zinc-800 text-left space-y-2 text-xs">
+            <div className="p-3 bg-zinc-50 border border-zinc-300 dark:bg-zinc-950 dark:border-zinc-800 text-left space-y-2 text-xs">
               <div>
                 <span className="text-zinc-500 text-[10px] block">유저 소명:</span>
-                <p className="text-zinc-300 font-medium whitespace-pre-wrap">{resolvedNoticePopup.message}</p>
+                <p className="text-zinc-800 dark:text-zinc-300 font-medium whitespace-pre-wrap">{resolvedNoticePopup.message}</p>
               </div>
-              <div className="pt-2 border-t border-zinc-900">
+              <div className="pt-2 border-t border-zinc-200 dark:border-zinc-900">
                 <span className="text-zinc-500 text-[10px] block">관리자 전송 답장:</span>
-                <p className="text-emerald-400 font-semibold whitespace-pre-wrap">{resolvedNoticePopup.admin_reply || '답장 없음'}</p>
+                <p className="text-emerald-700 dark:text-emerald-400 font-semibold whitespace-pre-wrap">{resolvedNoticePopup.admin_reply || '답장 없음'}</p>
               </div>
             </div>
 
@@ -1223,7 +1274,7 @@ export default function UserHubModal({
               <button
                 type="button"
                 onClick={() => setResolvedNoticePopup(null)}
-                className="px-6 py-2 text-xs font-black bg-white text-black hover:bg-zinc-200 rounded-none transition"
+                className="px-6 py-2 text-xs font-black bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 rounded-none transition"
               >
                 확인
               </button>
@@ -1239,37 +1290,37 @@ export default function UserHubModal({
           onClick={() => setSelectedAppeal(null)}
         >
           <div
-            className="w-full max-w-md !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-md bg-white text-zinc-900 border-2 border-zinc-900 dark:bg-black dark:text-white dark:border-white rounded-none p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="text-sm font-black text-white">
+            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
+              <h3 className="text-sm font-black text-zinc-900 dark:text-white">
                 이의제기 상세: {selectedAppeal.user_nickname}
               </h3>
-              <button onClick={() => setSelectedAppeal(null)} className="p-1 text-white">
+              <button onClick={() => setSelectedAppeal(null)} className="p-1 text-zinc-900 dark:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-[11px] text-zinc-400 font-bold block">유저 소명 내용:</span>
-              <div className="p-3 !bg-zinc-950 !border !border-zinc-800 text-xs text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+              <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-bold block">유저 소명 내용:</span>
+              <div className="p-3 bg-zinc-50 border border-zinc-300 text-zinc-800 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-200 text-xs whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
                 {selectedAppeal.message}
               </div>
             </div>
 
-            <div className="space-y-1.5 pt-2 border-t border-zinc-900">
-              <label className="text-[11px] text-white font-black block">관리자 답장 작성:</label>
+            <div className="space-y-1.5 pt-2 border-t border-zinc-200 dark:border-zinc-900">
+              <label className="text-[11px] text-zinc-900 dark:text-white font-black block">관리자 답장 작성:</label>
               <textarea
                 value={replyInput}
                 onChange={(e) => setReplyInput(e.target.value)}
                 placeholder="유저에게 통보될 답장 내용을 작성해 주십시오."
                 rows={3}
-                className="w-full p-2.5 text-xs !bg-zinc-950 !border !border-zinc-700 !text-white rounded-none focus:outline-none focus:!border-white"
+                className="w-full p-2.5 text-xs bg-white border border-zinc-300 text-zinc-900 focus:border-zinc-900 dark:bg-zinc-950 dark:border-zinc-700 dark:text-white dark:focus:border-white rounded-none focus:outline-none"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-200 dark:border-zinc-800">
               <button
                 type="button"
                 onClick={() => setConfirmActionDialog({
@@ -1307,23 +1358,23 @@ export default function UserHubModal({
           onClick={() => setConfirmActionDialog(null)}
         >
           <div
-            className="w-full max-w-sm !bg-black !text-white !border-2 !border-white rounded-none p-6 text-center space-y-4"
+            className="w-full max-w-sm bg-white text-zinc-900 border-2 border-zinc-900 dark:bg-black dark:text-white dark:border-white rounded-none p-6 text-center space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-sm font-black text-white">{confirmActionDialog.title}</h3>
-            <p className="text-xs text-zinc-300 leading-relaxed font-semibold">
+            <h3 className="text-sm font-black text-zinc-900 dark:text-white">{confirmActionDialog.title}</h3>
+            <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed font-semibold">
               {confirmActionDialog.message}
             </p>
             <div className="flex justify-center gap-3 pt-2">
               <button
                 onClick={() => setConfirmActionDialog(null)}
-                className="px-4 py-1.5 text-xs border border-zinc-600 text-zinc-300 rounded-none"
+                className="px-4 py-1.5 text-xs border border-zinc-400 text-zinc-700 dark:border-zinc-600 dark:text-zinc-300 rounded-none"
               >
                 취소
               </button>
               <button
                 onClick={() => handleExecuteAppealAction(confirmActionDialog.action)}
-                className="px-5 py-1.5 text-xs font-black bg-white text-black rounded-none"
+                className="px-5 py-1.5 text-xs font-black bg-zinc-900 text-white dark:bg-white dark:text-black rounded-none"
               >
                 실행 확인
               </button>
@@ -1367,6 +1418,8 @@ export default function UserHubModal({
         onConfirm={customPopupState.onConfirm}
         onCancel={() => setCustomPopupState((p) => ({ ...p, isOpen: false }))}
       />
+
+      <CreditsPopup isOpen={creditsOpen} onClose={() => setCreditsOpen(false)} />
     </div>
   )
 }

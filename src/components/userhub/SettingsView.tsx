@@ -126,28 +126,32 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
   const [savingKeys, setSavingKeys] = useState<ToggleKey[]>([])
   const [toastEnabled, setToastEnabled] = useState(() => isNotificationToastEnabled())
 
-  const messageTimers = useRef<ReturnType<typeof setTimeout>[]>([])
-  const flashMessage = (setter: (value: null) => void) => {
-    // 짧게 보여준 뒤 자동으로 지움
-    messageTimers.current.push(setTimeout(() => setter(null), 2500))
-  }
+  // 저장 완료 문구는 잠깐 보여준 뒤 자동으로 지움 (실패 문구는 다시 입력할 때까지 유지)
+  useEffect(() => {
+    if (!nickMessage?.ok) return
+    const timer = setTimeout(() => setNickMessage(null), 2500)
+    return () => clearTimeout(timer)
+  }, [nickMessage])
 
   useEffect(() => {
-    const timers = messageTimers.current
-    return () => timers.forEach((t) => clearTimeout(t))
-  }, [])
+    if (!bioMessage) return
+    const timer = setTimeout(() => setBioMessage(null), 2500)
+    return () => clearTimeout(timer)
+  }, [bioMessage])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetchMySettings(userId).then((data) => {
-      if (cancelled) return
-      const next = data ?? defaultSettings(userId)
-      setSettings(next)
-      setBio(next.bio || '')
-      setSavedBio(next.bio || '')
-      setLoading(false)
-    })
+    fetchMySettings(userId)
+      .catch(() => null)
+      .then((data) => {
+        if (cancelled) return
+        const next = data ?? defaultSettings(userId)
+        setSettings(next)
+        setBio(next.bio || '')
+        setSavedBio(next.bio || '')
+        setLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -223,7 +227,6 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
       setNickname(result.nickname)
       onNicknameUpdated(result.nickname)
       setNickMessage({ ok: true, text: '닉네임이 변경되었습니다.' })
-      flashMessage(setNickMessage)
     } else {
       if (result.reason === 'duplicate') setNickStatus('duplicate')
       setNickMessage({ ok: false, text: result.message })
@@ -247,7 +250,6 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
     setSavedBio(nextBio || '')
     setSettings((prev) => (prev ? { ...prev, bio: nextBio } : prev))
     setBioMessage('한 줄 소개가 저장되었습니다.')
-    flashMessage(setBioMessage)
   }
 
   // 스위치는 즉시 저장 (먼저 화면을 바꾸고, 실패하면 되돌림)
