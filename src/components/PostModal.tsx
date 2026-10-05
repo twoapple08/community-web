@@ -1,7 +1,7 @@
 'use client'
 
 import { CrownIcon, RoleType } from "./CrownIcon";
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -538,6 +538,11 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     return doc.body.innerHTML;
   };
 
+  const memoizedRichContent = useMemo(() => {
+    if (!post?.content) return '';
+    return renderRichContent(post.content);
+  }, [post?.content]);
+
   const isAuthor = Boolean(currentUserId && post && currentUserId === post.author_id);
   const isAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin';
 
@@ -687,7 +692,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 ref={contentContainerRef}
                 onClick={handleContentClick}
                 className="prose dark:prose-invert max-w-none break-words text-zinc-800 dark:text-zinc-200 text-sm sm:text-base leading-relaxed [&_img]:rounded-xl [&_img]:my-3 [&_img]:cursor-pointer"
-                dangerouslySetInnerHTML={{ __html: renderRichContent(post.content) }}
+                dangerouslySetInnerHTML={{ __html: memoizedRichContent }}
               />
 
               <div className="pt-4 pb-1 border-t border-zinc-100 dark:border-zinc-800 flex justify-center">

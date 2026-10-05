@@ -85,6 +85,12 @@ function ClanFeedContent() {
 
   const [officialFilter, setOfficialFilter] = useState<OfficialFilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 150);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
   const [tempFilterTags, setTempFilterTags] = useState<string[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -261,7 +267,7 @@ function ClanFeedContent() {
   };
 
   const filteredPosts = useMemo(() => {
-    const q = searchQuery.replace(/\s+/g, '').toLowerCase();
+    const q = debouncedQuery.replace(/\s+/g, '').toLowerCase();
 
     return posts
       .filter((post) => {
@@ -293,7 +299,7 @@ function ClanFeedContent() {
         }
         return 0;
       });
-  }, [posts, officialFilter, selectedFilterTags, searchQuery, isAdmin, currentUserId]);
+  }, [posts, officialFilter, selectedFilterTags, debouncedQuery, isAdmin, currentUserId]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = useMemo(() => {

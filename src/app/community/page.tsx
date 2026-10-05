@@ -83,6 +83,12 @@ function CommunityFeedContent() {
   const [selectedBoard, setSelectedBoard] = useState<string>('모두');
   const [isBoardDropdownOpen, setIsBoardDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 150);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [postsPerPage, setPostsPerPage] = useState<number>(10);
@@ -232,7 +238,7 @@ function CommunityFeedContent() {
   };
 
   const filteredPosts = useMemo(() => {
-    const q = searchQuery.replace(/\s+/g, '').toLowerCase();
+    const q = debouncedQuery.replace(/\s+/g, '').toLowerCase();
 
     return posts.filter((post) => {
       if (selectedBoard !== '모두' && post.board_category !== selectedBoard) {
@@ -248,7 +254,7 @@ function CommunityFeedContent() {
 
       return true;
     });
-  }, [posts, selectedBoard, searchQuery]);
+  }, [posts, selectedBoard, debouncedQuery]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
   const paginatedPosts = useMemo(() => {

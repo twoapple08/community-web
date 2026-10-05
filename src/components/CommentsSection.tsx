@@ -100,7 +100,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
         profileMap[p.id] = p.nickname
       })
 
-      const { data: roles } = await supabase.from('user_roles').select('user_id, email, role')
+      const { data: roles } = authorIds.length > 0 ? await supabase.from('user_roles').select('user_id, email, role').in('user_id', authorIds) : { data: [] }
       const roleMap: Record<string, RoleType> = {}
       roles?.forEach((r) => {
         if (r.user_id) roleMap[r.user_id] = r.role
