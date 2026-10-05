@@ -80,6 +80,7 @@ function ClanFeedContent() {
   const [sortType, setSortType] = useState<SortType>('latest');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);
+  const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('right');
   const viewModeDropdownRef = useRef<HTMLDivElement>(null);
 
   const [officialFilter, setOfficialFilter] = useState<OfficialFilterType>('all');
@@ -418,7 +419,17 @@ function ClanFeedContent() {
           <div className="relative" ref={viewModeDropdownRef}>
             <button
               type="button"
-              onClick={() => setIsViewModeDropdownOpen(!isViewModeDropdownOpen)}
+              onClick={() => {
+                if (!isViewModeDropdownOpen && viewModeDropdownRef.current) {
+                  const rect = viewModeDropdownRef.current.getBoundingClientRect();
+                  if (rect.left < window.innerWidth / 2) {
+                    setDropdownAlign('left');
+                  } else {
+                    setDropdownAlign('right');
+                  }
+                }
+                setIsViewModeDropdownOpen(!isViewModeDropdownOpen);
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 transition shadow-sm"
               title="보기 형식 변경"
             >
@@ -444,7 +455,9 @@ function ClanFeedContent() {
             </button>
 
             {isViewModeDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1.5 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100">
+              <div className={`absolute top-full mt-1.5 w-48 max-w-[85vw] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100 ${
+                dropdownAlign === 'left' ? 'left-0' : 'right-0'
+              }`}>
                 {/* 1. 목록형 (캡처 1번) */}
                 <button
                   type="button"

@@ -11,6 +11,16 @@ export default function FeedMedia({ src, alt }: FeedMediaProps) {
   const [isTall, setIsTall] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
+  const checkRatio = (img: HTMLImageElement) => {
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      const ratio = img.naturalHeight / img.naturalWidth
+      if (ratio >= 1.7) {
+        setIsTall(true)
+      }
+    }
+    setLoaded(true)
+  }
+
   return (
     <div
       className={`w-full overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-center transition-all duration-200 ${
@@ -20,16 +30,9 @@ export default function FeedMedia({ src, alt }: FeedMediaProps) {
       <img
         src={src}
         alt={alt}
-        onLoad={(e) => {
-          const img = e.currentTarget
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            const ratio = img.naturalHeight / img.naturalWidth
-            // 세로폭이 가로의 1.7배 이상일 경우 3:4 비율로 크롭
-            if (ratio >= 1.7) {
-              setIsTall(true)
-            }
-          }
-          setLoaded(true)
+        onLoad={(e) => checkRatio(e.currentTarget)}
+        ref={(el) => {
+          if (el && el.complete) checkRatio(el)
         }}
         className={`w-full transition-opacity duration-200 ${
           loaded ? 'opacity-100' : 'opacity-0'

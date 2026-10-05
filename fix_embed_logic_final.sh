@@ -1,3 +1,142 @@
+#!/bin/bash
+set -e
+
+echo "=========================================================="
+echo " [SFA Clan] 카톡/디코 이름 연동 근본 해결 & 드롭다운 조건부 정렬"
+echo "=========================================================="
+
+# 1. /api/link-preview/route.ts 보강 (Discord API + 카카오톡 크롤러)
+cat << 'FILE_API' > src/app/api/link-preview/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(req: NextRequest) {
+  const url = req.nextUrl.searchParams.get('url')
+  if (!url) {
+    return NextResponse.json({ error: 'URL required' }, { status: 400 })
+  }
+
+  try {
+    // 1) 디스코드 링크 -> Discord 공식 초대 API 조회
+    const discordMatch = url.match(/(?:discord\.gg|discord\.com\/invite)\/([a-zA-Z0-9-]+)/i)
+    if (discordMatch && discordMatch[1]) {
+      const code = discordMatch[1].split('?')[0].split('#')[0]
+      try {
+        const dRes = await fetch(`https://discord.com/api/v9/invites/${code}?with_counts=true`, {
+          next: { revalidate: 3600 }
+        })
+        if (dRes.ok) {
+          const dData = await dRes.json()
+          if (dData?.guild?.name) {
+            return NextResponse.json({ title: dData.guild.name.trim() })
+          }
+        }
+      } catch {}
+      return NextResponse.json({ title: '디스코드 서버' })
+    }
+
+    // 2) 카카오톡 오픈채팅 및 일반 웹사이트
+    const isKakao = /open\.kakao\.com/i.test(url)
+    const userAgent = isKakao
+      ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 KAKAOTALK 9.9.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+    const res = await fetch(url, {
+      headers: { 'User-Agent': userAgent },
+      next: { revalidate: 3600 },
+    })
+
+    if (!res.ok) {
+      return NextResponse.json({ title: isKakao ? '카카오톡 오픈채팅방' : '' })
+    }
+
+    const html = await res.text()
+    let title = ''
+
+    const ogTitleMatch = html.match(/<meta[^>]+property=['"]og:title['"][^>]+content=['"]([^'"]+)['"]/i)
+      || html.match(/<meta[^>]+content=['"]([^'"]+)['"][^>]+property=['"]og:title['"]/i)
+
+    if (ogTitleMatch && ogTitleMatch[1]) {
+      title = ogTitleMatch[1].trim()
+    } else {
+      const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+      if (titleTagMatch && titleTagMatch[1]) {
+        title = titleTagMatch[1].trim()
+      }
+    }
+
+    title = title
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim()
+
+    if (!title || /^https?:\/\//i.test(title)) {
+      title = isKakao ? '카카오톡 오픈채팅방' : ''
+    }
+
+    return NextResponse.json({ title })
+  } catch {
+    const isKakao = /open\.kakao\.com/i.test(url)
+    return NextResponse.json({ title: isKakao ? '카카오톡 오픈채팅방' : '' })
+  }
+}
+FILE_API
+
+# 2. FeedMedia.tsx (1.7배 세로 사진 3:4 자동 크롭)
+cat << 'FILE_FEED_MEDIA' > src/components/FeedMedia.tsx
+'use client'
+
+import { useState } from 'react'
+
+interface FeedMediaProps {
+  src: string
+  alt: string
+}
+
+export default function FeedMedia({ src, alt }: FeedMediaProps) {
+  const [isTall, setIsTall] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  const checkRatio = (img: HTMLImageElement) => {
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      const ratio = img.naturalHeight / img.naturalWidth
+      if (ratio >= 1.7) {
+        setIsTall(true)
+      }
+    }
+    setLoaded(true)
+  }
+
+  return (
+    <div
+      className={`w-full overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-center transition-all duration-200 ${
+        isTall ? 'aspect-[3/4] max-w-sm sm:max-w-md mx-auto shadow-sm' : 'max-h-[520px]'
+      }`}
+    >
+      <img
+        src={src}
+        alt={alt}
+        onLoad={(e) => checkRatio(e.currentTarget)}
+        ref={(el) => {
+          if (el && el.complete) checkRatio(el)
+        }}
+        className={`w-full transition-opacity duration-200 ${
+          loaded ? 'opacity-100' : 'opacity-0'
+        } ${
+          isTall
+            ? 'h-full object-cover object-top'
+            : 'max-h-[520px] w-full object-contain'
+        }`}
+      />
+    </div>
+  )
+}
+FILE_FEED_MEDIA
+
+# 3. PostModal.tsx 전체 코드 덮어쓰기 (생링크 노출 원천 차단 및 실시간 이름 주입)
+cat << 'FILE_POST_MODAL' > src/components/PostModal.tsx
 'use client'
 
 import { CrownIcon, RoleType } from "./CrownIcon";
@@ -860,3 +999,112 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     </div>
   );
 }
+FILE_POST_MODAL
+
+# 4. clan/page.tsx: 드롭다운 좌/우 조건부 정렬(버튼이 왼쪽에 정렬될 때만 우측으로 펼침)
+cat << 'FILE_PATCH_CLAN_POS' > patch_clan_pos.py
+with open("src/app/clan/page.tsx", "r", encoding="utf-8") as f:
+    code = f.read()
+
+# 1) dropdownAlign 상태 추가
+search_state = "const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);"
+replace_state = """const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);
+  const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('right');"""
+
+if search_state in code and "dropdownAlign" not in code:
+    code = code.replace(search_state, replace_state)
+
+# 2) 토글 함수 보강 (버튼의 X 좌표 판별)
+search_toggle_btn = """onClick={() => setIsViewModeDropdownOpen(!isViewModeDropdownOpen)}"""
+replace_toggle_btn = """onClick={() => {
+                if (!isViewModeDropdownOpen && viewModeDropdownRef.current) {
+                  const rect = viewModeDropdownRef.current.getBoundingClientRect();
+                  if (rect.left < window.innerWidth / 2) {
+                    setDropdownAlign('left');
+                  } else {
+                    setDropdownAlign('right');
+                  }
+                }
+                setIsViewModeDropdownOpen(!isViewModeDropdownOpen);
+              }}"""
+
+if search_toggle_btn in code:
+    code = code.replace(search_toggle_btn, replace_toggle_btn)
+
+# 3) 드롭다운 클래스에 dropdownAlign 연동
+search_dropdown_cls = 'className="absolute right-0 top-full mt-1.5 w-48'
+if search_dropdown_cls not in code:
+    search_dropdown_cls = 'className="absolute left-0 top-full mt-1.5 w-48'
+
+replace_dropdown_cls = """className={`absolute top-full mt-1.5 w-48 max-w-[85vw] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100 ${
+                dropdownAlign === 'left' ? 'left-0' : 'right-0'
+              }`}"""
+
+import re
+code = re.sub(r'className="absolute (?:left|right)-0 top-full mt-1\.5 w-(?:44|48)[^"]+"', replace_dropdown_cls, code)
+
+with open("src/app/clan/page.tsx", "w", encoding="utf-8") as f:
+    f.write(code)
+
+print("clan/page.tsx: 드롭다운 좌/우 조건부 정렬 패치 완료")
+FILE_PATCH_CLAN_POS
+python3 patch_clan_pos.py || true
+rm -f patch_clan_pos.py
+
+# 5. community/page.tsx: 드롭다운 좌/우 조건부 정렬
+cat << 'FILE_PATCH_COMM_POS' > patch_comm_pos.py
+with open("src/app/community/page.tsx", "r", encoding="utf-8") as f:
+    code = f.read()
+
+search_state = "const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);"
+replace_state = """const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);
+  const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('right');"""
+
+if search_state in code and "dropdownAlign" not in code:
+    code = code.replace(search_state, replace_state)
+
+search_toggle_btn = """onClick={() => setIsViewModeDropdownOpen(!isViewModeDropdownOpen)}"""
+replace_toggle_btn = """onClick={() => {
+              if (!isViewModeDropdownOpen && viewModeDropdownRef.current) {
+                const rect = viewModeDropdownRef.current.getBoundingClientRect();
+                if (rect.left < window.innerWidth / 2) {
+                  setDropdownAlign('left');
+                } else {
+                  setDropdownAlign('right');
+                }
+              }
+              setIsViewModeDropdownOpen(!isViewModeDropdownOpen);
+            }}"""
+
+if search_toggle_btn in code:
+    code = code.replace(search_toggle_btn, replace_toggle_btn)
+
+replace_dropdown_cls = """className={`absolute top-full mt-1.5 w-48 max-w-[85vw] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100 ${
+              dropdownAlign === 'left' ? 'left-0' : 'right-0'
+            }`}"""
+
+import re
+code = re.sub(r'className="absolute (?:left|right)-0 top-full mt-1\.5 w-(?:44|48)[^"]+"', replace_dropdown_cls, code)
+
+with open("src/app/community/page.tsx", "w", encoding="utf-8") as f:
+    f.write(code)
+
+print("community/page.tsx: 드롭다운 좌/우 조건부 정렬 패치 완료")
+FILE_PATCH_COMM_POS
+python3 patch_comm_pos.py || true
+rm -f patch_comm_pos.py
+
+echo "--> 소스코드 정비 완료. 프로덕션 빌드 검증을 실행합니다..."
+npm run build
+
+echo "=========================================================="
+echo " [빌드 통과] 검증 완료! Git 실서버 배포를 진행합니다."
+echo "=========================================================="
+
+git add .
+git commit -m "fix: 카톡/디코 생링크 노출 근본 차단 및 실시간 이름 주입, 드롭다운 좌/우 조건부 정렬 적용"
+git push origin main || git push origin master
+
+echo "=========================================================="
+echo " [배포 완료] 실서버에 최신 코드가 정상 배포되었습니다!"
+echo "=========================================================="

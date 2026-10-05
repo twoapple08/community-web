@@ -7,10 +7,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1) 디스코드 링크일 경우 공식 API로 서버 이름(guild.name) 직접 조회
+    // 1) 디스코드 링크 -> Discord 공식 초대 API 조회
     const discordMatch = url.match(/(?:discord\.gg|discord\.com\/invite)\/([a-zA-Z0-9-]+)/i)
     if (discordMatch && discordMatch[1]) {
-      const code = discordMatch[1]
+      const code = discordMatch[1].split('?')[0].split('#')[0]
       try {
         const dRes = await fetch(`https://discord.com/api/v9/invites/${code}?with_counts=true`, {
           next: { revalidate: 3600 }
@@ -18,24 +18,26 @@ export async function GET(req: NextRequest) {
         if (dRes.ok) {
           const dData = await dRes.json()
           if (dData?.guild?.name) {
-            return NextResponse.json({ title: dData.guild.name })
+            return NextResponse.json({ title: dData.guild.name.trim() })
           }
         }
       } catch {}
+      return NextResponse.json({ title: '디스코드 서버' })
     }
 
-    // 2) 카카오톡 오픈채팅 및 일반 웹사이트 OG Title 파싱
+    // 2) 카카오톡 오픈채팅 및 일반 웹사이트
+    const isKakao = /open\.kakao\.com/i.test(url)
+    const userAgent = isKakao
+      ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 KAKAOTALK 9.9.0'
+      : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
     const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-      },
+      headers: { 'User-Agent': userAgent },
       next: { revalidate: 3600 },
     })
 
     if (!res.ok) {
-      if (/open\.kakao\.com/i.test(url)) return NextResponse.json({ title: '카카오톡 오픈채팅방' })
-      if (/discord/i.test(url)) return NextResponse.json({ title: '디스코드 서버' })
-      return NextResponse.json({ title: '' })
+      return NextResponse.json({ title: isKakao ? '카카오톡 오픈채팅방' : '' })
     }
 
     const html = await res.text()
@@ -53,15 +55,21 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    title = title
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim()
+
     if (!title || /^https?:\/\//i.test(title)) {
-      if (/open\.kakao\.com/i.test(url)) title = '카카오톡 오픈채팅방'
-      else if (/discord/i.test(url)) title = '디스코드 서버'
+      title = isKakao ? '카카오톡 오픈채팅방' : ''
     }
 
     return NextResponse.json({ title })
   } catch {
-    if (/open\.kakao\.com/i.test(url)) return NextResponse.json({ title: '카카오톡 오픈채팅방' })
-    if (/discord/i.test(url)) return NextResponse.json({ title: '디스코드 서버' })
-    return NextResponse.json({ title: '' })
+    const isKakao = /open\.kakao\.com/i.test(url)
+    return NextResponse.json({ title: isKakao ? '카카오톡 오픈채팅방' : '' })
   }
 }
