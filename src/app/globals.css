@@ -33,11 +33,24 @@ html:not(.dark) {
   color: #0f172a;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 300ms;
+/* 기본 색 전환 효과는 base 레이어에 둠 → Tailwind 유틸리티(transition-transform, duration-* 등)가 덮어쓸 수 있음
+   (레이어 밖에 있으면 유틸리티보다 우선해서 스위치 손잡이 이동 같은 효과가 모두 무시되던 문제) */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
+  }
+}
+
+/* 다크/라이트 전환 순간(약 0.4초)에만 모든 요소가 같은 속도로 함께 색이 바뀌도록 */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, box-shadow, opacity, transform, translate, rotate, scale !important;
+  transition-duration: 350ms !important;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 /* 한글이 단어 중간(음절 단위)에서 잘려 줄바꿈되던 문제 → 띄어쓰기 단위로 줄바꿈
@@ -206,6 +219,15 @@ p, h1, h2, h3, h4, h5, h6, span, a, li, td, th, blockquote {
   overflow-wrap: anywhere;
 }
 
+/* 에디터에서 크기를 조절한 이미지(width 속성 있음): 그 너비를 유지하고 문단 정렬(왼쪽/가운데/오른쪽)을 따름
+   (width 가 없는 이미지는 기존 표시 그대로) */
+.prose img[width] {
+  display: inline-block;
+  vertical-align: bottom;
+  max-width: 100%;
+  height: auto;
+}
+
 /* 다크/라이트 전환 시 안 보이게 되는 글자색 보정
    - 라이트 모드의 흰색 글자 / 다크 모드의 검은색 글자에 얇은 외곽 그림자를 줘서 읽을 수 있게 함 */
 html:not(.dark) .prose span[style*="color: #ffffff"],
@@ -215,11 +237,21 @@ html:not(.dark) .prose span[style*="color: rgb(255, 255, 255)"] {
   text-shadow: 0 0 1px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.55);
 }
 
-html.dark .prose span[style*="color: #000000"],
-html.dark .prose span[style*="color: #000;"],
-html.dark .prose span[style*="color: black"],
-html.dark .prose span[style*="color: rgb(0, 0, 0)"] {
-  text-shadow: 0 0 1px rgba(255, 255, 255, 0.9), 0 0 2px rgba(255, 255, 255, 0.55);
+/* 다크 모드의 검은 글자: 번짐 없는 1px 흰색 테두리(8방향)로 또렷하게
+   (예전 번짐 그림자는 너무 희미했음. 작성자가 직접 그림자/테두리를 준 글자는 그대로 둠) */
+html.dark .prose span[style*="color: #000000"]:not([style*="text-shadow"]):not([style*="text-stroke"]),
+html.dark .prose span[style*="color: #000;"]:not([style*="text-shadow"]):not([style*="text-stroke"]),
+html.dark .prose span[style*="color: black"]:not([style*="text-shadow"]):not([style*="text-stroke"]),
+html.dark .prose span[style*="color: rgb(0, 0, 0)"]:not([style*="text-shadow"]):not([style*="text-stroke"]) {
+  text-shadow:
+    1px 0 0 #fff,
+    -1px 0 0 #fff,
+    0 1px 0 #fff,
+    0 -1px 0 #fff,
+    1px 1px 0 #fff,
+    -1px -1px 0 #fff,
+    1px -1px 0 #fff,
+    -1px 1px 0 #fff;
 }
 
 /* =========================================================

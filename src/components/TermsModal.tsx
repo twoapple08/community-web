@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { ShieldCheck, Check } from 'lucide-react'
 
@@ -63,16 +64,32 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
             <li>동일 또는 유사한 내용의 반복적 도배 게시 행위</li>
           </ul>
 
-          <p className="font-bold text-zinc-900 dark:text-white">제3조 (신고 및 게시물 자동 삭제 조치)</p>
+          <p className="font-bold text-zinc-900 dark:text-white">제3조 (신고 및 게시물 검토 조치)</p>
           <p>
-            1. 게시글은 사용자 신고를 통해 접수되며, 동일한 사유로 <strong>3회 누적 신고</strong> 시 해당 게시글은 별도 경고 없이 시스템에 의해 <strong>즉시 자동 영구 삭제</strong>됩니다.
+            1. 게시글·댓글은 사용자 신고로 접수되며, <strong>서로 다른 이용자 3명 이상</strong>에게 신고되면 <strong>관리자 검토 전까지 임시로 가려집니다</strong>.
+            <br />
+            2. 관리자가 내용을 확인해 <strong>삭제</strong> 또는 <strong>복구(허위 신고 처리)</strong>를 결정합니다.
           </p>
 
           <p className="font-bold text-zinc-900 dark:text-white">제4조 (영구 블랙리스트 제재)</p>
           <p>
-            1. 동일 유저의 게시글이 누적 신고로 인해 <strong>3회 이상 삭제</strong>된 경우, 해당 계정은 <strong>영구 블랙리스트</strong>로 자동 전환됩니다.
+            1. 신고 검토 결과 동일 유저의 게시글이 <strong>3회 이상 삭제</strong>된 경우, 해당 계정은 <strong>영구 블랙리스트</strong>로 자동 전환됩니다.
             <br />
             2. 블랙리스트로 등록된 사용자는 게시글 작성 기능이 영구히 차단됩니다.
+          </p>
+
+          {/* 개인정보처리방침 안내 (새 탭으로 열어 약관 동의 창은 그대로 유지) */}
+          <p className="pt-2 border-t border-zinc-200 dark:border-zinc-800 text-[11px] text-zinc-500 dark:text-zinc-400">
+            개인정보 처리에 관한 사항은{' '}
+            <Link
+              href="/privacy"
+              target="_blank"
+              rel="noopener"
+              className="font-bold text-zinc-900 dark:text-white underline underline-offset-2 hover:opacity-70 transition"
+            >
+              개인정보처리방침
+            </Link>
+            을 확인해 주세요.
           </p>
         </div>
 
