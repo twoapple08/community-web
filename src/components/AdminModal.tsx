@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { X, UserX, AlertTriangle, Search, Check, Crown, ChevronDown } from 'lucide-react'
 import { CrownIcon, RoleType } from './CrownIcon'
+import CustomPopup from './CustomPopup'
+import { clearRoleCaches } from '@/lib/roles'
 
 interface AdminUser {
   email: string
@@ -35,6 +37,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
 
   const [deletingAdmin, setDeletingAdmin] = useState<AdminUser | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [alertPopup, setAlertPopup] = useState<{ title: string; message: string } | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -77,14 +80,14 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
   const handleAssignAdmin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedUserId) {
-      alert('관리자로 지정할 유저를 선택해 주십시오.')
+      setAlertPopup({ title: '유저 선택 필요', message: '관리자로 지정할 유저를 선택해 주십시오.' })
       return
     }
 
     setLoading(true)
     const targetProfile = profiles.find((p) => p.id === selectedUserId)
     if (!targetProfile) {
-      alert('유저 정보를 찾을 수 없습니다.')
+      setAlertPopup({ title: '오류', message: '유저 정보를 찾을 수 없습니다.' })
       setLoading(false)
       return
     }
@@ -111,12 +114,13 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
           .update({ role: targetRole })
           .eq('user_id', selectedUserId)
       } else {
-        alert(`관리자 지정 실패: ${error.message}`)
+        setAlertPopup({ title: '지정 실패', message: `관리자 지정 실패: ${error.message}` })
       }
     }
 
     setSelectedUserId('')
     setSearchNickname('')
+    clearRoleCaches()
     await loadData()
     setLoading(false)
   }
@@ -131,9 +135,10 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
       .eq('email', deletingAdmin.email)
 
     if (error) {
-      alert(`해제 실패: ${error.message}`)
+      setAlertPopup({ title: '해제 실패', message: `해제 실패: ${error.message}` })
     } else {
       setDeletingAdmin(null)
+      clearRoleCaches()
       await loadData()
     }
     setIsDeleting(false)
@@ -146,6 +151,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
   )
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-300"
       onClick={onClose}
@@ -377,5 +383,13 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
         </div>
       )}
     </div>
+
+    <CustomPopup
+      isOpen={Boolean(alertPopup)}
+      title={alertPopup?.title || ''}
+      message={alertPopup?.message || ''}
+      onConfirm={() => setAlertPopup(null)}
+    />
+    </>
   )
 }

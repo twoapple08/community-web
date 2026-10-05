@@ -54,9 +54,10 @@ export default function BlacklistModal({ isOpen, onClose }: BlacklistModalProps)
       .select('*')
       .order('created_at', { ascending: false })
 
+    // 개인정보 보호: 다른 유저의 이메일은 조회하지 않음 (닉네임만 사용)
     const { data: pData } = await supabase
       .from('profiles')
-      .select('id, nickname, email')
+      .select('id, nickname')
 
     if (bData) setBlacklist(bData as BlacklistUser[])
     if (pData) setProfiles(pData as ProfileUser[])

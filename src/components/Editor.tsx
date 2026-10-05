@@ -43,8 +43,9 @@ import {
   Maximize2
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { captureVideoFirstFrame } from '@/lib/videoUtils'
+import { compressPostImage } from '@/lib/imageCompress'
 import CustomPopup from './CustomPopup'
 
 const CustomUnderline = Mark.create({
@@ -221,6 +222,8 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   const [inputLinkUrl, setInputLinkUrl] = useState('')
   const [inputLinkText, setInputLinkText] = useState('')
   const [fetchingTitle, setFetchingTitle] = useState(false)
+  const titleFetchTimerRef = useRef<number | null>(null)
+  const titleFetchAbortRef = useRef<AbortController | null>(null)
 
   const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
   const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false)
@@ -261,7 +264,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     content,
     editorProps: {
       attributes: {
-        class: `prose prose-zinc dark:prose-invert max-w-none p-4 focus:outline-none text-zinc-800 dark:text-zinc-200 min-h-[${minHeight}] leading-relaxed`,
+        class: 'prose prose-zinc dark:prose-invert max-w-none p-4 focus:outline-none text-zinc-800 dark:text-zinc-200 leading-relaxed',
+        // Tailwind 는 동적 클래스(min-h-[${...}])를 만들지 못해 최소 높이가 적용되지 않던 문제 → 인라인 스타일로 적용
+        style: `min-height: ${minHeight};`,
       },
     },
     onUpdate: ({ editor }) => {
@@ -277,6 +282,14 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     return null;
   }, [inputLinkUrl]);
 
+  // 링크 제목 자동 조회 타이머/요청 정리
+  useEffect(() => {
+    return () => {
+      if (titleFetchTimerRef.current) window.clearTimeout(titleFetchTimerRef.current)
+      titleFetchAbortRef.current?.abort()
+    }
+  }, [])
+
   if (!editor) return null
 
   // 이미지 업로드
@@ -285,7 +298,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     if (!files || files.length === 0) return
 
     setIsUploading(true)
-    for (const file of Array.from(files)) {
+    for (const originalFile of Array.from(files)) {
+      // 대용량 사진은 업로드 전에 화질 손상 없이 자동 축소 (GIF 움짤은 원본 유지)
+      const file = await compressPostImage(originalFile)
       const fileExt = file.name.split('.').pop() || 'png'
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
       let finalUrl: string | null = null
@@ -397,15 +412,28 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
   const fetchAutoTitle = async (url: string) => {
     if (!url.startsWith('http')) return
+    titleFetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    titleFetchAbortRef.current = controller
     setFetchingTitle(true)
     try {
-      const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`)
+      const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`, { signal: controller.signal })
       const data = await res.json()
-      if (data?.title) {
+      if (data?.title && !controller.signal.aborted) {
         setInputLinkText(data.title)
       }
     } catch {}
-    setFetchingTitle(false)
+    if (titleFetchAbortRef.current === controller) setFetchingTitle(false)
+  }
+
+  // 입력할 때마다 서버에 요청하지 않도록 입력이 멈춘 뒤 0.5초 후 1회만 조회
+  const scheduleAutoTitle = (url: string) => {
+    if (titleFetchTimerRef.current) window.clearTimeout(titleFetchTimerRef.current)
+    if (!url.startsWith('http')) return
+    titleFetchTimerRef.current = window.setTimeout(() => {
+      titleFetchTimerRef.current = null
+      fetchAutoTitle(url)
+    }, 500)
   }
 
   const handleOpenLinkModal = () => {
@@ -677,7 +705,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading || isUploadingVideo}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-bold text-white bg-zinc-800 hover:bg-zinc-700 transition disabled:opacity-50 border border-zinc-700"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-bold text-zinc-800 bg-zinc-100 hover:bg-zinc-200 border-zinc-300 dark:text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 transition disabled:opacity-50 border dark:border-zinc-700"
             title="이미지 파일 첨부"
           >
             {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
@@ -720,7 +748,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-            className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none text-[11px] font-bold text-blue-600 hover:bg-blue-100"
+            className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none text-[11px] font-bold text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-950/60"
           >
             표 생성 (3x3)
           </button>
@@ -731,7 +759,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().addRowBefore().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 행 추가 (위)"
           >
             행 추가 (위)
@@ -739,7 +767,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().addRowAfter().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 행 추가 (아래)"
           >
             행 추가 (아래)
@@ -747,7 +775,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().deleteRow().run()}
-            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 rounded-none text-[11px] hover:bg-red-100"
+            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 rounded-none text-[11px] hover:bg-red-100 dark:hover:bg-red-950/70"
             title="표 행 삭제"
           >
             행 삭제
@@ -759,7 +787,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().addColumnBefore().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 열 추가 (좌측)"
           >
             열 추가 (좌)
@@ -767,7 +795,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().addColumnAfter().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 열 추가 (우측)"
           >
             열 추가 (우)
@@ -775,7 +803,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().deleteColumn().run()}
-            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 rounded-none text-[11px] hover:bg-red-100"
+            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 rounded-none text-[11px] hover:bg-red-100 dark:hover:bg-red-950/70"
             title="표 열 삭제"
           >
             열 삭제
@@ -787,7 +815,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().mergeCells().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 셀 병합"
           >
             셀 병합
@@ -795,7 +823,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().splitCell().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 셀 분할"
           >
             셀 분할
@@ -1019,10 +1047,16 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                   onChange={(e) => {
                     const val = e.target.value
                     setInputLinkUrl(val)
-                    if (val.startsWith('http')) fetchAutoTitle(val)
+                    scheduleAutoTitle(val)
                   }}
                   onBlur={() => {
-                    if (inputLinkUrl.startsWith('http') && !inputLinkText) fetchAutoTitle(inputLinkUrl)
+                    if (inputLinkUrl.startsWith('http') && !inputLinkText) {
+                      if (titleFetchTimerRef.current) {
+                        window.clearTimeout(titleFetchTimerRef.current)
+                        titleFetchTimerRef.current = null
+                      }
+                      fetchAutoTitle(inputLinkUrl)
+                    }
                   }}
                   placeholder="https://example.com"
                   required

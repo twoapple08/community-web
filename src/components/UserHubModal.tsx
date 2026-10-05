@@ -6,6 +6,17 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { CrownIcon, RoleType } from './CrownIcon'
 import CustomPopup from './CustomPopup'
+import { isCreatorEmail } from '@/lib/roles'
+import { getPostPath, selectPostsWithNo } from '@/lib/postRoute'
+import {
+  deleteReadNotifications,
+  describeNotification,
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  resolveNotificationPostPath,
+  type UserNotification,
+} from '@/lib/notifications'
 import {
   X,
   ArrowLeft,
@@ -21,13 +32,18 @@ import {
   Lightbulb,
   Inbox,
   Send,
-  Trash2
+  Trash2,
+  Bell,
+  CheckCheck,
+  MessageSquare,
+  CornerDownRight
 } from 'lucide-react'
 
-type ModalView = 'menu' | 'nickname' | 'my_posts' | 'liked_posts' | 'appeals' | 'suggestion_write' | 'suggestion_inbox'
+type ModalView = 'menu' | 'notifications' | 'nickname' | 'my_posts' | 'liked_posts' | 'appeals' | 'suggestion_write' | 'suggestion_inbox'
 
 interface PostItem {
   id: string
+  post_no?: number | null
   title: string
   created_at: string
   likes_count: number
@@ -67,6 +83,8 @@ interface UserHubModalProps {
   userRole: RoleType
   currentNickname: string
   onNicknameUpdated: (newNick: string) => void
+  unreadNotificationCount: number
+  onUnreadNotificationCountChange: (count: number) => void
 }
 
 export default function UserHubModal({
@@ -77,6 +95,8 @@ export default function UserHubModal({
   userRole,
   currentNickname,
   onNicknameUpdated,
+  unreadNotificationCount,
+  onUnreadNotificationCountChange,
 }: UserHubModalProps) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -88,7 +108,7 @@ export default function UserHubModal({
   const [posts, setPosts] = useState<PostItem[]>([])
   const [loadingPosts, setLoadingPosts] = useState(false)
 
-  const isCreator = userRole === 'creator' || userEmail?.toLowerCase() === 'iwsamuel08@gmail.com'
+  const isCreator = userRole === 'creator' || isCreatorEmail(userEmail)
   const isCreatorOrSuperAdmin = isCreator || userRole === 'super_admin'
 
   const [isFrozen, setIsFrozen] = useState(false)
@@ -126,6 +146,11 @@ export default function UserHubModal({
   const [unreadSuggestionCount, setUnreadSuggestionCount] = useState(0)
   const [selectedSuggestion, setSelectedSuggestion] = useState<SuggestionItem | null>(null)
   const [deletingReadSuggestions, setDeletingReadSuggestions] = useState(false)
+
+  // 내 게시글 알림 (좋아요/댓글/답글)
+  const [notifications, setNotifications] = useState<UserNotification[]>([])
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [processingNotifications, setProcessingNotifications] = useState(false)
 
   const [customPopupState, setCustomPopupState] = useState<{
     isOpen: boolean;
@@ -211,8 +236,11 @@ export default function UserHubModal({
     if (error) {
       setNoticeModal({ text: `게시글 번호 초기화 실패: ${error?.message || '알 수 없는 오류'}`, theme: 'yellow' })
     } else {
+      const hasFeedCounts = data && typeof data.clan_count === 'number' && typeof data.community_count === 'number'
       setNoticeModal({
-        text: `총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`,
+        text: hasFeedCounts
+          ? `클랜 피드 ${data.clan_count}개, 커뮤니티 피드 ${data.community_count}개의 게시글 번호가 피드별로 각각 1번부터 올린 순서대로 재정렬되었습니다.`
+          : `총 ${data?.count || 0}개의 게시글 번호가 1번부터 차례대로 성공적으로 재정렬되었습니다.`,
         theme: 'yellow'
       })
       setTimeout(() => {
@@ -370,14 +398,18 @@ export default function UserHubModal({
 
   const fetchMyPosts = async () => {
     setLoadingPosts(true)
-    const { data } = await supabase
-      .from('posts')
-      .select('id, title, created_at, likes_count, thumbnail_url, is_official, feed_type')
-      .eq('author_id', userId)
-      .eq('is_deleted', false)
-      .order('created_at', { ascending: false })
+    const data = await selectPostsWithNo<PostItem>(
+      'id, title, created_at, likes_count, thumbnail_url, is_official, feed_type',
+      (cols) =>
+        supabase
+          .from('posts')
+          .select(cols)
+          .eq('author_id', userId)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+    )
 
-    if (data) setPosts(data as PostItem[])
+    setPosts(data)
     setLoadingPosts(false)
   }
 
@@ -390,36 +422,92 @@ export default function UserHubModal({
       .order('created_at', { ascending: false })
 
     if (likeRecords && likeRecords.length > 0) {
-      const postIds = likeRecords.map((r: any) => r.post_id)
-      const { data: postData } = await supabase
-        .from('posts')
-        .select('id, title, created_at, likes_count, thumbnail_url, is_official, feed_type')
-        .in('id', postIds)
-        .eq('is_deleted', false)
+      const postIds = likeRecords.map((r: { post_id: number | string }) => r.post_id)
+      const postData = await selectPostsWithNo<PostItem>(
+        'id, title, created_at, likes_count, thumbnail_url, is_official, feed_type',
+        (cols) =>
+          supabase
+            .from('posts')
+            .select(cols)
+            .in('id', postIds)
+            .eq('is_deleted', false)
+      )
 
-      if (postData) {
-        const postMap = new Map(postData.map((p: any) => [p.id, p]))
-        const ordered = postIds.map((id) => postMap.get(id)).filter(Boolean) as PostItem[]
-        setPosts(ordered)
-      } else {
-        setPosts([])
-      }
+      const postMap = new Map(postData.map((p) => [String(p.id), p]))
+      const ordered = postIds.map((id) => postMap.get(String(id))).filter(Boolean) as PostItem[]
+      setPosts(ordered)
     } else {
       setPosts([])
     }
     setLoadingPosts(false)
   }
 
+  const loadNotifications = async () => {
+    setLoadingNotifications(true)
+    const list = await fetchNotifications(userId)
+    setNotifications(list)
+    setLoadingNotifications(false)
+  }
+
   const handleSelectView = (view: ModalView) => {
     setCurrentView(view)
     if (view === 'my_posts') fetchMyPosts()
     else if (view === 'liked_posts') fetchLikedPosts()
+    else if (view === 'notifications') loadNotifications()
   }
 
   const handleOpenPost = (post: PostItem) => {
     onClose()
-    const targetRoute = post.feed_type === 'community' ? `/community/${post.id}` : `/clan/${post.id}`
-    router.push(targetRoute)
+    router.push(getPostPath(post))
+  }
+
+  const handleOpenNotification = async (item: UserNotification) => {
+    if (!item.is_read) {
+      setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n)))
+      onUnreadNotificationCountChange(Math.max(0, unreadNotificationCount - 1))
+      await markNotificationRead(item.id)
+    }
+    const path = await resolveNotificationPostPath(item.post_id)
+    if (!path) {
+      setCustomPopupState({
+        isOpen: true,
+        title: '게시글 없음',
+        message: '삭제되었거나 존재하지 않는 게시글입니다.',
+        onConfirm: () => setCustomPopupState((p) => ({ ...p, isOpen: false }))
+      })
+      return
+    }
+    onClose()
+    router.push(path)
+  }
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!notifications.some((n) => !n.is_read) && unreadNotificationCount === 0) return
+    setProcessingNotifications(true)
+    await markAllNotificationsRead(userId)
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+    onUnreadNotificationCountChange(0)
+    setProcessingNotifications(false)
+  }
+
+  const handleDeleteReadNotifications = () => {
+    setCustomPopupState({
+      isOpen: true,
+      title: '읽은 알림 삭제',
+      message: '읽음 처리된 모든 알림을 삭제하시겠습니까?',
+      type: 'confirm',
+      onConfirm: async () => {
+        setCustomPopupState((p) => ({ ...p, isOpen: false }))
+        setProcessingNotifications(true)
+        const { error } = await deleteReadNotifications(userId)
+        if (error) {
+          setNoticeModal({ text: `삭제 실패: ${error.message || '알 수 없는 오류'}`, theme: 'sky' })
+        } else {
+          setNotifications((prev) => prev.filter((n) => !n.is_read))
+        }
+        setProcessingNotifications(false)
+      }
+    })
   }
 
   if (!isOpen) return null
@@ -446,6 +534,7 @@ export default function UserHubModal({
             )}
             <h2 className="text-base font-bold text-zinc-900 dark:text-white">
               {currentView === 'menu' && '마이 메뉴'}
+              {currentView === 'notifications' && '알림'}
               {currentView === 'nickname' && '닉네임 변경'}
               {currentView === 'my_posts' && '내가 쓴 게시글'}
               {currentView === 'liked_posts' && '좋아요 누른 게시글'}
@@ -454,7 +543,7 @@ export default function UserHubModal({
               {currentView === 'suggestion_inbox' && '제작자 건의함'}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-white rounded-lg transition">
+          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -479,6 +568,33 @@ export default function UserHubModal({
             </div>
 
             <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleSelectView('notifications')}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-800 transition group text-left relative"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 relative">
+                    <Bell className="w-4 h-4" />
+                    {unreadNotificationCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full ring-2 ring-white dark:ring-black animate-pulse" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-xs font-bold text-zinc-900 dark:text-white">알림</h3>
+                      {unreadNotificationCount > 0 && (
+                        <span className="text-[10px] font-black bg-red-600 text-white px-1.5 py-0.2 rounded-full">
+                          {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-400">내 게시글·댓글에 달린 좋아요와 댓글 소식을 확인합니다.</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-zinc-400" />
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleSelectView('nickname')}
@@ -622,7 +738,7 @@ export default function UserHubModal({
                     type="button"
                     onClick={() => setConfirmReindexOpen(true)}
                     disabled={isReindexing}
-                    className="p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                    className="p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isReindexing ? 'animate-spin' : ''}`} />
                     <span>게시글 번호 초기화</span>
@@ -664,7 +780,7 @@ export default function UserHubModal({
                 value={newNickname}
                 onChange={(e) => setNewNickname(e.target.value)}
                 maxLength={15}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-sm"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-sm"
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -715,7 +831,7 @@ export default function UserHubModal({
                 value={suggestionTitle}
                 onChange={(e) => setSuggestionTitle(e.target.value)}
                 placeholder="건의 제목을 간략히 적어주세요"
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-xs"
+                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 text-xs"
               />
             </div>
 
@@ -726,7 +842,7 @@ export default function UserHubModal({
                 onChange={(e) => setSuggestionContent(e.target.value)}
                 placeholder="필요한 기능이나 발견하신 버그를 상세히 적어주시면 사이트 개선에 큰 도움이 됩니다."
                 rows={5}
-                className="w-full p-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-xs"
+                className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 text-xs"
               />
             </div>
 
@@ -781,12 +897,12 @@ export default function UserHubModal({
                         : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-yellow-400 text-black">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-yellow-400 text-black shrink-0">
                           {item.category}
                         </span>
-                        <span className="font-bold text-zinc-900 dark:text-white truncate">
+                        <span className="font-bold text-zinc-900 dark:text-white truncate min-w-0">
                           {item.title}
                         </span>
                       </div>
@@ -797,6 +913,81 @@ export default function UserHubModal({
                     <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
                       <span>작성자: {item.user_nickname}</span>
                       <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {currentView === 'notifications' && (
+          <div className="p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <span className="text-xs font-bold text-zinc-400">
+                받은 알림 ({notifications.length}건)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleMarkAllNotificationsRead}
+                  disabled={processingNotifications}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 border border-sky-500/40 rounded-none transition disabled:opacity-50"
+                >
+                  <CheckCheck className="w-3 h-3" />
+                  <span>모두 읽음</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteReadNotifications}
+                  disabled={processingNotifications}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 border border-red-500/40 rounded-none transition disabled:opacity-50"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>읽은 알림 삭제</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
+              {loadingNotifications ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+                  <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
+                  <span className="text-xs">알림을 불러오는 중...</span>
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="py-12 text-center text-xs text-zinc-500">도착한 알림이 없습니다.</div>
+              ) : (
+                notifications.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleOpenNotification(item)}
+                    className={`p-3 rounded-xl border cursor-pointer transition text-xs space-y-1 ${
+                      !item.is_read
+                        ? 'border-sky-500/60 bg-sky-500/10'
+                        : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <span className="mt-0.5 shrink-0">
+                          {item.type === 'post_like' ? (
+                            <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500/30" />
+                          ) : item.type === 'comment_reply' ? (
+                            <CornerDownRight className="w-3.5 h-3.5 text-blue-500" />
+                          ) : (
+                            <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+                          )}
+                        </span>
+                        <p className="font-bold text-zinc-900 dark:text-white leading-snug break-words min-w-0">
+                          {describeNotification(item)}
+                        </p>
+                      </div>
+                      {!item.is_read && <span className="w-2 h-2 mt-1 rounded-full bg-red-600 shrink-0" />}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-400 pt-0.5 pl-5">
+                      <span className="truncate min-w-0">{item.post_title || '게시글'}</span>
+                      <span className="shrink-0">{new Date(item.created_at).toLocaleString()}</span>
                     </div>
                   </div>
                 ))
@@ -827,12 +1018,12 @@ export default function UserHubModal({
                     className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-800 cursor-pointer transition group"
                   >
                     <div className="min-w-0 flex-1 pr-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 shrink-0">
                           {post.feed_type === 'community' ? '커뮤니티' : '클랜'}
                         </span>
                         {post.is_official && (
-                          <span className="text-[10px] font-extrabold text-emerald-500">[공식]</span>
+                          <span className="text-[10px] font-extrabold text-emerald-500 shrink-0">[공식]</span>
                         )}
                         <h4 className="text-xs font-bold text-zinc-900 dark:text-white truncate group-hover:text-emerald-500 transition">
                           {post.title}
@@ -923,10 +1114,10 @@ export default function UserHubModal({
           >
             <div className="space-y-2 text-center">
               <p className="text-xs sm:text-sm text-zinc-900 dark:text-white font-bold leading-relaxed">
-                모든 게시글의 번호를 1번부터 차례대로 재정렬하시겠습니까?
+                클랜 피드와 커뮤니티 피드의 게시글 번호를 각각 1번부터 올린 순서대로 재정렬하시겠습니까?
               </p>
               <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                기존 댓글, 좋아요, 신고 기록 및 시퀀스가 안전하게 1번부터 연속 동기화됩니다.
+                댓글, 좋아요, 신고 기록은 그대로 유지되며 게시글 주소 번호만 피드별로 다시 매겨집니다.
               </p>
             </div>
 

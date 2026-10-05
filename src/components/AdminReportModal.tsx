@@ -5,6 +5,9 @@ import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { Siren, X, Check, Trash2, RotateCcw, AlertTriangle, Eye, Loader2 } from 'lucide-react'
 import { formatReportNotice, formatAutoDeleteNotice } from '@/lib/koreanUtils'
+import { sanitizeHtml } from '@/lib/sanitizeHtml'
+import { emitPostsChanged } from '@/lib/feedStore'
+import CustomPopup from './CustomPopup'
 
 interface AdminNotification {
   id: number
@@ -34,6 +37,29 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
   const [viewPost, setViewPost] = useState<any | null>(null)
   const [viewLoading, setViewLoading] = useState(false)
   const [actionProcessing, setActionProcessing] = useState(false)
+
+  // 브라우저 기본 alert/confirm 대신 사이트 전용 직각 팝업
+  const [popup, setPopup] = useState<{
+    isOpen: boolean
+    title: string
+    message: string
+    type?: 'alert' | 'confirm'
+    isDanger?: boolean
+    onConfirm: () => void
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} })
+
+  const closePopup = () => setPopup((p) => ({ ...p, isOpen: false }))
+  const showAlert = (title: string, message: string, after?: () => void) =>
+    setPopup({
+      isOpen: true,
+      title,
+      message,
+      type: 'alert',
+      onConfirm: () => {
+        closePopup()
+        if (after) after()
+      },
+    })
 
   useEffect(() => {
     setMounted(true)
@@ -74,13 +100,12 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
     if (data) {
       setViewPost(data)
     } else {
-      alert('게시글을 찾을 수 없거나 이미 영구 삭제되었습니다.')
+      showAlert('게시글 없음', '게시글을 찾을 수 없거나 이미 영구 삭제되었습니다.')
     }
     setViewLoading(false)
   }
 
-  const handleRestorePost = async (postId: number) => {
-    if (!confirm('해당 게시글을 복구하시겠습니까? 피드에 다시 정상 노출됩니다.')) return
+  const executeRestorePost = async (postId: number) => {
     setActionProcessing(true)
     const { error } = await supabase
       .from('posts')
@@ -88,35 +113,65 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
       .eq('id', postId)
 
     if (error) {
-      alert(`복구 실패: ${error.message}`)
+      showAlert('복구 실패', `복구 실패: ${error.message}`)
     } else {
-      alert('게시글이 성공적으로 복구되었습니다.')
+      showAlert('복구 완료', '게시글이 성공적으로 복구되었습니다.')
       setViewPost(null)
+      emitPostsChanged({ kind: 'refresh' })
       if (onPostRestored) onPostRestored()
       fetchNotifications()
     }
     setActionProcessing(false)
   }
 
-  const handlePermanentDelete = async (postId: number) => {
-    if (!confirm('게시글을 영구 삭제하시겠습니까? 데이터베이스에서 완전히 삭제되며 복구할 수 없습니다.')) return
+  const handleRestorePost = (postId: number) => {
+    setPopup({
+      isOpen: true,
+      title: '게시글 복구',
+      message: '해당 게시글을 복구하시겠습니까? 피드에 다시 정상 노출됩니다.',
+      type: 'confirm',
+      onConfirm: () => {
+        closePopup()
+        executeRestorePost(postId)
+      },
+    })
+  }
+
+  const executePermanentDelete = async (postId: number) => {
     setActionProcessing(true)
     const { error } = await supabase.from('posts').delete().eq('id', postId)
 
     if (error) {
-      alert(`영구 삭제 실패: ${error.message}`)
+      showAlert('영구 삭제 실패', `영구 삭제 실패: ${error.message}`)
     } else {
-      alert('게시글이 영구 삭제되었습니다.')
+      showAlert('영구 삭제 완료', '게시글이 영구 삭제되었습니다.')
       setViewPost(null)
+      emitPostsChanged({ kind: 'refresh' })
       if (onPostRestored) onPostRestored()
       fetchNotifications()
     }
     setActionProcessing(false)
   }
 
+  const handlePermanentDelete = (postId: number) => {
+    setPopup({
+      isOpen: true,
+      title: '게시글 영구 삭제',
+      message: '게시글을 영구 삭제하시겠습니까? 데이터베이스에서 완전히 삭제되며 복구할 수 없습니다.',
+      type: 'confirm',
+      isDanger: true,
+      onConfirm: () => {
+        closePopup()
+        executePermanentDelete(postId)
+      },
+    })
+  }
+
   if (!isOpen || !mounted) return null
 
-  return createPortal(
+  return (
+    <>
+    {createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
       onClick={onClose}
@@ -145,7 +200,7 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
             <button
               type="button"
               onClick={onClose}
-              className="p-1 text-zinc-400 hover:text-white rounded-none"
+              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-none"
             >
               <X className="w-5 h-5" />
             </button>
@@ -218,7 +273,10 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
       {viewPost && (
         <div
           className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
-          onClick={() => setViewPost(null)}
+          onClick={(e) => {
+            e.stopPropagation()
+            setViewPost(null)
+          }}
         >
           <div
             className="w-full max-w-2xl bg-white dark:bg-zinc-950 border-2 border-red-600 rounded-none p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
@@ -234,7 +292,7 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
               <button
                 type="button"
                 onClick={() => setViewPost(null)}
-                className="p-1 text-zinc-400 hover:text-white rounded-none"
+                className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-none"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -248,7 +306,7 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
                 {viewPost.title}
               </h2>
               <div className="p-4 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-sm leading-relaxed max-h-72 overflow-y-auto rounded-none prose dark:prose-invert max-w-none">
-                <div dangerouslySetInnerHTML={{ __html: viewPost.content }} />
+                <div className="[contain:paint]" dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewPost.content) }} />
               </div>
             </div>
 
@@ -277,5 +335,18 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
       )}
     </div>,
     document.body
+    )}
+
+    {/* 팝업은 신고 기록 창 바깥에 두어, 팝업 여백 클릭이 신고 기록 창까지 닫지 않도록 함 */}
+    <CustomPopup
+      isOpen={popup.isOpen}
+      title={popup.title}
+      message={popup.message}
+      type={popup.type || 'alert'}
+      isDanger={popup.isDanger}
+      onConfirm={popup.onConfirm}
+      onCancel={closePopup}
+    />
+    </>
   )
 }

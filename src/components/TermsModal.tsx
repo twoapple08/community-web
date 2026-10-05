@@ -39,36 +39,36 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div
-        className="w-full max-w-lg bg-zinc-950 border-2 border-white text-white rounded-none p-6 shadow-2xl space-y-4"
+        className="w-full max-w-lg bg-white dark:bg-zinc-950 border-2 border-zinc-900 dark:border-white text-zinc-900 dark:text-white rounded-none p-6 shadow-2xl space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 border-b border-zinc-800 pb-3">
-          <div className="p-1.5 bg-white text-black">
+        <div className="flex items-center gap-2.5 border-b border-zinc-200 dark:border-zinc-800 pb-3">
+          <div className="p-1.5 bg-zinc-900 text-white dark:bg-white dark:text-black">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <h2 className="text-base font-black tracking-wide">커뮤니티 서비스 이용약관</h2>
         </div>
 
-        <div className="p-4 bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 space-y-3 max-h-72 overflow-y-auto leading-relaxed select-none">
-          <p className="font-bold text-white">제1조 (목적 및 커뮤니티 건전성 유지)</p>
+        <div className="p-4 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 space-y-3 max-h-72 overflow-y-auto leading-relaxed select-none">
+          <p className="font-bold text-zinc-900 dark:text-white">제1조 (목적 및 커뮤니티 건전성 유지)</p>
           <p>
             본 약관은 사용자가 안전하고 쾌적한 환경에서 게시글을 작성하고 소통할 수 있도록 규정합니다.
           </p>
 
-          <p className="font-bold text-white">제2조 (금지 행위 및 게시물 규제)</p>
+          <p className="font-bold text-zinc-900 dark:text-white">제2조 (금지 행위 및 게시물 규제)</p>
           <p>다음 각 호에 해당하는 행위는 엄격히 금지됩니다:</p>
-          <ul className="list-disc list-inside space-y-1 pl-1 text-zinc-400">
-            <li><strong className="text-zinc-200">부적절한 이미지</strong>: 선정성 노출 이미지, 잔혹하거나 폭력적인 이미지</li>
-            <li><strong className="text-zinc-200">부적절한 내용</strong>: 타인에 대한 욕설, 비하 및 혐오 발언</li>
+          <ul className="list-disc list-inside space-y-1 pl-1 text-zinc-600 dark:text-zinc-400">
+            <li><strong className="text-zinc-800 dark:text-zinc-200">부적절한 이미지</strong>: 선정성 노출 이미지, 잔혹하거나 폭력적인 이미지</li>
+            <li><strong className="text-zinc-800 dark:text-zinc-200">부적절한 내용</strong>: 타인에 대한 욕설, 비하 및 혐오 발언</li>
             <li>동일 또는 유사한 내용의 반복적 도배 게시 행위</li>
           </ul>
 
-          <p className="font-bold text-white">제3조 (신고 및 게시물 자동 삭제 조치)</p>
+          <p className="font-bold text-zinc-900 dark:text-white">제3조 (신고 및 게시물 자동 삭제 조치)</p>
           <p>
             1. 게시글은 사용자 신고를 통해 접수되며, 동일한 사유로 <strong>3회 누적 신고</strong> 시 해당 게시글은 별도 경고 없이 시스템에 의해 <strong>즉시 자동 영구 삭제</strong>됩니다.
           </p>
 
-          <p className="font-bold text-white">제4조 (영구 블랙리스트 제재)</p>
+          <p className="font-bold text-zinc-900 dark:text-white">제4조 (영구 블랙리스트 제재)</p>
           <p>
             1. 동일 유저의 게시글이 누적 신고로 인해 <strong>3회 이상 삭제</strong>된 경우, 해당 계정은 <strong>영구 블랙리스트</strong>로 자동 전환됩니다.
             <br />
@@ -76,13 +76,13 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
           </p>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-          <label className="flex items-center gap-2.5 text-xs font-bold text-white cursor-pointer select-none">
+        <div className="flex items-center justify-between gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+          <label className="flex items-center gap-2.5 text-xs font-bold text-zinc-900 dark:text-white cursor-pointer select-none">
             <input
               type="checkbox"
               checked={agreed}
               onChange={(e) => setAgreed(e.target.checked)}
-              className="w-4 h-4 rounded-none border border-white bg-black accent-white cursor-pointer"
+              className="w-4 h-4 shrink-0 rounded-none border border-zinc-900 dark:border-white bg-white dark:bg-black accent-zinc-900 dark:accent-white cursor-pointer"
             />
             <span>위 이용약관을 모두 확인하였으며 이에 동의합니다.</span>
           </label>
@@ -91,7 +91,7 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
             type="button"
             disabled={!agreed || loading}
             onClick={handleConfirm}
-            className="px-5 py-2 text-xs font-black bg-white text-black hover:bg-zinc-200 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
+            className="px-5 py-2 text-xs font-black bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
           >
             <Check className="w-4 h-4" />
             <span>{loading ? '처리 중...' : '확인'}</span>

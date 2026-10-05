@@ -1,0 +1,805 @@
+'use client'
+
+import { CrownIcon, RoleType } from "@/components/CrownIcon";
+import { useEffect, useState, Suspense, useMemo, useRef, useCallback, useDeferredValue } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import {
+  RotateCw,
+  Heart,
+  Calendar,
+  Image as ImageIcon,
+  MessageSquare,
+  Search,
+  EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  ArrowLeftRight,
+  Menu,
+  Siren,
+  Check
+} from 'lucide-react';
+import NoticeBanner from '@/components/NoticeBanner';
+import FeedMedia from '@/components/FeedMedia';
+import AdminReportModal from '@/components/AdminReportModal';
+import Link from 'next/link';
+import { extractFirstImage, extractPlainText, countImages, normalizeForSearch } from '@/lib/htmlText';
+import { fetchMyRole, fetchRoleMap } from '@/lib/roles';
+import { getPostPath } from '@/lib/postRoute';
+import {
+  FEED_CACHE_FRESH_MS,
+  getFeedCache,
+  markOpenedFromFeed,
+  onPostsChanged,
+  patchFeedCache,
+  setFeedCache,
+} from '@/lib/feedStore';
+
+type SortType = 'latest' | 'popular' | 'oldest';
+type ViewMode = 'list' | 'feed' | 'album';
+
+const BOARD_CATEGORIES = ['모두', '자유', '정보 공유', '일상', '사연', '글/소설', '질문', '그림', '영상'] as const;
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const;
+
+interface Post {
+  id: string;
+  post_no?: number | null;
+  title: string;
+  content: string;
+  created_at: string;
+  author_id: string;
+  likes_count?: number;
+  comments_count?: number;
+  author_nickname?: string;
+  author_role?: RoleType;
+  board_category?: string;
+  thumbnail_url?: string | null;
+  is_preview_hidden?: boolean;
+  feed_type?: string;
+  // 목록 렌더링/검색용으로 미리 계산해 두는 값 (매 렌더링마다 HTML 을 다시 분석하지 않도록)
+  _plain: string;
+  _thumb: string | null;
+  _imageCount: number;
+  _searchTitle: string;
+  _searchAuthor: string;
+  _searchContent: string;
+  _time: number;
+}
+
+const sortPosts = (list: Post[], sortType: SortType): Post[] => {
+  const sorted = [...list];
+  if (sortType === 'popular') {
+    sorted.sort((a, b) => (b.likes_count ?? 0) - (a.likes_count ?? 0) || b._time - a._time);
+  } else if (sortType === 'oldest') {
+    sorted.sort((a, b) => a._time - b._time);
+  } else {
+    sorted.sort((a, b) => b._time - a._time);
+  }
+  return sorted;
+};
+
+function CommunityFeedContent() {
+  const router = useRouter();
+
+  const [posts, setPosts] = useState<Post[]>(() => getFeedCache<Post>('community')?.posts ?? []);
+  const [currentUserRole, setCurrentUserRole] = useState<RoleType>(null);
+
+  const [sortType, setSortType] = useState<SortType>('latest');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [isViewModeDropdownOpen, setIsViewModeDropdownOpen] = useState(false);
+  const [dropdownAlign, setDropdownAlign] = useState<'left' | 'right'>('right');
+  const viewModeDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [selectedBoard, setSelectedBoard] = useState<string>('모두');
+  const [isBoardDropdownOpen, setIsBoardDropdownOpen] = useState(false);
+  const boardDropdownRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [postsPerPage, setPostsPerPage] = useState<number>(10);
+  const [isPageSizeDropupOpen, setIsPageSizeDropupOpen] = useState(false);
+  const pageSizeDropupRef = useRef<HTMLDivElement>(null);
+
+  const [loading, setLoading] = useState(() => !getFeedCache('community'));
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [isAdminReportOpen, setIsAdminReportOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const isCreatorOrSuperAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin';
+
+  // 보기 방식 통합 로컬스토리지 키 (sfa_global_view_mode)
+  useEffect(() => {
+    const savedSize = localStorage.getItem('user_posts_per_page');
+    if (savedSize && [10, 20, 30, 40, 50].includes(Number(savedSize))) {
+      setPostsPerPage(Number(savedSize));
+    }
+    const savedGlobalView = localStorage.getItem('sfa_global_view_mode') as ViewMode | null;
+    if (savedGlobalView && ['list', 'feed', 'album'].includes(savedGlobalView)) {
+      setViewMode(savedGlobalView);
+    }
+  }, []);
+
+  // 외부 클릭 시 드롭다운 닫기 (보기형식 / 게시판 / 페이지당 개수)
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (viewModeDropdownRef.current && !viewModeDropdownRef.current.contains(target)) {
+        setIsViewModeDropdownOpen(false);
+      }
+      if (boardDropdownRef.current && !boardDropdownRef.current.contains(target)) {
+        setIsBoardDropdownOpen(false);
+      }
+      if (pageSizeDropupRef.current && !pageSizeDropupRef.current.contains(target)) {
+        setIsPageSizeDropupOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    setIsViewModeDropdownOpen(false);
+    localStorage.setItem('sfa_global_view_mode', mode);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPostsPerPage(newSize);
+    setCurrentPage(1);
+    setIsPageSizeDropupOpen(false);
+    localStorage.setItem('user_posts_per_page', String(newSize));
+  };
+
+  const checkUnreadReports = useCallback(async () => {
+    const { count } = await supabase
+      .from('admin_notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_read', false);
+
+    setUnreadCount(count || 0);
+  }, []);
+
+  const fetchPosts = useCallback(async () => {
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('feed_type', 'community')
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false });
+
+    if (postsData) {
+      const authorIds = Array.from(new Set(postsData.map((p) => p.author_id).filter(Boolean)));
+      const profileMap: Record<string, string> = {};
+
+      const [profileRows, roleMap] = await Promise.all([
+        authorIds.length > 0
+          ? Promise.resolve(supabase.from('profiles').select('id, nickname').in('id', authorIds)).then(
+              (res) => (res.data ?? []) as { id: string; nickname: string }[]
+            )
+          : Promise.resolve([] as { id: string; nickname: string }[]),
+        fetchRoleMap(),
+      ]);
+
+      profileRows.forEach((p) => {
+        profileMap[p.id] = p.nickname;
+      });
+
+      // posts.comments_count 컬럼(트리거 자동 관리)이 없는 경우에만 댓글 행을 직접 셉니다.
+      const needsCommentCount = postsData.length > 0 && postsData[0].comments_count === undefined;
+      const commentCountMap: Record<string, number> = {};
+      if (needsCommentCount) {
+        const { data: commentsCountData } = await supabase
+          .from('post_comments')
+          .select('post_id')
+          .in('post_id', postsData.map((p) => p.id));
+        commentsCountData?.forEach((c: { post_id: number | string }) => {
+          const pid = String(c.post_id);
+          commentCountMap[pid] = (commentCountMap[pid] || 0) + 1;
+        });
+      }
+
+      const nextPosts: Post[] = postsData.map((post) => {
+        const nickname = profileMap[post.author_id] || '작성자';
+        const plain = extractPlainText(post.content);
+        return {
+          ...post,
+          likes_count: post.likes_count ?? 0,
+          comments_count: post.comments_count !== undefined ? post.comments_count : (commentCountMap[String(post.id)] || 0),
+          author_nickname: nickname,
+          author_role: roleMap[post.author_id] || null,
+          thumbnail_url: post.thumbnail_url || null,
+          is_preview_hidden: Boolean(post.is_preview_hidden),
+          _plain: plain,
+          _thumb: post.thumbnail_url || extractFirstImage(post.content),
+          _imageCount: countImages(post.content),
+          _searchTitle: normalizeForSearch(post.title || ''),
+          _searchAuthor: normalizeForSearch(nickname),
+          _searchContent: normalizeForSearch(plain),
+          _time: new Date(post.created_at).getTime() || 0,
+        };
+      });
+
+      setPosts(nextPosts);
+      setFeedCache('community', nextPosts);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const uid = session?.user?.id ?? null;
+      if (!uid) return;
+      fetchMyRole(uid, session?.user?.email).then((role) => {
+        if (!role) return;
+        setCurrentUserRole(role);
+        if (role === 'creator' || role === 'super_admin') {
+          checkUnreadReports();
+        }
+      });
+    });
+
+    // 캐시가 있으면 즉시 표시하고, 오래된 경우에만 뒤에서 조용히 새로고침
+    const cached = getFeedCache('community');
+    if (!cached || Date.now() - cached.at > FEED_CACHE_FRESH_MS) {
+      fetchPosts();
+    }
+  }, [fetchPosts, checkUnreadReports]);
+
+  // 게시글 상세(모달)에서 좋아요/수정/삭제가 일어나면 목록에 반영
+  useEffect(() => {
+    return onPostsChanged((event) => {
+      if (event.kind === 'patch') {
+        patchFeedCache(event.id, event.patch);
+        setPosts((prev) => prev.map((p) => (String(p.id) === String(event.id) ? ({ ...p, ...event.patch } as Post) : p)));
+      } else {
+        if (event.kind === 'remove') {
+          setPosts((prev) => prev.filter((p) => String(p.id) !== String(event.id)));
+        }
+        fetchPosts();
+      }
+    });
+  }, [fetchPosts]);
+
+  const sortedPosts = useMemo(() => sortPosts(posts, sortType), [posts, sortType]);
+
+  const filteredPosts = useMemo(() => {
+    const q = normalizeForSearch(deferredSearchQuery);
+
+    return sortedPosts.filter((post) => {
+      if (selectedBoard !== '모두' && post.board_category !== selectedBoard) {
+        return false;
+      }
+
+      if (q) {
+        if (!post._searchTitle.includes(q) && !post._searchAuthor.includes(q) && !post._searchContent.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [sortedPosts, selectedBoard, deferredSearchQuery]);
+
+  // 검색어/게시판/정렬이 바뀌면 1페이지로 이동 (빈 페이지가 보이던 문제 방지)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [deferredSearchQuery, selectedBoard, sortType]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / postsPerPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedPosts = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * postsPerPage;
+    return filteredPosts.slice(startIndex, startIndex + postsPerPage);
+  }, [filteredPosts, safeCurrentPage, postsPerPage]);
+
+  const openPost = (post: Post) => {
+    markOpenedFromFeed();
+    router.push(getPostPath({ ...post, feed_type: 'community' }));
+  };
+
+  return (
+    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 flex-1 flex flex-col min-w-0">
+      <div className="flex items-center justify-between gap-3 pb-3 mb-2 min-w-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <Link
+              href="/clan"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-none shadow-sm transition"
+              title="클랜 피드로 교체"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span>클랜 피드로 교체</span>
+            </Link>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-zinc-900 dark:text-white truncate">
+            커뮤니티 피드
+          </h1>
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+            가입 인사 · 자유로운 수다
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {isCreatorOrSuperAdmin && (
+            <button
+              onClick={() => setIsAdminReportOpen(true)}
+              className="relative inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-2 text-xs font-bold rounded-none border border-red-600 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition shadow-sm"
+              title="신고 기록"
+            >
+              <Siren className="w-3.5 h-3.5" />
+              <span>신고 기록</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[10px] font-black rounded-full min-w-4 h-4 px-1 flex items-center justify-center leading-none shadow-md">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          <button
+            onClick={async () => {
+              setIsRefreshing(true);
+              await Promise.all([fetchPosts(), isCreatorOrSuperAdmin ? checkUnreadReports() : Promise.resolve()]);
+              setTimeout(() => setIsRefreshing(false), 400);
+            }}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-semibold rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition shadow-sm"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-500' : ''}`} />
+            <span className="hidden sm:inline">새로고침</span>
+          </button>
+        </div>
+      </div>
+
+      <NoticeBanner currentUserRole={currentUserRole} />
+
+      <hr className="border-zinc-200 dark:border-zinc-800 mb-4" />
+
+      <div className="flex items-center gap-2 mb-3.5 min-w-0">
+        <div className="relative flex-1 min-w-0">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="제목, 작성자, 내용 검색"
+            className="w-full pl-9 pr-8 py-2 text-xs bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <div className="relative" ref={boardDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setIsBoardDropdownOpen(!isBoardDropdownOpen)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 shadow-sm whitespace-nowrap"
+          >
+            <Menu className="w-4 h-4 text-blue-500" />
+            <span>게시판: {selectedBoard}</span>
+          </button>
+
+          {isBoardDropdownOpen && (
+            <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-none shadow-xl z-30 py-1">
+              {BOARD_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setSelectedBoard(cat);
+                    setIsBoardDropdownOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition ${
+                    selectedBoard === cat
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                  }`}
+                >
+                  <span>{cat}</span>
+                  {selectedBoard === cat && <Check className="w-3.5 h-3.5" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 정렬 버튼 그룹 + 바로 왼쪽에 위치한 네이버 카페식 보기방식 드롭다운 */}
+      <div className="flex items-center justify-end gap-2 mb-4">
+        {/* 네이버 카페 스타일 보기형식 드롭다운 */}
+        <div className="relative" ref={viewModeDropdownRef}>
+          <button
+            type="button"
+            onClick={() => {
+              if (!isViewModeDropdownOpen && viewModeDropdownRef.current) {
+                const rect = viewModeDropdownRef.current.getBoundingClientRect();
+                if (rect.left < window.innerWidth / 2) {
+                  setDropdownAlign('left');
+                } else {
+                  setDropdownAlign('right');
+                }
+              }
+              setIsViewModeDropdownOpen(!isViewModeDropdownOpen);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 transition shadow-sm"
+            title="보기 형식 변경"
+          >
+            {viewMode === 'list' && (
+              <svg className="w-3.5 h-3.5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                <circle cx="3.5" cy="6" r="1.5" fill="currentColor"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor"/>
+              </svg>
+            )}
+            {viewMode === 'feed' && (
+              <svg className="w-3.5 h-3.5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="16" x2="21" y2="16"/>
+              </svg>
+            )}
+            {viewMode === 'album' && (
+              <svg className="w-3.5 h-3.5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+              </svg>
+            )}
+            <span>{viewMode === 'list' ? '목록형' : viewMode === 'album' ? '앨범형' : '피드형'}</span>
+            <ChevronDown className="w-3 h-3 text-zinc-400" />
+          </button>
+
+          {isViewModeDropdownOpen && (
+            <div className={`absolute top-full mt-1.5 w-48 max-w-[85vw] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-40 space-y-1 animate-in fade-in zoom-in-95 duration-100 ${
+              dropdownAlign === 'left' ? 'left-0' : 'right-0'
+            }`}>
+              {/* 1. 목록형 (캡처 1번) */}
+              <button
+                type="button"
+                onClick={() => handleSelectViewMode('list')}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-zinc-800 dark:text-zinc-200 font-bold"
+              >
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                    <circle cx="3.5" cy="6" r="1.5" fill="currentColor"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor"/>
+                  </svg>
+                  <span>목록형</span>
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${viewMode === 'list' ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-300 dark:border-zinc-600'}`}>
+                  {viewMode === 'list' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+              </button>
+
+              {/* 2. 피드형 (캡처 2번) */}
+              <button
+                type="button"
+                onClick={() => handleSelectViewMode('feed')}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-zinc-800 dark:text-zinc-200 font-bold"
+              >
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="16" x2="21" y2="16"/>
+                  </svg>
+                  <span>피드형</span>
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${viewMode === 'feed' ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-300 dark:border-zinc-600'}`}>
+                  {viewMode === 'feed' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+              </button>
+
+              {/* 3. 앨범형 (캡처 3번) */}
+              <button
+                type="button"
+                onClick={() => handleSelectViewMode('album')}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition text-zinc-800 dark:text-zinc-200 font-bold"
+              >
+                <div className="flex items-center gap-2.5">
+                  <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                  </svg>
+                  <span>앨범형</span>
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${viewMode === 'album' ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-300 dark:border-zinc-600'}`}>
+                  {viewMode === 'album' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-semibold">
+          <button
+            onClick={() => setSortType('latest')}
+            className={`px-3 py-1 rounded-lg transition ${sortType === 'latest' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+          >
+            최신순
+          </button>
+          <button
+            onClick={() => setSortType('popular')}
+            className={`px-3 py-1 rounded-lg transition ${sortType === 'popular' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+          >
+            인기순
+          </button>
+          <button
+            onClick={() => setSortType('oldest')}
+            className={`px-3 py-1 rounded-lg transition ${sortType === 'oldest' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+          >
+            오래된순
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-20 text-center text-zinc-400">커뮤니티 피드를 불러오는 중...</div>
+      ) : filteredPosts.length === 0 ? (
+        <div className="py-20 text-center border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl">
+          <p className="text-zinc-500">등록된 커뮤니티 게시글이 없습니다.</p>
+        </div>
+      ) : (
+        <div>
+          {/* 1. 목록형 (캡처 1번 이미지: 기존 메인 카드 디자인 - 좌측 내용, 우측 썸네일) */}
+          {viewMode === 'list' && (
+            <div className="space-y-3.5 w-full">
+              {paginatedPosts.map((post) => {
+                const thumbnail = post._thumb;
+                const plainText = post._plain;
+                const imageCount = post._imageCount;
+
+                return (
+                  <article
+                    key={post.id}
+                    onClick={() => openPost(post)}
+                    className="group p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 transition cursor-pointer select-none shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3 sm:gap-5 w-full">
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <h2 className="text-base sm:text-lg md:text-xl font-black text-zinc-900 dark:text-white tracking-tight truncate">
+                          {post.title}
+                        </h2>
+
+                        <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                          {plainText || '내용이 없습니다.'}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3.5 text-xs sm:text-sm text-zinc-500 pt-1 font-semibold">
+                          <span className="flex items-center gap-1 font-medium text-zinc-700 dark:text-zinc-300 min-w-0">
+                            <CrownIcon role={post.author_role} className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{post.author_nickname}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-zinc-400">
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                          </span>
+                          <span className="flex items-center gap-1 text-rose-500 font-medium">
+                            <Heart className="w-3.5 h-3.5 fill-rose-500/20" />
+                            <span>{post.likes_count ?? 0}</span>
+                          </span>
+
+                          <span className="flex items-center gap-1 text-blue-500 dark:text-blue-400 font-medium">
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>{post.comments_count ?? 0}</span>
+                          </span>
+
+                          {imageCount > 1 && (
+                            <span className="flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-900/50">
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              <span>+{imageCount}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {post.is_preview_hidden ? (
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square shrink-0 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400">
+                          <EyeOff className="w-5 h-5" />
+                          <span className="text-[9px]">가림</span>
+                        </div>
+                      ) : thumbnail ? (
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800">
+                          <img src={thumbnail} alt={post.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 2. 피드형 (캡처 2번 이미지: 상단 작성자 ➔ 제목/요약 ➔ 가로 100% 와이드 대형 썸네일) */}
+          {viewMode === 'feed' && (
+            <div className="space-y-4 w-full">
+              {paginatedPosts.map((post) => {
+                const thumbnail = post._thumb;
+                const plainText = post._plain;
+
+                return (
+                  <article
+                    key={post.id}
+                    onClick={() => openPost(post)}
+                    className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 transition cursor-pointer select-none shadow-sm space-y-3"
+                  >
+                    {/* 상단 프로필 헤더 */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-8 h-8 shrink-0 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+                          <CrownIcon role={post.author_role} className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-zinc-900 dark:text-white block truncate">
+                            {post.author_nickname}
+                          </span>
+                          <span className="text-[10px] text-zinc-400">
+                            {new Date(post.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {post.board_category && post.board_category !== '모두' && (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30 shrink-0">
+                          {post.board_category}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 제목 및 본문 요약 */}
+                    <div className="space-y-1">
+                      <h2 className="text-lg sm:text-xl md:text-2xl font-black text-zinc-900 dark:text-white tracking-tight">
+                        {post.title}
+                      </h2>
+                      <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-3 leading-relaxed">
+                        {plainText || '내용이 없습니다.'}
+                      </p>
+                    </div>
+
+                    {/* 세로 1.7배 이상 사진 3:4 자동 크롭 FeedMedia */}
+                    {thumbnail && !post.is_preview_hidden && (
+                      <FeedMedia src={thumbnail} alt={post.title} />
+                    )}
+
+                    {/* 하단 액션 바 (좋아요 + 댓글 수) */}
+                    <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs text-zinc-500">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5 text-rose-500 font-bold">
+                          <Heart className="w-4 h-4 fill-rose-500/20" />
+                          <span>좋아요 {post.likes_count ?? 0}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-blue-500 font-bold">
+                          <MessageSquare className="w-4 h-4" />
+                          <span>댓글 {post.comments_count ?? 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 3. 앨범형 (캡처 3번 이미지: 2~3열 갤러리 그리드) */}
+          {viewMode === 'album' && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 w-full">
+              {paginatedPosts.map((post) => {
+                const thumbnail = post.is_preview_hidden ? null : post._thumb;
+                const imageCount = post._imageCount;
+
+                return (
+                  <div
+                    key={post.id}
+                    onClick={() => openPost(post)}
+                    className="group bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-400 transition cursor-pointer select-none flex flex-col shadow-sm min-w-0"
+                  >
+                    <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden relative">
+                      {post.is_preview_hidden ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400">
+                          <EyeOff className="w-6 h-6" />
+                          <span className="text-[10px]">가림</span>
+                        </div>
+                      ) : thumbnail ? (
+                        <img src={thumbnail} alt={post.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">
+                          <ImageIcon className="w-8 h-8 stroke-1 text-zinc-400" />
+                        </div>
+                      )}
+
+                      {imageCount > 1 && !post.is_preview_hidden && (
+                        <span className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
+                          +{imageCount}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="p-3 flex-1 flex flex-col justify-between space-y-1.5 min-w-0">
+                      <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white line-clamp-1 group-hover:text-blue-500 transition">
+                        {post.title}
+                      </h3>
+                      <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                        <span className="truncate max-w-[80px] min-w-0">{post.author_nickname}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-rose-500 font-semibold flex items-center gap-0.5">
+                            <Heart className="w-3 h-3 fill-current" /> {post.likes_count ?? 0}
+                          </span>
+                          <span className="text-blue-500 font-semibold flex items-center gap-0.5">
+                            <MessageSquare className="w-3 h-3" /> {post.comments_count ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 페이지네이션 */}
+      {filteredPosts.length > 0 && (
+        <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 w-full">
+          <div className="text-xs text-zinc-400">전체 {filteredPosts.length}개</div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, safeCurrentPage - 1))}
+              disabled={safeCurrentPage === 1}
+              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 disabled:opacity-30"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="px-2 text-xs font-bold">{safeCurrentPage} / {totalPages}</span>
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, safeCurrentPage + 1))}
+              disabled={safeCurrentPage === totalPages}
+              className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="relative" ref={pageSizeDropupRef}>
+            {isPageSizeDropupOpen && (
+              <div className="absolute bottom-full mb-1 right-0 w-36 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl py-1 z-30">
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => handlePageSizeChange(size)}
+                    className="w-full px-3 py-1.5 text-xs text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  >
+                    {size}개씩 보기
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsPageSizeDropupOpen(!isPageSizeDropupOpen)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-zinc-100 dark:bg-zinc-800 border rounded-xl font-semibold"
+            >
+              <span>{postsPerPage}개씩 보기</span>
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <AdminReportModal
+        isOpen={isAdminReportOpen}
+        onClose={() => {
+          setIsAdminReportOpen(false);
+          checkUnreadReports();
+        }}
+        onPostRestored={fetchPosts}
+      />
+    </div>
+  );
+}
+
+export default function CommunityFeed() {
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-zinc-400">커뮤니티 피드를 로드하는 중...</div>}>
+      <CommunityFeedContent />
+    </Suspense>
+  );
+}

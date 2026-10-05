@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { CrownIcon, RoleType } from './CrownIcon'
 import { ThumbsUp, ImageIcon, Trash2, Send, Loader2, X, Siren, CornerDownRight, ChevronDown, ChevronUp, MessageSquareQuote } from 'lucide-react'
 import CustomPopup from './CustomPopup'
+import { fetchRoleMap } from '@/lib/roles'
+import { compressCommentImage } from '@/lib/imageCompress'
 
 interface CommentItem {
   id: number
@@ -25,9 +27,11 @@ interface CommentsSectionProps {
   postId: string | number
   currentUserId: string | null
   currentUserRole: RoleType
+  /** 댓글+답글 총 개수가 바뀌면 호출 (목록 화면의 댓글 수 동기화용) */
+  onCountChange?: (count: number) => void
 }
 
-export default function CommentsSection({ postId, currentUserId, currentUserRole }: CommentsSectionProps) {
+export default function CommentsSection({ postId, currentUserId, currentUserRole, onCountChange }: CommentsSectionProps) {
   const [mounted, setMounted] = useState(false)
   const [comments, setComments] = useState<CommentItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,6 +75,25 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     fetchComments()
   }, [postId, sortType])
 
+  // 댓글 수가 바뀌면 상위(목록 화면)에 알림
+  const onCountChangeRef = useRef(onCountChange)
+  useEffect(() => {
+    onCountChangeRef.current = onCountChange
+  })
+  const lastReportedCountRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (loading) return
+    if (lastReportedCountRef.current === null) {
+      lastReportedCountRef.current = comments.length
+      onCountChangeRef.current?.(comments.length)
+      return
+    }
+    if (lastReportedCountRef.current !== comments.length) {
+      lastReportedCountRef.current = comments.length
+      onCountChangeRef.current?.(comments.length)
+    }
+  }, [comments.length, loading])
+
   const toggleRepliesExpand = (commentId: number) => {
     setExpandedReplies((prev) => ({
       ...prev,
@@ -90,21 +113,17 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     const { data: commentsData } =
       sortType === 'popular'
         ? await query.order('likes_count', { ascending: false }).order('created_at', { ascending: false })
-        : await query.order('created_at', { ascending: true })
+        : await query.order('created_at', { ascending: false })
 
     if (commentsData && commentsData.length > 0) {
       const authorIds = Array.from(new Set(commentsData.map((c) => c.author_id)))
-      const { data: profiles } = await supabase.from('profiles').select('id, nickname').in('id', authorIds)
+      const [{ data: profiles }, roleMap] = await Promise.all([
+        supabase.from('profiles').select('id, nickname').in('id', authorIds),
+        fetchRoleMap(),
+      ])
       const profileMap: Record<string, string> = {}
       profiles?.forEach((p) => {
         profileMap[p.id] = p.nickname
-      })
-
-      const { data: roles } = await supabase.from('user_roles').select('user_id, email, role')
-      const roleMap: Record<string, RoleType> = {}
-      roles?.forEach((r) => {
-        if (r.user_id) roleMap[r.user_id] = r.role
-        if (r.email === 'iwsamuel08@gmail.com' && r.user_id) roleMap[r.user_id] = 'creator'
       })
 
       let userLikesSet = new Set<number>()
@@ -134,12 +153,14 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isReply: boolean = false) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const originalFile = e.target.files?.[0]
+    if (!originalFile) return
 
     if (isReply) setUploadingReplyImage(true)
     else setUploadingImage(true)
 
+    // 대용량 사진은 업로드 전에 자동 축소 (GIF 는 원본 유지)
+    const file = await compressCommentImage(originalFile)
     const fileExt = file.name.split('.').pop() || 'png'
     const fileName = `comment-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
 
@@ -258,12 +279,15 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
       prev.map((c) => (c.id === comment.id ? { ...c, user_liked: !prevLiked, likes_count: newLikesCount } : c))
     )
 
-    if (prevLiked) {
-      await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', currentUserId)
-      await supabase.from('post_comments').update({ likes_count: newLikesCount }).eq('id', comment.id)
-    } else {
-      await supabase.from('comment_likes').insert({ comment_id: comment.id, user_id: currentUserId })
-      await supabase.from('post_comments').update({ likes_count: newLikesCount }).eq('id', comment.id)
+    // 좋아요 수(likes_count)는 DB 트리거가 comment_likes 기준으로 정확히 계산합니다. (동시 클릭 시 숫자 꼬임 방지)
+    const { error } = prevLiked
+      ? await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', currentUserId)
+      : await supabase.from('comment_likes').insert({ comment_id: comment.id, user_id: currentUserId })
+
+    if (error) {
+      setComments((prev) =>
+        prev.map((c) => (c.id === comment.id ? { ...c, user_liked: prevLiked, likes_count: comment.likes_count } : c))
+      )
     }
   }
 
@@ -466,6 +490,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                       <img
                         src={comment.image_url}
                         alt="댓글 이미지"
+                        loading="lazy"
                         className="w-1/4 max-w-[120px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
                         onClick={() => window.open(comment.image_url || '', '_blank')}
                         title="클릭하여 원본 보기"
@@ -655,6 +680,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                               <img
                                 src={reply.image_url}
                                 alt="답글 이미지"
+                                loading="lazy"
                                 className="w-1/4 max-w-[100px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
                                 onClick={() => window.open(reply.image_url || '', '_blank')}
                                 title="클릭하여 원본 보기"
@@ -702,7 +728,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                 <Siren className="w-4 h-4" />
                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white">댓글 / 답글 신고</h3>
               </div>
-              <button onClick={() => setReportingCommentId(null)} className="p-1 text-zinc-400 hover:text-white">
+              <button onClick={() => setReportingCommentId(null)} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>

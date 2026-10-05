@@ -8,6 +8,8 @@ import FreezeModal from '@/components/FreezeModal'
 import CustomPopup from '@/components/CustomPopup'
 import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, ShieldAlert, Mail } from 'lucide-react'
 import Link from 'next/link'
+import { isCreatorEmail } from '@/lib/roles'
+import { invalidateFeedCache } from '@/lib/feedStore'
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
 const COMMUNITY_BOARDS = ['자유', '정보 공유', '일상', '사연', '글/소설', '질문', '그림', '영상'] as const;
@@ -178,6 +180,11 @@ function WriteContent() {
   const allDetectedMedia = Array.from(new Set([...detectedImages, ...detectedPosters]));
 
   useEffect(() => {
+    // 본문에서 대표 사진을 지웠다면 남은 첫 번째 사진으로 자동 교체 (지운 사진이 썸네일로 남던 문제 방지)
+    if (selectedThumbnail && !allDetectedMedia.includes(selectedThumbnail)) {
+      setSelectedThumbnail(allDetectedMedia[0] || null);
+      return;
+    }
     if (allDetectedMedia.length > 0 && !selectedThumbnail) {
       setSelectedThumbnail(allDetectedMedia[0]);
     }
@@ -266,7 +273,7 @@ function WriteContent() {
     e.preventDefault()
     if (!userId) return
 
-    const isCreator = userEmail?.toLowerCase() === 'iwsamuel08@gmail.com'
+    const isCreator = isCreatorEmail(userEmail)
     if (!isCreator) {
       const { data: noticeData } = await supabase.from('site_notices').select('is_frozen').eq('id', 1).maybeSingle()
       if (noticeData?.is_frozen) {
@@ -331,8 +338,9 @@ function WriteContent() {
       setIsSubmitting(false)
     } else {
       await supabase.from('post_drafts').delete().eq('user_id', userId)
+      // 새 글이 바로 보이도록 해당 피드 목록 캐시 비우기
+      invalidateFeedCache(feedType)
       router.push(feedType === 'community' ? '/community' : '/clan')
-      router.refresh()
     }
   }
 
@@ -341,13 +349,13 @@ function WriteContent() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <Link
           href={feedType === 'community' ? '/community' : '/clan'}
-          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition"
+          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-700 dark:hover:text-white transition"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>피드로 돌아가기</span>
         </Link>
 
-        <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-none text-xs font-bold">
+        <div className="flex items-center bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-1 rounded-none text-xs font-bold">
           <button
             type="button"
             onClick={() => setFeedType('community')}
@@ -366,9 +374,9 @@ function WriteContent() {
       </div>
 
       {existingDraft && (
-        <div className="flex items-center justify-between p-3.5 mb-5 rounded-none bg-emerald-950/30 border border-emerald-800/60 text-xs">
-          <div className="flex items-center gap-2 text-emerald-300">
-            <Clock className="w-4 h-4 shrink-0 text-emerald-400" />
+        <div className="flex items-center justify-between gap-2 p-3.5 mb-5 rounded-none bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800/60 text-xs">
+          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 min-w-0">
+            <Clock className="w-4 h-4 shrink-0 text-emerald-500 dark:text-emerald-400" />
             <span>임시보관된 글이 있습니다 ({new Date(existingDraft.updated_at).toLocaleString()})</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -393,8 +401,8 @@ function WriteContent() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {feedType === 'community' ? (
-          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-2">
-            <label className="block text-xs font-bold text-blue-400">
+          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-2">
+            <label className="block text-xs font-bold text-blue-600 dark:text-blue-400">
               * 게시판 선택 (필수 1개 선택)
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -408,7 +416,7 @@ function WriteContent() {
                     className={`px-3 py-1.5 text-xs font-bold rounded-none border transition ${
                       isSelected
                         ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                        : 'bg-zinc-800/80 border-zinc-700/80 text-zinc-300 hover:bg-zinc-700'
+                        : 'bg-white dark:bg-zinc-800/80 border-zinc-300 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700'
                     }`}
                   >
                     <span>{board}</span>
@@ -418,8 +426,8 @@ function WriteContent() {
             </div>
           </div>
         ) : (
-          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-2">
-            <label className="block text-xs font-bold text-emerald-400">
+          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-2">
+            <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400">
               클랜 해시태그 선택
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -439,7 +447,7 @@ function WriteContent() {
                     className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-none text-xs font-semibold border ${
                       isSelected
                         ? 'bg-emerald-600 border-emerald-600 text-white'
-                        : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+                        : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300'
                     }`}
                   >
                     <span>#{tag}</span>
@@ -457,14 +465,14 @@ function WriteContent() {
             placeholder={feedType === 'community' ? "게시글 제목 (말머리는 자동 추가됩니다)" : "클랜 게시글 제목을 입력하세요"}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-none text-lg font-medium text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-none text-lg font-medium text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
 
         {allDetectedMedia.length > 0 && (
-          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-300">
+          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                 미리보기 썸네일 설정
               </span>
               <label className="inline-flex items-center gap-2 cursor-pointer select-none">
@@ -474,8 +482,8 @@ function WriteContent() {
                   onChange={(e) => setIsPreviewHidden(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-emerald-600 relative"></div>
-                <span className="text-xs font-medium text-zinc-300 flex items-center gap-1">
+                <div className="w-9 h-5 shrink-0 bg-zinc-300 dark:bg-zinc-700 rounded-full peer peer-checked:after:translate-x-4 peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full after:shadow after:transition-transform"></div>
+                <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
                   <EyeOff className="w-3.5 h-3.5" />
                   미리보기 가리기
                 </span>
@@ -490,10 +498,10 @@ function WriteContent() {
                     key={idx}
                     onClick={() => !isPreviewHidden && setSelectedThumbnail(src)}
                     className={`relative shrink-0 w-20 h-20 rounded-none overflow-hidden border-2 cursor-pointer ${
-                      isMain ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-zinc-700'
+                      isMain ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-zinc-300 dark:border-zinc-700'
                     }`}
                   >
-                    <img src={src} alt="사진" className="w-full h-full object-cover" />
+                    <img src={src} alt="사진" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                   </div>
                 );
               })}
@@ -508,7 +516,7 @@ function WriteContent() {
             type="button"
             onClick={handleSaveDraft}
             disabled={isSavingDraft}
-            className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-none border border-zinc-700 transition disabled:opacity-50 text-sm flex items-center gap-1.5"
+            className="px-5 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 font-medium rounded-none border border-zinc-300 dark:border-zinc-700 transition disabled:opacity-50 text-sm flex items-center gap-1.5"
           >
             <Save className="w-4 h-4" />
             <span>임시보관</span>

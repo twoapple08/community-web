@@ -17,6 +17,25 @@ interface NoticeBannerProps {
   currentUserRole: RoleType
 }
 
+// 클랜/커뮤니티 피드를 오갈 때마다 공지를 다시 받지 않도록 1분간 재사용
+const NOTICE_CACHE_MS = 60 * 1000
+let noticeCache: { data: SiteNotice; at: number } | null = null
+
+// 자동 팝업을 닫은 공지는 같은 접속(탭) 동안 다시 자동으로 띄우지 않음
+const SESSION_SEEN_KEY = 'sfa_notice_seen_signature'
+const readSessionSeen = () => {
+  try {
+    return sessionStorage.getItem(SESSION_SEEN_KEY)
+  } catch {
+    return null
+  }
+}
+const writeSessionSeen = (signature: string) => {
+  try {
+    sessionStorage.setItem(SESSION_SEEN_KEY, signature)
+  } catch {}
+}
+
 export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   const [notice, setNotice] = useState<SiteNotice | null>(null)
   const [isNoticeDetailOpen, setIsNoticeDetailOpen] = useState(false)
@@ -44,11 +63,18 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   }, [])
 
   const fetchNotice = async () => {
-    const { data } = await supabase
-      .from('site_notices')
-      .select('id, title, content, updated_at')
-      .eq('id', 1)
-      .maybeSingle()
+    let data: SiteNotice | null = null
+    if (noticeCache && Date.now() - noticeCache.at < NOTICE_CACHE_MS) {
+      data = noticeCache.data
+    } else {
+      const res = await supabase
+        .from('site_notices')
+        .select('id, title, content, updated_at')
+        .eq('id', 1)
+        .maybeSingle()
+      data = (res.data as SiteNotice | null) ?? null
+      if (data) noticeCache = { data, at: Date.now() }
+    }
 
     if (data) {
       setNotice(data as SiteNotice)
@@ -59,7 +85,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
       const currentSignature = `${data.title}:::${data.content}`
       const savedSignature = localStorage.getItem('hide_notice_signature')
 
-      if (savedSignature !== currentSignature) {
+      if (savedSignature !== currentSignature && readSessionSeen() !== currentSignature) {
         setIsNoticeAutoPopup(true)
         setIsNoticeDetailOpen(true)
       }
@@ -67,6 +93,9 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   }
 
   const handleCloseNoticePopup = () => {
+    if (isNoticeAutoPopup && notice) {
+      writeSessionSeen(`${notice.title}:::${notice.content}`)
+    }
     if (dontShowAgainChecked && notice) {
       const currentSignature = `${notice.title}:::${notice.content}`
       localStorage.setItem('hide_notice_signature', currentSignature)
@@ -106,12 +135,14 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
     if (error) {
       showTopToast(`공지사항 수정 실패: ${error.message}`)
     } else {
-      setNotice({
+      const updated = {
         id: 1,
         title: editNoticeTitle.trim(),
         content: editNoticeContent.trim(),
         updated_at: nowIso,
-      })
+      }
+      noticeCache = { data: updated, at: Date.now() }
+      setNotice(updated)
       setIsNoticeEditOpen(false)
       showTopToast('공지사항이 성공적으로 갱신되었습니다.')
     }

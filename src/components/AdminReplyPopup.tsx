@@ -56,8 +56,23 @@ export default function AdminReplyPopup() {
   }
 
   // 접속 중일 때 실시간으로 답장 감지
+  // (예전: 로그인한 모든 유저가 5초마다 서버 조회 → 트래픽 낭비. 지금: 실시간 수신 + 대기 중 이의제기가 있을 때만 60초 확인)
   useEffect(() => {
     if (!currentUserId) return
+
+    let disposed = false
+    let realtimeActive = false
+    let hasPendingAppeal = false
+
+    const checkPendingAppeal = async () => {
+      const { count } = await supabase
+        .from('blacklist_appeals')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', currentUserId)
+        .eq('status', 'pending')
+      if (!disposed) hasPendingAppeal = (count || 0) > 0
+    }
+    checkPendingAppeal()
 
     const channel = supabase
       .channel(`realtime-appeals-${currentUserId}`)
@@ -71,17 +86,32 @@ export default function AdminReplyPopup() {
         },
         () => {
           fetchUnnotifiedReply(currentUserId)
+          checkPendingAppeal()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        realtimeActive = String(status) === 'SUBSCRIBED'
+      })
 
     const interval = setInterval(() => {
-      fetchUnnotifiedReply(currentUserId)
-    }, 5000)
+      if (!realtimeActive && hasPendingAppeal && document.visibilityState === 'visible') {
+        fetchUnnotifiedReply(currentUserId)
+      }
+    }, 60000)
+
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUnnotifiedReply(currentUserId)
+        checkPendingAppeal()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisible)
 
     return () => {
+      disposed = true
       supabase.removeChannel(channel)
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisible)
     }
   }, [currentUserId])
 

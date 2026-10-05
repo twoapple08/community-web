@@ -30,6 +30,8 @@ export default function FeedMedia({ src, alt }: FeedMediaProps) {
       <img
         src={src}
         alt={alt}
+        loading="lazy"
+        decoding="async"
         onLoad={(e) => checkRatio(e.currentTarget)}
         ref={(el) => {
           if (el && el.complete) checkRatio(el)

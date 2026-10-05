@@ -2,15 +2,26 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { getCleanSearchAndHash } from '@/lib/authUrl'
 
 export default function RootPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // [핵심] Google OAuth 인증 토큰/코드가 포함된 해시와 쿼리를 온전히 유지하며 /community 로 이동
-    const search = typeof window !== 'undefined' ? window.location.search : ''
-    const hash = typeof window !== 'undefined' ? window.location.hash : ''
-    router.replace(`/community${search}${hash}`)
+    let cancelled = false
+    // [보안] Supabase 가 로그인 코드 처리를 끝낼 때까지 기다린 뒤, 인증 파라미터를 뺀 주소로만 이동
+    // (예전에는 토큰이 붙은 주소를 그대로 /community 로 넘겨 주소창에 토큰이 남는 경우가 있었음)
+    supabase.auth
+      .getSession()
+      .catch(() => null)
+      .finally(() => {
+        if (cancelled) return
+        router.replace(`/community${getCleanSearchAndHash()}`)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   return (
