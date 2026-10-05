@@ -68,3 +68,24 @@ img, video, canvas, svg {
   text-align: left;
   background-color: rgba(120, 120, 120, 0.1);
 }
+
+/* [다크 모드 전용] 검은색 계열 텍스트 자동 흰색 스트로크 (외곽선 미지정 시) */
+.dark .prose [style*="color: #000000"]:not([style*="text-stroke"]),
+.dark .prose [style*="color: #000"]:not([style*="text-stroke"]),
+.dark .prose [style*="color: black"]:not([style*="text-stroke"]),
+.dark .prose [style*="color: rgb(0, 0, 0)"]:not([style*="text-stroke"]),
+.dark .prose [style*="color:rgb(0,0,0)"]:not([style*="text-stroke"]),
+.dark .editor-content [style*="color: #000000"]:not([style*="text-stroke"]),
+.dark .editor-content [style*="color: #000"]:not([style*="text-stroke"]),
+.dark .editor-content [style*="color: black"]:not([style*="text-stroke"]),
+.dark .editor-content [style*="color: rgb(0, 0, 0)"]:not([style*="text-stroke"]),
+.dark .editor-content [style*="color:rgb(0,0,0)"]:not([style*="text-stroke"]),
+.dark .tiptap [style*="color: #000000"]:not([style*="text-stroke"]),
+.dark .tiptap [style*="color: #000"]:not([style*="text-stroke"]),
+.dark .tiptap [style*="color: black"]:not([style*="text-stroke"]),
+.dark .tiptap [style*="color: rgb(0, 0, 0)"]:not([style*="text-stroke"]),
+.dark .tiptap [style*="color:rgb(0,0,0)"]:not([style*="text-stroke"]) {
+  -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.85);
+  paint-order: stroke fill;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.4);
+}

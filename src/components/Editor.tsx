@@ -26,7 +26,6 @@ import {
   Table as TableIcon,
   Code,
   Minus,
-  Sparkles,
   Palette,
   Highlighter,
   Type,
@@ -36,11 +35,7 @@ import {
   AlignRight,
   AlignJustify,
   Indent,
-  Outdent,
-  Plus,
-  Trash2,
-  Split,
-  Maximize2
+  Outdent
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useState, useRef, useMemo } from 'react'
@@ -225,7 +220,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
   const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false)
   const [customSizeInput, setCustomSizeInput] = useState('')
-  const [customColorInput, setCustomColorInput] = useState('#ffffff')
+  const [customColorInput, setCustomColorInput] = useState('#000000')
 
   const [videoNoticePopup, setVideoNoticePopup] = useState(false)
   const [popup, setPopup] = useState<{ show: boolean; title: string; message: string }>({
@@ -279,7 +274,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
   if (!editor) return null
 
-  // 이미지 업로드
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -325,7 +319,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  // 동영상 업로드 (50MB 안내 후 실행)
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -481,9 +474,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     setIsFontDropdownOpen(false)
   }
 
-  // 들여쓰기 / 내어쓰기 함수
   const handleIndent = (direction: 'in' | 'out') => {
-    const padding = direction === 'in' ? '24px' : '0px';
     editor.chain().focus().command(({ tr, state }) => {
       const { from, to } = state.selection;
       state.doc.nodesBetween(from, to, (node, pos) => {
@@ -499,11 +490,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   }
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 rounded-none bg-zinc-50/50 dark:bg-zinc-900/50 overflow-visible shadow-sm relative">
-      {/* 주 툴바 영역 */}
+    <div className="border border-zinc-200 dark:border-zinc-800 rounded-none bg-white dark:bg-zinc-900/50 overflow-visible shadow-sm relative">
       <div className="flex items-center justify-between gap-1 p-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex-wrap">
         <div className="flex items-center gap-1 flex-wrap">
-          {/* 볼드, 이탤릭, 밑줄, 취소선 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().toggleBold().run()}
@@ -539,7 +528,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-1" />
 
-          {/* 텍스트 정렬 (왼쪽, 가운데, 오른쪽, 양쪽 맞춤) */}
           <button
             type="button"
             onClick={() => editor.chain().focus().setTextAlign('left').run()}
@@ -575,7 +563,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-1" />
 
-          {/* 들여쓰기 / 내어쓰기 */}
           <button
             type="button"
             onClick={() => handleIndent('out')}
@@ -595,7 +582,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-1" />
 
-          {/* 글머리 기호, 번호 매기기, 인용구 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -621,7 +607,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             <Quote className="w-4 h-4" />
           </button>
 
-          {/* 기호/특수문자 */}
           <button
             type="button"
             onClick={() => setShowSymbolModal(true)}
@@ -631,7 +616,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             Ω 기호
           </button>
 
-          {/* 링크 */}
           <button
             type="button"
             onClick={handleOpenLinkModal}
@@ -641,7 +625,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             <LinkIcon className="w-4 h-4" />
           </button>
 
-          {/* 표 제어 툴바 토글 */}
           <button
             type="button"
             onClick={() => setShowTableTools(!showTableTools)}
@@ -656,14 +639,13 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             <span>표 도구</span>
           </button>
 
-          {/* 서식 더보기 */}
           <button
             type="button"
             onClick={() => setShowMoreTools(!showMoreTools)}
             className={`inline-flex items-center gap-1 px-2 py-1 rounded-none text-xs font-semibold border transition ${
               showMoreTools
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-500'
-                : 'border-zinc-200 dark:border-zinc-700 text-zinc-400'
+                : 'border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400'
             }`}
           >
             <span>글꼴/서식</span>
@@ -671,13 +653,12 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           </button>
         </div>
 
-        {/* 미디어 첨부 버튼 (이미지 / 동영상) */}
         <div className="ml-auto flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading || isUploadingVideo}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-bold text-white bg-zinc-800 hover:bg-zinc-700 transition disabled:opacity-50 border border-zinc-700"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-bold text-zinc-800 dark:text-white bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 transition disabled:opacity-50 border border-zinc-200 dark:border-zinc-700"
             title="이미지 파일 첨부"
           >
             {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
@@ -712,7 +693,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
         </div>
       </div>
 
-      {/* 3번 이미지 기준: 표(Table) 전용 고기능 서식 바 */}
       {showTableTools && (
         <div className="p-2 border-b border-zinc-200 dark:border-zinc-800 bg-blue-50/50 dark:bg-blue-950/20 flex flex-wrap items-center gap-1.5 text-xs animate-in slide-in-from-top-1 duration-150">
           <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 mr-1">표 편집:</span>
@@ -720,18 +700,17 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-            className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none text-[11px] font-bold text-blue-600 hover:bg-blue-100"
+            className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40"
           >
             표 생성 (3x3)
           </button>
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
 
-          {/* 행 조작 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().addRowBefore().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 행 추가 (위)"
           >
             행 추가 (위)
@@ -739,7 +718,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().addRowAfter().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 행 추가 (아래)"
           >
             행 추가 (아래)
@@ -747,7 +726,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().deleteRow().run()}
-            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 rounded-none text-[11px] hover:bg-red-100"
+            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-none text-[11px] hover:bg-red-100 dark:hover:bg-red-900/60"
             title="표 행 삭제"
           >
             행 삭제
@@ -755,11 +734,10 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
 
-          {/* 열 조작 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().addColumnBefore().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 열 추가 (좌측)"
           >
             열 추가 (좌)
@@ -767,7 +745,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().addColumnAfter().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 열 추가 (우측)"
           >
             열 추가 (우)
@@ -775,7 +753,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().deleteColumn().run()}
-            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 rounded-none text-[11px] hover:bg-red-100"
+            className="px-2 py-1 border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-none text-[11px] hover:bg-red-100 dark:hover:bg-red-900/60"
             title="표 열 삭제"
           >
             열 삭제
@@ -783,11 +761,10 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700 mx-0.5" />
 
-          {/* 병합 및 분할 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().mergeCells().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 셀 병합"
           >
             셀 병합
@@ -795,7 +772,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().splitCell().run()}
-            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100"
+            className="px-2 py-1 border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-none text-[11px] hover:bg-zinc-100 dark:hover:bg-zinc-700"
             title="표 셀 분할"
           >
             셀 분할
@@ -812,10 +789,8 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
         </div>
       )}
 
-      {/* 글꼴, 크기, 색상, 하이라이트 서식 바 */}
       {showMoreTools && (
         <div className="p-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-wrap items-center gap-2 text-xs relative z-20">
-          {/* 글꼴 선택 */}
           <div className="relative">
             <button
               type="button"
@@ -823,7 +798,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                 setIsFontDropdownOpen(!isFontDropdownOpen)
                 setIsSizeDropdownOpen(false)
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium text-zinc-800 dark:text-zinc-200"
             >
               <Type className="w-3.5 h-3.5 text-zinc-400" />
               <span>글꼴선택</span>
@@ -847,7 +822,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             )}
           </div>
 
-          {/* 글꼴 크기 */}
           <div className="relative">
             <button
               type="button"
@@ -855,7 +829,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                 setIsSizeDropdownOpen(!isSizeDropdownOpen)
                 setIsFontDropdownOpen(false)
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium text-zinc-800 dark:text-zinc-200"
             >
               <span>글꼴크기</span>
               <ChevronDown className="w-3 h-3 text-zinc-400" />
@@ -869,7 +843,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                     placeholder="예: 20"
                     value={customSizeInput}
                     onChange={(e) => setCustomSizeInput(e.target.value)}
-                    className="w-full px-2 py-1 text-xs bg-zinc-50 dark:bg-zinc-800 border rounded-none"
+                    className="w-full px-2 py-1 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white rounded-none"
                   />
                   <button
                     type="button"
@@ -885,7 +859,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                       key={sz}
                       type="button"
                       onClick={() => handleSetFontSize(sz)}
-                      className="w-full px-2 py-1 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-none"
+                      className="w-full px-2 py-1 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-none text-zinc-800 dark:text-zinc-200"
                     >
                       {sz}
                     </button>
@@ -897,9 +871,10 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 글자 색상 팔레트 */}
+          {/* 텍스트 색상 팔레트 (검은색 및 흰색 포함) */}
           <div className="flex items-center gap-1">
             <Palette className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
+            <button type="button" onClick={() => handleSetColor('#000000')} className="w-4 h-4 bg-black border border-zinc-400" title="검은색 (다크모드 시 자동 흰색 스트로크)" />
             <button type="button" onClick={() => handleSetColor('#ffffff')} className="w-4 h-4 bg-white border border-zinc-400" title="흰색" />
             <button type="button" onClick={() => handleSetColor('#ef4444')} className="w-4 h-4 bg-red-500" title="빨간색" />
             <button type="button" onClick={() => handleSetColor('#f97316')} className="w-4 h-4 bg-orange-500" title="주황색" />
@@ -922,7 +897,6 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 배경색상 / 하이라이트 */}
           <div className="flex items-center gap-1">
             <Highlighter className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
             <button type="button" onClick={() => handleSetHighlight('#fef08a')} className="w-4 h-4 bg-yellow-200 border border-yellow-400" title="노랑 형광펜" />
@@ -930,16 +904,15 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             <button type="button" onClick={() => handleSetHighlight('#fed7aa')} className="w-4 h-4 bg-orange-200 border border-orange-400" title="주황 형광펜" />
             <button type="button" onClick={() => handleSetHighlight('#bae6fd')} className="w-4 h-4 bg-sky-200 border border-sky-400" title="하늘 형광펜" />
             <button type="button" onClick={() => handleSetHighlight('#fbcfe8')} className="w-4 h-4 bg-pink-200 border border-pink-400" title="분홍 형광펜" />
-            <button type="button" onClick={() => handleSetHighlight('clear')} className="px-1 text-[10px] border border-zinc-400" title="형광펜 지우기">지움</button>
+            <button type="button" onClick={() => handleSetHighlight('clear')} className="px-1 text-[10px] border border-zinc-400 text-zinc-700 dark:text-zinc-300" title="형광펜 지우기">지움</button>
           </div>
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 구분선 및 코드블록 */}
           <button
             type="button"
             onClick={() => editor.chain().focus().setHorizontalRule().run()}
-            className="p-1 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-600 dark:text-zinc-300"
+            className="p-1 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             title="구분선 삽입"
           >
             <Minus className="w-3.5 h-3.5" />
@@ -947,7 +920,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           <button
             type="button"
             onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            className="p-1 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-600 dark:text-zinc-300"
+            className="p-1 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             title="코드 블록"
           >
             <Code className="w-3.5 h-3.5" />
@@ -955,10 +928,8 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
         </div>
       )}
 
-      {/* 본문 에디터 내용 영역 */}
       <EditorContent editor={editor} />
 
-      {/* 기호 / 특수문자 모달 */}
       {showSymbolModal && (
         <div
           className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
@@ -968,9 +939,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             className="w-full max-w-sm bg-white dark:bg-zinc-950 border-2 border-zinc-900 dark:border-white p-5 rounded-none shadow-2xl space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b pb-2">
-              <h3 className="text-sm font-black">특수 기호 선택</h3>
-              <button type="button" onClick={() => setShowSymbolModal(false)} className="p-1">
+            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+              <h3 className="text-sm font-black text-zinc-900 dark:text-white">특수 기호 선택</h3>
+              <button type="button" onClick={() => setShowSymbolModal(false)} className="p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -983,7 +954,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                     editor.chain().focus().insertContent(`${sym} `).run();
                     setShowSymbolModal(false);
                   }}
-                  className="h-9 flex items-center justify-center border hover:bg-zinc-200 dark:hover:bg-zinc-800 text-sm font-bold"
+                  className="h-9 flex items-center justify-center border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm font-bold text-zinc-800 dark:text-zinc-200"
                 >
                   {sym}
                 </button>
@@ -993,26 +964,25 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
         </div>
       )}
 
-      {/* 링크 모달 */}
       {isLinkModalOpen && (
         <div
           className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
           onClick={() => setIsLinkModalOpen(false)}
         >
           <div
-            className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-none p-6 space-y-4"
+            className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-none p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
               <h3 className="text-base font-bold text-zinc-900 dark:text-white">링크 삽입</h3>
-              <button type="button" onClick={() => setIsLinkModalOpen(false)} className="p-1">
+              <button type="button" onClick={() => setIsLinkModalOpen(false)} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleApplyLink} className="space-y-3">
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 mb-1">링크 URL</label>
+                <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 mb-1">링크 URL</label>
                 <input
                   type="text"
                   value={inputLinkUrl}
@@ -1037,7 +1007,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
               )}
 
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 mb-1">
+                <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 mb-1">
                   {detectedEmbedType === 'discord' ? '서버 이름 (자동 또는 직접 입력)' : detectedEmbedType === 'kakaotalk' ? '오픈채팅방 이름 (자동 또는 직접 입력)' : '표시할 텍스트 (선택)'}
                   {fetchingTitle && <span className="ml-2 text-blue-500 animate-pulse text-[10px]">정보 가져오는 중...</span>}
                 </label>
@@ -1049,16 +1019,15 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                   className="w-full px-3 py-2 text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-900 dark:text-white"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t">
-                <button type="button" onClick={() => setIsLinkModalOpen(false)} className="px-3 py-1.5 border text-xs">취소</button>
-                <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white text-xs font-bold">적용</button>
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                <button type="button" onClick={() => setIsLinkModalOpen(false)} className="px-3 py-1.5 border border-zinc-300 dark:border-zinc-700 text-xs text-zinc-700 dark:text-zinc-300 rounded-none">취소</button>
+                <button type="submit" className="px-4 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-none">적용</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 동영상 업로드 사전 안내 팝업 (50MB 제한) */}
       <CustomPopup
         isOpen={videoNoticePopup}
         type="confirm"
