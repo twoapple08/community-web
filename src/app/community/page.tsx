@@ -509,15 +509,15 @@ function CommunityFeedContent() {
                   >
                     <div className="flex items-start justify-between gap-3 sm:gap-5 w-full">
                       <div className="flex-1 min-w-0 space-y-1.5">
-                        <h2 className="text-sm sm:text-base md:text-lg font-bold text-zinc-900 dark:text-white tracking-tight truncate">
+                        <h2 className="text-base sm:text-lg md:text-xl font-black text-zinc-900 dark:text-white tracking-tight truncate">
                           {post.title}
                         </h2>
 
-                        <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                        <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
                           {plainText || '내용이 없습니다.'}
                         </p>
 
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-3.5 text-xs text-zinc-500 pt-1">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3.5 text-xs sm:text-sm text-zinc-500 pt-1 font-semibold">
                           <span className="flex items-center gap-1 font-medium text-zinc-700 dark:text-zinc-300">
                             <CrownIcon role={post.author_role} className="w-3.5 h-3.5 shrink-0" />
                             <span>{post.author_nickname}</span>
@@ -600,10 +600,10 @@ function CommunityFeedContent() {
 
                     {/* 제목 및 본문 요약 */}
                     <div className="space-y-1">
-                      <h2 className="text-base sm:text-lg font-extrabold text-zinc-900 dark:text-white tracking-tight">
+                      <h2 className="text-lg sm:text-xl md:text-2xl font-black text-zinc-900 dark:text-white tracking-tight">
                         {post.title}
                       </h2>
-                      <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 line-clamp-3 leading-relaxed">
+                      <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-3 leading-relaxed">
                         {plainText || '내용이 없습니다.'}
                       </p>
                     </div>

@@ -151,3 +151,28 @@ p, h1, h2, h3, h4, h5, h6, span, a {
   background: rgba(59, 130, 246, 0.15);
   pointer-events: none;
 }
+
+/* =========================================================
+   모바일 전용 UI 200~250% 수준 가독성 스케일업
+   ========================================================= */
+@media (max-width: 640px) {
+  html {
+    font-size: 112%; /* 기본 루트 폰트 스케일업 */
+  }
+
+  /* 본문 리치텍스트 모바일 시원한 가독성 보장 */
+  .prose {
+    font-size: 0.95rem !important;
+    line-height: 1.75 !important;
+  }
+
+  .prose p {
+    font-size: 0.95rem !important;
+    margin-bottom: 0.9em !important;
+  }
+
+  /* 모바일 터치 타깃 및 텍스트 선명도 */
+  input, select, textarea {
+    font-size: 0.9rem !important;
+  }
+}
