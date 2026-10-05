@@ -12,6 +12,7 @@ import CommentsSection from './CommentsSection';
 import CustomPopup from './CustomPopup';
 import {
   X,
+  Calendar,
   Trash2,
   Share2,
   Check,
@@ -126,6 +127,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   }, [postId]);
 
+  // 카카오톡 및 디스코드 실제 이름 비동기 탐색 및 실시간 치환 헬퍼
   const refreshEmbedTitles = () => {
     if (!contentContainerRef.current) return;
     const cards = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
@@ -158,8 +160,10 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     });
   };
 
+  // post 로딩 완료 후 및 수정 완료 후 DOM 렌더링 타이밍을 확실히 보장하여 실행
   useEffect(() => {
     if (!post || loading || isEditing) return;
+    // requestAnimationFrame 2회로 React 19의 실제 DOM 커밋 시점을 보장
     const animId = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         refreshEmbedTitles();
@@ -317,6 +321,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
+  // 수정 저장 시 링크 타이틀을 HTML에 영구 각인하여 DB에 저장
   const handleSaveEdit = async () => {
     if (await checkFrozen('게시글 수정을')) return;
     if (!editTitle.trim()) {
@@ -340,6 +345,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
 
     setSaving(true);
 
+    // 본문 내 카카오/디코 링크에 대해 캐시된 실제 이름을 data-embed-title 속성으로 영구 주입
     let processedContent = editContent;
     const urlRegex = /(https?:\/\/[^\s<>"']+)/gi;
     const matches = Array.from(new Set(processedContent.match(urlRegex) || []));
@@ -424,6 +430,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     }
   };
 
+  // 본문 렌더링: 0초 시점에 캐시를 즉시 참조하여 이름 주입 (깜빡임 0%)
   const renderRichContent = (html: string) => {
     if (!html) return '';
     html = html.replace(/<p><\/p>/g, '<p>&nbsp;</p>').replace(/<p><br><\/p>/g, '<p>&nbsp;</p>');
@@ -453,6 +460,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
     anchors.forEach((a) => {
       const href = a.getAttribute('href') || '';
 
+      // 1. 유튜브
       const ytMatch = href.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
       if (ytMatch) {
         const videoId = ytMatch[1];
@@ -472,6 +480,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         return;
       }
 
+      // 2. 카카오톡 (0초 시점에 캐시 즉시 참조)
       const kakaoMatch = href.match(/open\.kakao\.com\/[a-zA-Z0-9_\/]+/i);
       if (kakaoMatch) {
         const cached = sessionStorage.getItem(`embed_title_${href}`) || localStorage.getItem(`embed_title_${href}`);
@@ -497,6 +506,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
         return;
       }
 
+      // 3. 디스코드 (0초 시점에 캐시 즉시 참조)
       const discordMatch = href.match(/(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i);
       if (discordMatch) {
         const cached = sessionStorage.getItem(`embed_title_${href}`) || localStorage.getItem(`embed_title_${href}`);
@@ -570,7 +580,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300"
                 >
                   {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
                   <span>{copied ? '복사됨' : '공유'}</span>
@@ -579,7 +589,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 {post?.feed_type === 'clan' && isAdmin && (
                   <button
                     onClick={handleToggleOfficial}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg border border-emerald-500/40 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg border border-emerald-500/40 text-emerald-500"
                   >
                     <ShieldCheck className="w-4 h-4" />
                     <span>{post.is_official ? '공식 해제' : '공식 지정'}</span>
@@ -590,7 +600,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   <>
                     <button
                       onClick={() => setIsEditing(true)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-emerald-500 border border-emerald-500/30 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-emerald-500 border border-emerald-500/30 rounded-lg"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       <span>{isAuthor ? '수정' : '강제 수정'}</span>
@@ -599,7 +609,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     {post?.feed_type === 'clan' && post?.is_official && isAuthor && !isAdmin ? (
                       <button
                         onClick={() => setShowRequestDeleteModal(true)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-amber-500 border border-amber-500/30 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-amber-500 border border-amber-500/30 rounded-lg"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>삭제 신청</span>
@@ -607,7 +617,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                     ) : (
                       <button
                         onClick={() => setShowDeleteConfirm(true)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-red-500 border border-red-500/30 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-red-500 border border-red-500/30 rounded-lg"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>{isAuthor ? '삭제' : '강제 삭제'}</span>
@@ -621,13 +631,13 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 <button
                   onClick={handleSaveEdit}
                   disabled={saving}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs sm:text-sm font-bold transition shadow-sm"
+                  className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs sm:text-sm font-bold"
                 >
                   {saving ? '저장 중...' : '수정 완료'}
                 </button>
                 <button
                   onClick={() => setIsEditing(false)}
-                  className="px-4 py-1.5 border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs sm:text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                  className="px-4 py-1.5 border rounded-lg text-xs sm:text-sm"
                 >
                   취소
                 </button>
@@ -635,7 +645,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             )}
           </div>
 
-          <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-full transition">
+          <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-white rounded-full">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -651,7 +661,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full p-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white rounded-xl text-base sm:text-lg font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
+                className="w-full p-3 bg-zinc-800 border border-zinc-700 text-white rounded-xl text-base sm:text-lg font-bold"
               />
               <Editor content={editContent} onChange={setEditContent} minHeight="260px" />
             </div>
@@ -664,7 +674,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   )}
                   {post.title}
                 </h2>
-                <div className="flex items-center gap-3 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
+                <div className="flex items-center gap-3 text-xs sm:text-sm text-zinc-400">
                   <span className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-zinc-200">
                     <CrownIcon role={authorRole} className="w-4 h-4 shrink-0" />
                     <span>{authorNickname || '작성자'}</span>
@@ -688,7 +698,7 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
                   className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-full font-bold text-xs sm:text-sm transition ${
                     isLiked
                       ? 'bg-rose-50 text-rose-600 border border-rose-300 dark:bg-rose-950/40 dark:text-rose-400'
-                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                      : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
                   }`}
                 >
                   <Heart className={`w-4 h-4 ${isLiked ? 'fill-current text-rose-500' : ''}`} />
@@ -802,21 +812,21 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             if (e.target === e.currentTarget) setLinkConfirmUrl(null);
           }}
         >
-          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-none p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-zinc-900 dark:text-white">외부 링크 접속 확인</h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">이 링크로 이동하시겠습니까?</p>
-            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-none text-xs font-mono break-all text-left max-h-24 overflow-y-auto text-zinc-800 dark:text-zinc-200">
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-none p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold">외부 링크 접속 확인</h3>
+            <p className="text-xs text-zinc-400">이 링크로 이동하시겠습니까?</p>
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-none text-xs font-mono break-all text-left max-h-24 overflow-y-auto">
               {linkConfirmUrl}
             </div>
             <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-2 text-xs border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-none hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">취소</button>
+              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-2 text-xs border rounded-none">취소</button>
               <button
                 onClick={() => {
                   const url = linkConfirmUrl;
                   setLinkConfirmUrl(null);
                   window.open(url, '_blank', 'noopener,noreferrer');
                 }}
-                className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-none transition"
+                className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-none"
               >
                 접속
               </button>
@@ -848,12 +858,12 @@ export default function PostModal({ postId, onClose, onDeleted }: PostModalProps
             if (e.target === e.currentTarget) setShowDeleteConfirm(false);
           }}
         >
-          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 p-6 rounded-none space-y-4 border-2 border-zinc-200 dark:border-zinc-800 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold text-zinc-900 dark:text-white">게시글 삭제</h3>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400">게시글을 삭제하시겠습니까? 데이터가 복구되지 않습니다.</p>
-            <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-none hover:bg-zinc-100 dark:hover:bg-zinc-800 transition">취소</button>
-              <button onClick={handleExecuteDelete} className="px-5 py-2 text-xs font-bold bg-red-600 hover:bg-red-500 text-white rounded-none transition shadow-sm">삭제</button>
+          <div className="w-full max-w-sm bg-zinc-900 p-6 rounded-none space-y-4 border border-zinc-800" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-white">게시글 삭제</h3>
+            <p className="text-xs text-zinc-400">게시글을 삭제하시겠습니까? 데이터가 복구되지 않습니다.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 text-xs border border-zinc-700 text-zinc-300 rounded-none">취소</button>
+              <button onClick={handleExecuteDelete} className="px-4 py-2 text-xs font-bold bg-red-600 text-white rounded-none">삭제</button>
             </div>
           </div>
         </div>,

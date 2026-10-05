@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import Editor from '@/components/Editor'
 import FreezeModal from '@/components/FreezeModal'
 import CustomPopup from '@/components/CustomPopup'
-import { Send, ArrowLeft, Check, EyeOff, Save, Clock, Trash2, ShieldAlert, Mail } from 'lucide-react'
+import { Send, ArrowLeft, Check, EyeOff, Save, FileDown, Clock, Trash2, ShieldAlert, Mail } from 'lucide-react'
 import Link from 'next/link'
 
 const AVAILABLE_TAGS = ['초급', '중급', '고급', '막고라', '클랜전', '제작 중심', '친목 중심'] as const;
@@ -44,11 +44,13 @@ function WriteContent() {
   const [existingDraft, setExistingDraft] = useState<DraftData | null>(null)
   const [isFreezeModalOpen, setIsFreezeModalOpen] = useState(false)
 
+  // 블랙리스트 전용 상태
   const [showBlacklistModal, setShowBlacklistModal] = useState(false)
   const [showAppealModal, setShowAppealModal] = useState(false)
   const [appealMessage, setAppealMessage] = useState('')
   const [sendingAppeal, setSendingAppeal] = useState(false)
 
+  // 커스텀 직각 팝업 상태
   const [customPopup, setCustomPopup] = useState<{
     isOpen: boolean;
     title: string;
@@ -75,6 +77,7 @@ function WriteContent() {
         const { data: prof } = await supabase.from('profiles').select('nickname').eq('id', uid).maybeSingle()
         setUserNickname(prof?.nickname || '사용자')
 
+        // 블랙리스트 등록 여부 확인
         const { data: blackRecord } = await supabase
           .from('blacklists')
           .select('user_id')
@@ -169,6 +172,7 @@ function WriteContent() {
     }
   }
 
+  // 이미지 src 및 비디오 첫 프레임 poster 동시 추출
   const detectedImages: string[] = Array.from(content.matchAll(/<img[^>]+src=['"]([^'"]+)['"]/gi)).map((m) => m[1]);
   const detectedPosters: string[] = Array.from(content.matchAll(/<video[^>]+poster=['"]([^'"]+)['"]/gi)).map((m) => m[1]);
   const allDetectedMedia = Array.from(new Set([...detectedImages, ...detectedPosters]));
@@ -337,25 +341,24 @@ function WriteContent() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <Link
           href={feedType === 'community' ? '/community' : '/clan'}
-          className="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition"
+          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>피드로 돌아가기</span>
         </Link>
 
-        {/* 라이트/다크 테마 모두 완벽 대응하는 피드 전환 버튼 */}
-        <div className="flex items-center bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-1 rounded-none text-xs font-bold shadow-sm">
+        <div className="flex items-center bg-zinc-900 border border-zinc-800 p-1 rounded-none text-xs font-bold">
           <button
             type="button"
             onClick={() => setFeedType('community')}
-            className={`px-3 py-1.5 rounded-none transition ${feedType === 'community' ? 'bg-blue-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'}`}
+            className={`px-3 py-1.5 rounded-none transition ${feedType === 'community' ? 'bg-blue-600 text-white' : 'text-zinc-400'}`}
           >
             커뮤니티 피드
           </button>
           <button
             type="button"
             onClick={() => setFeedType('clan')}
-            className={`px-3 py-1.5 rounded-none transition ${feedType === 'clan' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'}`}
+            className={`px-3 py-1.5 rounded-none transition ${feedType === 'clan' ? 'bg-emerald-600 text-white' : 'text-zinc-400'}`}
           >
             클랜 피드
           </button>
@@ -363,23 +366,23 @@ function WriteContent() {
       </div>
 
       {existingDraft && (
-        <div className="flex items-center justify-between p-3.5 mb-5 rounded-none bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800/60 text-xs shadow-sm">
-          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-medium">
-            <Clock className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <div className="flex items-center justify-between p-3.5 mb-5 rounded-none bg-emerald-950/30 border border-emerald-800/60 text-xs">
+          <div className="flex items-center gap-2 text-emerald-300">
+            <Clock className="w-4 h-4 shrink-0 text-emerald-400" />
             <span>임시보관된 글이 있습니다 ({new Date(existingDraft.updated_at).toLocaleString()})</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handleLoadDraftClick}
-              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition rounded-none shadow-sm"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition rounded-none"
             >
               불러오기
             </button>
             <button
               type="button"
               onClick={handleDeleteDraft}
-              className="p-1 text-zinc-400 hover:text-red-500 transition"
+              className="p-1 text-zinc-400 hover:text-red-400 transition"
               title="임시보관 삭제"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -390,8 +393,8 @@ function WriteContent() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {feedType === 'community' ? (
-          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-2">
-            <label className="block text-xs font-bold text-blue-600 dark:text-blue-400">
+          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-2">
+            <label className="block text-xs font-bold text-blue-400">
               * 게시판 선택 (필수 1개 선택)
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -405,7 +408,7 @@ function WriteContent() {
                     className={`px-3 py-1.5 text-xs font-bold rounded-none border transition ${
                       isSelected
                         ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
-                        : 'bg-white dark:bg-zinc-800/80 border-zinc-200 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+                        : 'bg-zinc-800/80 border-zinc-700/80 text-zinc-300 hover:bg-zinc-700'
                     }`}
                   >
                     <span>{board}</span>
@@ -415,8 +418,8 @@ function WriteContent() {
             </div>
           </div>
         ) : (
-          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-2">
-            <label className="block text-xs font-bold text-emerald-600 dark:text-emerald-400">
+          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-2">
+            <label className="block text-xs font-bold text-emerald-400">
               클랜 해시태그 선택
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -433,10 +436,10 @@ function WriteContent() {
                         setSelectedTags((prev) => [...prev, tag]);
                       }
                     }}
-                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-none text-xs font-semibold border transition ${
+                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-none text-xs font-semibold border ${
                       isSelected
-                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
-                        : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-300'
                     }`}
                   >
                     <span>#{tag}</span>
@@ -454,14 +457,14 @@ function WriteContent() {
             placeholder={feedType === 'community' ? "게시글 제목 (말머리는 자동 추가됩니다)" : "클랜 게시글 제목을 입력하세요"}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-none text-lg font-medium text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:border-emerald-500 shadow-sm"
+            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-none text-lg font-medium text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
           />
         </div>
 
         {allDetectedMedia.length > 0 && (
-          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-3">
+          <div className="p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-none space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              <span className="text-xs font-semibold text-zinc-300">
                 미리보기 썸네일 설정
               </span>
               <label className="inline-flex items-center gap-2 cursor-pointer select-none">
@@ -471,8 +474,8 @@ function WriteContent() {
                   onChange={(e) => setIsPreviewHidden(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-zinc-300 dark:bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-emerald-600 relative"></div>
-                <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 flex items-center gap-1">
+                <div className="w-9 h-5 bg-zinc-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-emerald-600 relative"></div>
+                <span className="text-xs font-medium text-zinc-300 flex items-center gap-1">
                   <EyeOff className="w-3.5 h-3.5" />
                   미리보기 가리기
                 </span>
@@ -486,11 +489,11 @@ function WriteContent() {
                   <div
                     key={idx}
                     onClick={() => !isPreviewHidden && setSelectedThumbnail(src)}
-                    className={`relative shrink-0 w-20 h-20 rounded-none overflow-hidden border-2 cursor-pointer transition ${
-                      isMain ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-zinc-300 dark:border-zinc-700'
+                    className={`relative shrink-0 w-20 h-20 rounded-none overflow-hidden border-2 cursor-pointer ${
+                      isMain ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-zinc-700'
                     }`}
                   >
-                    <img src={src} alt="미디어 미리보기" className="w-full h-full object-cover" />
+                    <img src={src} alt="사진" className="w-full h-full object-cover" />
                   </div>
                 );
               })}
@@ -505,7 +508,7 @@ function WriteContent() {
             type="button"
             onClick={handleSaveDraft}
             disabled={isSavingDraft}
-            className="px-5 py-2.5 bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-200 dark:border-zinc-700 font-medium rounded-none border transition disabled:opacity-50 text-sm flex items-center gap-1.5 shadow-sm"
+            className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-none border border-zinc-700 transition disabled:opacity-50 text-sm flex items-center gap-1.5"
           >
             <Save className="w-4 h-4" />
             <span>임시보관</span>
@@ -513,7 +516,7 @@ function WriteContent() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className={`flex items-center gap-2 px-6 py-2.5 font-bold rounded-none text-white text-sm transition disabled:opacity-50 shadow-sm ${
+            className={`flex items-center gap-2 px-6 py-2.5 font-bold rounded-none text-white text-sm transition disabled:opacity-50 ${
               feedType === 'community' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-emerald-600 hover:bg-emerald-500'
             }`}
           >
@@ -523,6 +526,7 @@ function WriteContent() {
         </div>
       </form>
 
+      {/* 블랙리스트 제재 전용 팝업 (사유 노출 없이 깔끔한 안내문) */}
       {showBlacklistModal && (
         <div
           className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
@@ -571,6 +575,7 @@ function WriteContent() {
         </div>
       )}
 
+      {/* 블랙리스트 이의제기 및 문의 작성 창 */}
       {showAppealModal && (
         <div
           className="fixed inset-0 z-[10010] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"

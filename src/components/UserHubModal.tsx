@@ -95,9 +95,11 @@ export default function UserHubModal({
   const [isReindexing, setIsReindexing] = useState(false)
   const [isTogglingFreeze, setIsTogglingFreeze] = useState(false)
 
+  // 번호 재정렬 확인 팝업 상태
   const [confirmReindexOpen, setConfirmReindexOpen] = useState(false)
   const [noticeModal, setNoticeModal] = useState<{ text: string; theme: 'yellow' | 'sky' } | null>(null)
 
+  // 이의제기 관리 상태 (제작자, 최고관리자)
   const [appeals, setAppeals] = useState<BlacklistAppeal[]>([])
   const [pendingAppealCount, setPendingAppealCount] = useState(0)
   const [selectedAppeal, setSelectedAppeal] = useState<BlacklistAppeal | null>(null)
@@ -113,11 +115,13 @@ export default function UserHubModal({
     action: 'unban' | 'keep';
   } | null>(null)
 
+  // 건의사항 작성 상태 (일반회원, 일반관리자, 최고관리자)
   const [suggestionCategory, setSuggestionCategory] = useState<'기능 제안' | '버그 제보' | '기타'>('기능 제안')
   const [suggestionTitle, setSuggestionTitle] = useState('')
   const [suggestionContent, setSuggestionContent] = useState('')
   const [submittingSuggestion, setSubmittingSuggestion] = useState(false)
 
+  // 건의함 수신 상태 (제작자 전용)
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
   const [unreadSuggestionCount, setUnreadSuggestionCount] = useState(0)
   const [selectedSuggestion, setSelectedSuggestion] = useState<SuggestionItem | null>(null)
@@ -450,7 +454,7 @@ export default function UserHubModal({
               {currentView === 'suggestion_inbox' && '제작자 건의함'}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
+          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-white rounded-lg transition">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -486,7 +490,7 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">닉네임 변경</h3>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">활동 프로필 닉네임을 수정합니다.</p>
+                    <p className="text-[11px] text-zinc-400">활동 프로필 닉네임을 수정합니다.</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -555,7 +559,7 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">내가 쓴 게시글</h3>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">내가 작성한 모든 글을 모아봅니다.</p>
+                    <p className="text-[11px] text-zinc-400">내가 작성한 모든 글을 모아봅니다.</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -572,7 +576,7 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">내가 좋아요 누른 게시글</h3>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">좋아요를 누른 관심 게시글을 확인합니다.</p>
+                    <p className="text-[11px] text-zinc-400">좋아요를 누른 관심 게시글을 확인합니다.</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -600,7 +604,7 @@ export default function UserHubModal({
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">블랙리스트 유저의 이의제기 및 문의를 처리합니다.</p>
+                      <p className="text-[11px] text-zinc-400">블랙리스트 유저의 이의제기 및 문의를 처리합니다.</p>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-zinc-400" />
@@ -618,7 +622,7 @@ export default function UserHubModal({
                     type="button"
                     onClick={() => setConfirmReindexOpen(true)}
                     disabled={isReindexing}
-                    className="p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-xs font-bold transition flex items-center justify-center gap-1 text-zinc-800 dark:text-zinc-200 cursor-pointer shadow-sm"
+                    className="p-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isReindexing ? 'animate-spin' : ''}`} />
                     <span>게시글 번호 초기화</span>
@@ -627,8 +631,8 @@ export default function UserHubModal({
                     type="button"
                     onClick={handleToggleFreeze}
                     disabled={isTogglingFreeze}
-                    className={`p-2.5 rounded-xl text-xs font-bold transition border flex items-center justify-center gap-1 cursor-pointer shadow-sm ${
-                      isFrozen ? 'bg-sky-600 text-white border-sky-600' : 'border-sky-500/40 text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-950/40'
+                    className={`p-2.5 rounded-xl text-xs font-bold transition border flex items-center justify-center gap-1 cursor-pointer ${
+                      isFrozen ? 'bg-sky-600 text-white' : 'border-sky-500/40 text-sky-500'
                     }`}
                   >
                     <Snowflake className="w-3.5 h-3.5" />
@@ -654,27 +658,27 @@ export default function UserHubModal({
             className="p-5 space-y-4"
           >
             <div>
-              <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-400 mb-1">새 닉네임</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">새 닉네임</label>
               <input
                 type="text"
                 value={newNickname}
                 onChange={(e) => setNewNickname(e.target.value)}
                 maxLength={15}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-sm"
               />
             </div>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setCurrentView('menu')}
-                className="px-4 py-2 text-xs border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition"
+                className="px-4 py-2 text-xs border rounded-xl"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={updatingNickname}
-                className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl shadow-sm hover:bg-emerald-500 transition"
+                className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl"
               >
                 저장
               </button>
@@ -685,7 +689,7 @@ export default function UserHubModal({
         {currentView === 'suggestion_write' && (
           <form onSubmit={handleSubmitSuggestion} className="p-5 space-y-4">
             <div>
-              <label className="block text-xs font-bold text-yellow-600 dark:text-yellow-400 mb-1.5">건의 구분</label>
+              <label className="block text-xs font-bold text-yellow-500 mb-1.5">건의 구분</label>
               <div className="flex gap-1.5">
                 {(['기능 제안', '버그 제보', '기타'] as const).map((cat) => (
                   <button
@@ -694,8 +698,8 @@ export default function UserHubModal({
                     onClick={() => setSuggestionCategory(cat)}
                     className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition ${
                       suggestionCategory === cat
-                        ? 'bg-yellow-400 text-black border-yellow-400 shadow-sm'
-                        : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+                        ? 'bg-yellow-400 text-black border-yellow-400'
+                        : 'border-zinc-300 dark:border-zinc-700 text-zinc-400'
                     }`}
                   >
                     {cat}
@@ -705,24 +709,24 @@ export default function UserHubModal({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-400 mb-1">제목</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">제목</label>
               <input
                 type="text"
                 value={suggestionTitle}
                 onChange={(e) => setSuggestionTitle(e.target.value)}
                 placeholder="건의 제목을 간략히 적어주세요"
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400"
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-xs"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-zinc-600 dark:text-zinc-400 mb-1">건의 내용</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1">건의 내용</label>
               <textarea
                 value={suggestionContent}
                 onChange={(e) => setSuggestionContent(e.target.value)}
                 placeholder="필요한 기능이나 발견하신 버그를 상세히 적어주시면 사이트 개선에 큰 도움이 됩니다."
                 rows={5}
-                className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400"
+                className="w-full p-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-xs"
               />
             </div>
 
@@ -730,14 +734,14 @@ export default function UserHubModal({
               <button
                 type="button"
                 onClick={() => setCurrentView('menu')}
-                className="px-4 py-2 text-xs border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition"
+                className="px-4 py-2 text-xs border rounded-xl"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={submittingSuggestion}
-                className="px-5 py-2 text-xs font-bold bg-yellow-400 hover:bg-yellow-300 text-black rounded-xl flex items-center gap-1.5 shadow-sm transition"
+                className="px-5 py-2 text-xs font-bold bg-yellow-400 hover:bg-yellow-300 text-black rounded-xl flex items-center gap-1.5"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>{submittingSuggestion ? '전송 중...' : '건의 전송'}</span>
@@ -749,7 +753,7 @@ export default function UserHubModal({
         {currentView === 'suggestion_inbox' && (
           <div className="p-5 space-y-3">
             <div className="flex items-center justify-between pb-1">
-              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+              <span className="text-xs font-bold text-zinc-400">
                 수신된 건의 ({suggestions.length}건)
               </span>
               <button
@@ -790,7 +794,7 @@ export default function UserHubModal({
                         <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 pt-0.5">
+                    <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
                       <span>작성자: {item.user_nickname}</span>
                       <span>{new Date(item.created_at).toLocaleDateString()}</span>
                     </div>
@@ -855,7 +859,7 @@ export default function UserHubModal({
         {currentView === 'appeals' && (
           <div className="p-5 space-y-3">
             <div className="flex items-center justify-between pb-1">
-              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+              <span className="text-xs font-bold text-zinc-400">
                 수신된 메시지 ({appeals.length}건)
               </span>
               <button
@@ -959,11 +963,11 @@ export default function UserHubModal({
             className="w-full max-w-md bg-white dark:bg-zinc-950 border-2 border-yellow-400 rounded-none p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+            <div className="flex items-center justify-between border-b pb-2">
               <span className="text-xs font-bold text-yellow-600 dark:text-yellow-400">
                 [{selectedSuggestion.category}] 건의 내용
               </span>
-              <button onClick={() => setSelectedSuggestion(null)} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white">
+              <button onClick={() => setSelectedSuggestion(null)} className="p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -972,20 +976,20 @@ export default function UserHubModal({
               <h3 className="text-sm font-black text-zinc-900 dark:text-white">
                 {selectedSuggestion.title}
               </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              <p className="text-[11px] text-zinc-400">
                 보낸이: {selectedSuggestion.user_nickname} ({selectedSuggestion.user_email || '이메일 없음'})
               </p>
             </div>
 
-            <div className="p-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto rounded-none">
+            <div className="p-3 bg-zinc-50 dark:bg-zinc-900 border text-xs text-zinc-700 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">
               {selectedSuggestion.content}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-zinc-200 dark:border-zinc-800">
+            <div className="flex justify-end pt-2 border-t">
               <button
                 type="button"
                 onClick={() => setSelectedSuggestion(null)}
-                className="px-5 py-1.5 text-xs font-bold bg-yellow-400 hover:bg-yellow-300 text-black rounded-none transition"
+                className="px-5 py-1.5 text-xs font-bold bg-yellow-400 text-black rounded-none"
               >
                 확인
               </button>

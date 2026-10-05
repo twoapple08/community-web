@@ -1,18 +1,91 @@
 @import "tailwindcss";
 
-/* 미디어 넘침 및 뷰포트 터짐 원천 방지 가드 */
-img, video, canvas, svg {
-  max-width: 100%;
+@variant dark (&:where(.dark, .dark *));
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* 실버 팰리스 핵심 메커니즘: 화면 폭에 연동되는 뷰포트 클램프 (줌 슬라이더 조작에도 실물 크기 불변) */
+  font-size: clamp(12px, 3.8vw, 15px);
+  width: 100%;
+  min-height: 100%;
+  transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 모바일 전용 UI 폰트/터치 스케일업 */
-@media (max-width: 640px) {
-  html {
-    font-size: 110%;
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+html.dark {
+  background-color: #09090b;
+  color: #f4f4f5;
+}
+
+html:not(.dark) {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+p, h1, h2, h3, h4, h5, h6, span, a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes noticeSlideDownFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 }
 
-/* 리치 텍스트 본문 줄바꿈 및 문단 여백 1:1 보존 스타일 */
+@keyframes noticeSlideUpFadeOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -14px);
+  }
+}
+
+.animate-notice-in {
+  animation: noticeSlideDownFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-notice-out {
+  animation: noticeSlideUpFadeOut 0.35s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+/* =========================================================
+   리치 텍스트 본문 줄바꿈 및 문단 여백 1:1 보존 스타일
+   ========================================================= */
 .prose p,
 .editor-content p,
 .tiptap p {
@@ -22,6 +95,7 @@ img, video, canvas, svg {
   line-height: 1.7;
 }
 
+/* 엔터로 생긴 빈 문단도 브라우저가 접지 않고 온전히 1줄 높이 유지 */
 .prose p:empty,
 .editor-content p:empty,
 .tiptap p:empty {
@@ -69,23 +143,36 @@ img, video, canvas, svg {
   background-color: rgba(120, 120, 120, 0.1);
 }
 
-/* [다크 모드 전용] 검은색 계열 텍스트 자동 흰색 스트로크 (외곽선 미지정 시) */
-.dark .prose [style*="color: #000000"]:not([style*="text-stroke"]),
-.dark .prose [style*="color: #000"]:not([style*="text-stroke"]),
-.dark .prose [style*="color: black"]:not([style*="text-stroke"]),
-.dark .prose [style*="color: rgb(0, 0, 0)"]:not([style*="text-stroke"]),
-.dark .prose [style*="color:rgb(0,0,0)"]:not([style*="text-stroke"]),
-.dark .editor-content [style*="color: #000000"]:not([style*="text-stroke"]),
-.dark .editor-content [style*="color: #000"]:not([style*="text-stroke"]),
-.dark .editor-content [style*="color: black"]:not([style*="text-stroke"]),
-.dark .editor-content [style*="color: rgb(0, 0, 0)"]:not([style*="text-stroke"]),
-.dark .editor-content [style*="color:rgb(0,0,0)"]:not([style*="text-stroke"]),
-.dark .tiptap [style*="color: #000000"]:not([style*="text-stroke"]),
-.dark .tiptap [style*="color: #000"]:not([style*="text-stroke"]),
-.dark .tiptap [style*="color: black"]:not([style*="text-stroke"]),
-.dark .tiptap [style*="color: rgb(0, 0, 0)"]:not([style*="text-stroke"]),
-.dark .tiptap [style*="color:rgb(0,0,0)"]:not([style*="text-stroke"]) {
-  -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.85);
-  paint-order: stroke fill;
-  text-shadow: 0 0 1px rgba(255, 255, 255, 0.4);
+.selectedCell:after {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(59, 130, 246, 0.15);
+  pointer-events: none;
+}
+
+/* =========================================================
+   모바일 전용 UI 200~250% 수준 가독성 스케일업
+   ========================================================= */
+@media (max-width: 640px) {
+  html {
+    font-size: 112%; /* 기본 루트 폰트 스케일업 */
+  }
+
+  /* 본문 리치텍스트 모바일 시원한 가독성 보장 */
+  .prose {
+    font-size: 0.95rem !important;
+    line-height: 1.75 !important;
+  }
+
+  .prose p {
+    font-size: 0.95rem !important;
+    margin-bottom: 0.9em !important;
+  }
+
+  /* 모바일 터치 타깃 및 텍스트 선명도 */
+  input, select, textarea {
+    font-size: 0.9rem !important;
+  }
 }
