@@ -5,7 +5,7 @@ import { hsvToRgb, type HSV } from '@/lib/colorUtils'
 
 // 색조 고리 + 회전하는 HSV 삼각형 색 선택기 (canvas)
 // - 고리: 3시 방향 빨강(0°)에서 시계 방향으로 노랑 → 초록 → 하늘 → 파랑 → 자홍
-// - 삼각형: 순색 꼭짓점이 색조 손잡이를 향하고, +120° 검정, +240° 흰색 (화면 좌표, y 아래 방향)
+// - 삼각형: 고정 (순색 꼭짓점 0°=오른쪽, 120° 검정, 240° 흰색 — 화면 좌표, y 아래 방향)
 
 interface ColorWheelProps {
   hsv: HSV
@@ -69,9 +69,10 @@ const getGeometry = (size: number): Geometry => {
   }
 }
 
-const triangleOf = (g: Geometry, hue: number): Tri => {
+// 삼각형은 회전하지 않고 고정 (순색 꼭짓점 오른쪽 · 검정 왼쪽 아래 · 흰색 왼쪽 위). 색조가 바뀌면 안쪽 색만 바뀜
+const triangleOf = (g: Geometry, _hue: number): Tri => {
   const at = (deg: number): Pt => ({ x: g.c + g.rt * Math.cos(rad(deg)), y: g.c + g.rt * Math.sin(rad(deg)) })
-  return { hue: at(hue), black: at(hue + 120), white: at(hue + 240) }
+  return { hue: at(0), black: at(120), white: at(240) }
 }
 
 /** 점 p 의 무게중심 좌표 [순색, 흰색, 검정] */
