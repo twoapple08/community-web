@@ -66,7 +66,7 @@ export default function TermsModal({ isOpen, userId, onAgreed }: TermsModalProps
 
           <p className="font-bold text-zinc-900 dark:text-white">제3조 (신고 및 게시물 검토 조치)</p>
           <p>
-            1. 게시글·댓글은 사용자 신고로 접수되며, <strong>서로 다른 이용자 3명 이상</strong>에게 신고되면 <strong>관리자 검토 전까지 임시로 가려집니다</strong>.
+            1. 게시글·댓글은 사용자 신고로 접수되며, <strong>같은 사유로 3회 이상</strong> 신고되면(1인당 게시물마다 1회만 신고 가능) <strong>관리자 검토 전까지 임시로 가려집니다</strong>.
             <br />
             2. 관리자가 내용을 확인해 <strong>삭제</strong> 또는 <strong>복구(허위 신고 처리)</strong>를 결정합니다.
           </p>

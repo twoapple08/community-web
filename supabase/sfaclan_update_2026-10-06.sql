@@ -505,7 +505,7 @@ create trigger zz_sfa_notify_post_comment
 -- ---------------------------------------------------------------------
 -- 5. 신고 시스템 개편
 --    * 신고 1건마다 관리진 알림 ('report')
---    * 서로 다른 3명이 신고하면 게시글은 숨김 / 댓글은 가림 처리 + '검토 필요' 알림 ('review_required')
+--    * 같은 사유로 3회 신고되면(1인 1회) 게시글은 숨김 / 댓글은 가림 처리 + '검토 필요' 알림 ('review_required')
 --    * 제작자/최고 관리자가 [삭제 확정] 또는 [무고 처리(복구)] 결정
 --    * 무고 처리 후에는 그 이후 신고만 다시 셈
 --    * 예전 '3회 누적 즉시 자동 삭제' 트리거는 모두 제거
@@ -706,7 +706,7 @@ begin
     return null;
   end if;
 
-  -- 서로 다른 3명 이상 신고 → 숨김 + 검토 요청
+  -- 같은 사유로 3회 이상 신고 → 숨김 + 검토 요청
   begin
     -- 같은 글에 동시에 신고가 들어와도 한 번만 처리
     perform pg_advisory_xact_lock(hashtext('sfa_report:post:' || new.post_id::text));
@@ -716,10 +716,17 @@ begin
       from public.posts
      where id = new.post_id;
 
-    select count(distinct reporter_id) into v_count
-      from public.post_reports
-     where post_id = new.post_id
-       and (v_dismissed is null or created_at > v_dismissed);
+    -- 같은 사유로 신고한 서로 다른 사람 수 (사유별로 세어 가장 많은 사유 기준, 1인 1회 신고)
+    select coalesce(max(t.c), 0) into v_count
+      from (
+        select count(distinct r.reporter_id) as c
+          from public.post_reports r
+          cross join lateral unnest(coalesce(r.reasons, array[]::text[])) as u(reason)
+         where r.post_id = new.post_id
+           and (v_dismissed is null or r.created_at > v_dismissed)
+           and nullif(btrim(u.reason), '') is not null
+         group by btrim(u.reason)
+      ) t;
 
     if v_count >= 3 and (v_status is null or v_status = 'dismissed') then
       update public.posts
@@ -753,7 +760,7 @@ begin
           values
             ('review_required', 'post', new.post_id, null, null, null, '시스템',
              v_title, coalesce(v_feed, 'community'), v_summary,
-             format('[%s / %s] 게시글이 서로 다른 %s명에게 신고되어 비공개 처리되었습니다. 내용을 확인하고 삭제 확정 또는 무고 처리해 주세요. (주요 사유: %s)',
+             format('[%s / %s] 게시글이 같은 사유로 %s회 신고되어 비공개 처리되었습니다. 내용을 확인하고 삭제 확정 또는 무고 처리해 주세요. (주요 사유: %s)',
                     v_label, v_title, v_count, v_summary),
              false);
         exception when others then
@@ -870,10 +877,17 @@ begin
       from public.post_comments
      where id = new.comment_id;
 
-    select count(distinct reporter_id) into v_count
-      from public.comment_reports
-     where comment_id = new.comment_id
-       and (v_dismissed is null or created_at > v_dismissed);
+    -- 같은 사유로 신고한 서로 다른 사람 수 (사유별로 세어 가장 많은 사유 기준, 1인 1회 신고)
+    select coalesce(max(t.c), 0) into v_count
+      from (
+        select count(distinct r.reporter_id) as c
+          from public.comment_reports r
+          cross join lateral unnest(coalesce(r.reasons, array[]::text[])) as u(reason)
+         where r.comment_id = new.comment_id
+           and (v_dismissed is null or r.created_at > v_dismissed)
+           and nullif(btrim(u.reason), '') is not null
+         group by btrim(u.reason)
+      ) t;
 
     if v_count >= 3 and (v_status is null or v_status = 'dismissed') then
       -- 댓글은 행을 지우지 않고 '검토 중' 표시만 (답글 유지, 화면에서는 가림 처리)
@@ -905,7 +919,7 @@ begin
           values
             ('review_required', 'comment', v_post_id, new.comment_id, v_preview, null, '시스템',
              v_title, coalesce(v_feed, 'community'), v_summary,
-             format('[%s / %s] 게시글의 %s이 서로 다른 %s명에게 신고되어 가림 처리되었습니다. 내용을 확인하고 삭제 확정 또는 무고 처리해 주세요. (주요 사유: %s)',
+             format('[%s / %s] 게시글의 %s이 같은 사유로 %s회 신고되어 가림 처리되었습니다. 내용을 확인하고 삭제 확정 또는 무고 처리해 주세요. (주요 사유: %s)',
                     v_label, v_title, v_target_label, v_count, v_summary),
              false);
         exception when others then
