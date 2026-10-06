@@ -133,14 +133,14 @@ export default function AdminReplyPopup() {
       onClick={handleConfirm}
     >
       <div
-        className="w-full max-w-sm !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
+        className="w-full max-w-sm bg-white text-zinc-900 border-2 border-zinc-900 dark:bg-black dark:text-white dark:border-white rounded-none p-6 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-base font-black text-white border-b border-zinc-800 pb-2.5">
+        <h3 className="text-base font-black text-zinc-900 dark:text-white border-b border-zinc-300 dark:border-zinc-800 pb-2.5">
           답장
         </h3>
 
-        <div className="p-3.5 !bg-zinc-950 !border !border-zinc-800 text-xs text-zinc-200 text-left whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+        <div className="p-3.5 bg-zinc-50 border border-zinc-300 text-zinc-800 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-200 text-xs text-left whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
           {replyData.admin_reply}
         </div>
 
@@ -148,7 +148,7 @@ export default function AdminReplyPopup() {
           <button
             type="button"
             onClick={handleConfirm}
-            className="px-6 py-2 text-xs font-black rounded-none bg-white text-black hover:bg-zinc-200 transition cursor-pointer shadow-md"
+            className="px-6 py-2 text-xs font-black rounded-none bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 transition cursor-pointer shadow-md"
           >
             확인
           </button>

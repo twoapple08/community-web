@@ -541,20 +541,20 @@ function WriteContent() {
           onClick={() => router.push('/')}
         >
           <div
-            className="w-full max-w-sm !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-5 text-center animate-in zoom-in-95 duration-150"
+            className="w-full max-w-sm bg-white text-zinc-900 border-2 border-zinc-900 dark:bg-black dark:text-white dark:border-white rounded-none p-6 shadow-2xl space-y-5 text-center animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center">
-              <div className="p-3 bg-white text-black rounded-none">
+              <div className="p-3 bg-zinc-900 text-white dark:bg-white dark:text-black rounded-none">
                 <ShieldAlert className="w-7 h-7" />
               </div>
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-base font-black tracking-wide text-white">
+              <h3 className="text-base font-black tracking-wide text-zinc-900 dark:text-white">
                 게시글 작성 제한 안내
               </h3>
-              <p className="text-xs text-zinc-300 leading-relaxed font-semibold">
+              <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed font-semibold">
                 귀하는 커뮤니티 이용 규정 위반으로 인해 블랙리스트로 등록되어 있어 게시글 작성이 영구히 금지되었습니다.
               </p>
             </div>
@@ -566,7 +566,7 @@ function WriteContent() {
                   setShowBlacklistModal(false)
                   setShowAppealModal(true)
                 }}
-                className="px-4 py-2 text-xs font-bold rounded-none border border-white text-white hover:bg-zinc-900 transition flex items-center gap-1.5"
+                className="px-4 py-2 text-xs font-bold rounded-none border border-zinc-900 text-zinc-900 hover:bg-zinc-100 dark:border-white dark:text-white dark:hover:bg-zinc-900 transition flex items-center gap-1.5"
               >
                 <Mail className="w-3.5 h-3.5" />
                 <span>이의제기 및 문의</span>
@@ -574,7 +574,7 @@ function WriteContent() {
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="px-5 py-2 text-xs font-black rounded-none bg-white text-black hover:bg-zinc-200 transition"
+                className="px-5 py-2 text-xs font-black rounded-none bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 transition"
               >
                 확인
               </button>
@@ -593,17 +593,17 @@ function WriteContent() {
           }}
         >
           <div
-            className="w-full max-w-md !bg-black !text-white !border-2 !border-white rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            className="w-full max-w-md bg-white text-zinc-900 border-2 border-zinc-900 dark:bg-black dark:text-white dark:border-white rounded-none p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+            <div className="flex items-center justify-between border-b border-zinc-300 dark:border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-white" />
-                <h3 className="text-sm font-black text-white">이의제기 및 문의 작성</h3>
+                <Mail className="w-4 h-4 text-zinc-900 dark:text-white" />
+                <h3 className="text-sm font-black text-zinc-900 dark:text-white">이의제기 및 문의 작성</h3>
               </div>
             </div>
 
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
               관리진(사이트 제작자, 최고 관리자)에게 소명 내용 및 문의를 전달합니다. (해제 전까지 1회만 전송 가능)
             </p>
 
@@ -613,10 +613,10 @@ function WriteContent() {
                 onChange={(e) => setAppealMessage(e.target.value)}
                 placeholder="상세 문의 및 소명 내용을 입력하세요"
                 rows={5}
-                className="w-full p-3 text-xs !bg-zinc-950 !border !border-zinc-700 !text-white rounded-none focus:outline-none focus:!border-white"
+                className="w-full p-3 text-xs bg-white border border-zinc-300 text-zinc-900 focus:border-zinc-900 dark:bg-zinc-950 dark:border-zinc-700 dark:text-white dark:focus:border-white rounded-none focus:outline-none"
               />
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-900">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-900">
                 <button
                   type="button"
                   onClick={() => {
@@ -624,14 +624,14 @@ function WriteContent() {
                     router.push('/')
                   }}
                   disabled={sendingAppeal}
-                  className="px-4 py-2 text-xs font-bold rounded-none border border-zinc-600 text-zinc-300 hover:bg-zinc-900 transition"
+                  className="px-4 py-2 text-xs font-bold rounded-none border border-zinc-400 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900 transition"
                 >
                   취소
                 </button>
                 <button
                   type="submit"
                   disabled={sendingAppeal}
-                  className="px-5 py-2 text-xs font-black rounded-none bg-white text-black hover:bg-zinc-200 transition disabled:opacity-40"
+                  className="px-5 py-2 text-xs font-black rounded-none bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200 transition disabled:opacity-40"
                 >
                   {sendingAppeal ? '전송 중...' : '전송'}
                 </button>

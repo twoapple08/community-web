@@ -16,8 +16,11 @@ interface AdminUser {
 
 interface ProfileUser {
   id: string
-  nickname: string
+  nickname: string | null
 }
+
+// 닉네임이 비어 있는 계정(null)도 목록/검색이 깨지지 않도록 표시용 이름으로 대체
+const displayNickname = (nickname: string | null | undefined) => (nickname || '').trim() || '익명사용자'
 
 interface AdminModalProps {
   isOpen: boolean
@@ -64,7 +67,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
     if (rolesData) {
       const profileMap: Record<string, string> = {}
       profilesData?.forEach((p) => {
-        profileMap[p.id] = p.nickname
+        if (p.nickname) profileMap[p.id] = p.nickname
       })
 
       const formattedAdmins = rolesData.map((r: any) => ({
@@ -95,7 +98,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
     const { error } = await supabase.from('user_roles').upsert(
       {
         user_id: selectedUserId,
-        email: `${targetProfile.nickname}@community.local`,
+        email: `${(targetProfile.nickname || '').trim() || targetProfile.id}@community.local`,
         role: targetRole,
       },
       { onConflict: 'email' }
@@ -147,7 +150,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
   if (!isOpen) return null
 
   const filteredProfiles = profiles.filter((p) =>
-    p.nickname.toLowerCase().includes(searchNickname.toLowerCase())
+    (p.nickname || '').toLowerCase().includes(searchNickname.toLowerCase())
   )
 
   return (
@@ -206,7 +209,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                             : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300'
                         }`}
                       >
-                        <span>{p.nickname}</span>
+                        <span>{displayNickname(p.nickname)}</span>
                         {isSelected && <Check className="w-3.5 h-3.5" />}
                       </div>
                     )

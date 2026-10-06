@@ -9,7 +9,7 @@ import AdminReplyPopup from "@/components/AdminReplyPopup";
 import UserProfileHost from "@/components/UserProfileHost";
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { clearRoleCaches, fetchMyRole, isCreatorEmail } from '@/lib/roles'
@@ -56,6 +56,15 @@ export default function AppShell({
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
+
+  // 다른 페이지(게시글 등)로 이동하면 마이 프로필 창을 닫음
+  // (마이 프로필 → 내 프로필 → 게시글 순으로 이동했을 때 창이 새 페이지 위에 남아 있던 문제)
+  const pathname = usePathname();
+  const [hubPathname, setHubPathname] = useState(pathname);
+  if (hubPathname !== pathname) {
+    setHubPathname(pathname);
+    if (isUserHubOpen) setIsUserHubOpen(false);
+  }
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
   const loadedUserIdRef = useRef<string | null>(null);
@@ -328,7 +337,7 @@ export default function AppShell({
 
   const isAdminGroup = Boolean(userRole === "creator" || userRole === "super_admin" || userRole === "admin");
 
-  // 관리자 그룹은 버튼(관리자/블랙)이 더 많아 좁은 폰(420px 미만)에서 헤더가 화면 밖으로 밀리던 문제
+  // 관리자 그룹은 버튼(관리자/블랙)이 더 많아 좁은 폰(460px 미만)에서 헤더가 화면 밖으로 밀리던 문제
   // → 그 폭에서만 글쓰기/블랙을 아이콘만 표시하고 간격·여백·테마 스위치를 조금 줄인 압축 배치 사용
   const compact = Boolean(user) && (isAdminGroup || isCreatorOrSuperAdmin);
   const withCompact = (base: string, compactClasses: string) => (compact ? `${base} ${compactClasses}` : base);
@@ -358,7 +367,7 @@ export default function AppShell({
           </Link>
 
           {/* 오른쪽 버튼 묶음은 줄어들지 않음. 시스템 글꼴이 아주 큰 기기에서는 마지막 수단으로 가로 스크롤 (py 는 빨간점이 잘리지 않게) */}
-          <div className={withCompact('flex items-center gap-1 sm:gap-1.5 shrink-0 max-w-full overflow-x-auto no-scrollbar py-2', 'max-[420px]:gap-0.5')}>
+          <div className={withCompact('flex items-center gap-1 sm:gap-1.5 shrink-0 max-w-full overflow-x-auto no-scrollbar py-2', 'max-[460px]:gap-0.5')}>
             <button
               type="button"
               role="switch"
@@ -366,11 +375,11 @@ export default function AppShell({
               onClick={toggleTheme}
               title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
               suppressHydrationWarning
-              className={withCompact('relative inline-flex h-6 w-11 sm:h-7 sm:w-13 items-center rounded-full p-0.5 transition-colors duration-300 cursor-pointer shadow-inner shrink-0 border bg-zinc-900 border-zinc-800 dark:bg-white dark:border-zinc-200', 'max-[420px]:h-5.5 max-[420px]:w-10')}
+              className={withCompact('relative inline-flex h-6 w-11 sm:h-7 sm:w-13 items-center rounded-full p-0.5 transition-colors duration-300 cursor-pointer shadow-inner shrink-0 border bg-zinc-900 border-zinc-800 dark:bg-white dark:border-zinc-200', 'max-[460px]:h-5.5 max-[460px]:w-10')}
             >
               {/* 스위치 모양은 dark: 클래스로만 결정 → 라이트 모드 사용자도 첫 화면부터 올바른 위치, 손잡이는 부드럽게 이동 */}
               <span
-                className={withCompact('inline-grid place-items-center h-4.5 w-4.5 sm:h-5 sm:w-5 rounded-full shadow-md transition-transform duration-300 ease-in-out bg-white translate-x-0 dark:bg-zinc-950 dark:translate-x-5 sm:dark:translate-x-6', 'max-[420px]:h-4 max-[420px]:w-4 max-[420px]:dark:translate-x-4.5')}
+                className={withCompact('inline-grid place-items-center h-4.5 w-4.5 sm:h-5 sm:w-5 rounded-full shadow-md transition-transform duration-300 ease-in-out bg-white translate-x-0 dark:bg-zinc-950 dark:translate-x-5 sm:dark:translate-x-6', 'max-[460px]:h-4 max-[460px]:w-4 max-[460px]:dark:translate-x-4.5')}
               >
                 {/* 해/달 아이콘을 겹쳐 두고 회전·크기·투명도로 교차 전환 (아이콘이 잠깐 사라지던 문제 해결) */}
                 <Sun className="[grid-area:1/1] w-2.5 h-2.5 sm:w-3 sm:h-3 text-zinc-950 stroke-[2.5] transition-[opacity,rotate,scale] duration-300 ease-in-out opacity-100 rotate-0 scale-100 dark:opacity-0 dark:-rotate-90 dark:scale-50" />
@@ -384,21 +393,21 @@ export default function AppShell({
               <>
                 <Link
                   href="/write"
-                  className={withCompact('inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-bold transition whitespace-nowrap shrink-0 shadow-sm', 'max-[420px]:px-1.5')}
+                  className={withCompact('inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-bold transition whitespace-nowrap shrink-0 shadow-sm', 'max-[460px]:px-1.5')}
                   aria-label="글쓰기"
                 >
-                  <PenSquare className={withCompact('w-3 h-3', 'max-[420px]:w-3.5 max-[420px]:h-3.5')} />
-                  <span className={compact ? 'max-[420px]:hidden' : undefined}>글쓰기</span>
+                  <PenSquare className={withCompact('w-3 h-3', 'max-[460px]:w-3.5 max-[460px]:h-3.5')} />
+                  <span className={compact ? 'max-[460px]:hidden' : undefined}>글쓰기</span>
                 </Link>
 
                 {/* 프로필 버튼 (내 글 새 알림 / 건의함 / 관리자 메시지 알람 시 빨간점 표시) */}
                 <button
                   onClick={() => setIsUserHubOpen(true)}
-                  className={withCompact('relative inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0', 'max-[420px]:px-1')}
+                  className={withCompact('relative inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0', 'max-[460px]:px-1')}
                   title={unreadNotificationCount > 0 ? `마이 프로필 (새 알림 ${unreadNotificationCount}개)` : '마이 프로필'}
                 >
                   <CrownIcon role={effectiveRole} className="w-3 h-3 shrink-0" />
-                  <span className={withCompact('max-w-[45px] sm:max-w-[90px] truncate', 'max-[420px]:max-w-[40px]')}>{nickname || "닉네임"}</span>
+                  <span className={withCompact('max-w-[45px] sm:max-w-[90px] truncate', 'max-[460px]:max-w-[40px]')}>{nickname || "닉네임"}</span>
                   {hasProfileBadge && (
                     <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full ring-2 ring-white dark:ring-black animate-pulse" />
                   )}
@@ -408,7 +417,7 @@ export default function AppShell({
                   <button
                     type="button"
                     onClick={() => setIsAdminModalOpen(true)}
-                    className={withCompact('inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-bold rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition whitespace-nowrap shrink-0', 'max-[420px]:px-1')}
+                    className={withCompact('inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-bold rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition whitespace-nowrap shrink-0', 'max-[460px]:px-1')}
                     title="관리자 지정"
                   >
                     <Crown className="w-3.5 h-3.5 shrink-0" />
@@ -420,17 +429,17 @@ export default function AppShell({
                   <button
                     type="button"
                     onClick={() => setIsBlacklistModalOpen(true)}
-                    className={withCompact('inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-black rounded-none border bg-white text-black border-black hover:bg-zinc-100 dark:bg-black dark:text-white dark:border-white dark:hover:bg-zinc-900 transition whitespace-nowrap shrink-0 shadow-sm', 'max-[420px]:px-1')}
+                    className={withCompact('inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs font-black rounded-none border bg-white text-black border-black hover:bg-zinc-100 dark:bg-black dark:text-white dark:border-white dark:hover:bg-zinc-900 transition whitespace-nowrap shrink-0 shadow-sm', 'max-[460px]:px-1')}
                     title="블랙리스트 관리"
                   >
                     <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                    <span className={compact ? 'max-[420px]:hidden' : undefined}>블랙</span>
+                    <span className={compact ? 'max-[460px]:hidden' : undefined}>블랙</span>
                   </button>
                 )}
 
                 <button
                   onClick={handleLogout}
-                  className={withCompact('inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-[11px] sm:text-xs font-medium transition shrink-0', 'max-[420px]:px-1')}
+                  className={withCompact('inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg bg-zinc-100 border border-zinc-200 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:hover:bg-zinc-800 dark:text-zinc-300 text-[11px] sm:text-xs font-medium transition shrink-0', 'max-[460px]:px-1')}
                   title="로그아웃"
                 >
                   <LogOut className="w-3.5 h-3.5" />

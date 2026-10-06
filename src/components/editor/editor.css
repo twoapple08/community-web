@@ -1,0 +1,95 @@
+/* =========================================================
+   에디터 이미지 크기 조절 (ResizableImage.ts)
+   - 라이트/다크 모두 같은 주황색 점 + 흰 테두리 (어느 배경에서도 보이게)
+   ========================================================= */
+
+/* 너비를 지정하지 않은 이미지: 글 본문의 기본 이미지(블록, 왼쪽)와 같은 배치 */
+.sfa-img-resize {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  line-height: 0;
+}
+
+/* 크기를 조절한 이미지: 글 본문(.prose img[width])처럼 문단 정렬을 따름 */
+.sfa-img-resize.has-width {
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+.sfa-img-resize > img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* 선택된 이미지 외곽선 */
+.sfa-img-resize.is-selected > img {
+  outline: 2px solid #f97316;
+  outline-offset: 1px;
+}
+
+/* 손잡이(점) 8개: 선택된 동안에만 표시 */
+.sfa-img-resize__handle {
+  position: absolute;
+  z-index: 2;
+  display: none;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  background: #f97316;
+  border: 1.5px solid #ffffff;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 손가락으로도 잡기 쉽게 보이지 않는 판정 영역을 넓힘 (약 28px) */
+.sfa-img-resize__handle::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
+.sfa-img-resize.is-selected .sfa-img-resize__handle {
+  display: block;
+}
+
+.sfa-img-resize__handle[data-dir='nw'] { left: 0; top: 0; cursor: nwse-resize; }
+.sfa-img-resize__handle[data-dir='n'] { left: 50%; top: 0; cursor: ns-resize; }
+.sfa-img-resize__handle[data-dir='ne'] { left: 100%; top: 0; cursor: nesw-resize; }
+.sfa-img-resize__handle[data-dir='w'] { left: 0; top: 50%; cursor: ew-resize; }
+.sfa-img-resize__handle[data-dir='e'] { left: 100%; top: 50%; cursor: ew-resize; }
+.sfa-img-resize__handle[data-dir='sw'] { left: 0; top: 100%; cursor: nesw-resize; }
+.sfa-img-resize__handle[data-dir='s'] { left: 50%; top: 100%; cursor: ns-resize; }
+.sfa-img-resize__handle[data-dir='se'] { left: 100%; top: 100%; cursor: nwse-resize; }
+
+/* 끄는 동안 현재 폭(px) 표시 */
+.sfa-img-resize__badge {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  left: 50%;
+  display: none;
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  border: 1px solid #f97316;
+  background: rgba(9, 9, 11, 0.85);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.sfa-img-resize.is-resizing .sfa-img-resize__badge {
+  display: block;
+}

@@ -2,7 +2,6 @@
 
 import { useEditor, EditorContent, Mark, Node, mergeAttributes } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Image from '@tiptap/extension-image'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -40,13 +39,28 @@ import {
   Plus,
   Trash2,
   Split,
-  Maximize2
+  Maximize2,
+  HelpCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo, useEffect, useSyncExternalStore } from 'react'
 import { captureVideoFirstFrame } from '@/lib/videoUtils'
 import { compressPostImage } from '@/lib/imageCompress'
+import {
+  loadFavoriteColors,
+  markAttrsToTextStyle,
+  onFavoriteColorsChanged,
+  textMarkAttrsToCss,
+  textStyleToCss,
+  textStyleToMarkAttrs,
+  type FavoriteKind,
+  type TextStyleValue,
+} from '@/lib/colorUtils'
 import CustomPopup from './CustomPopup'
+import ColorStudio, { type ColorStudioMode, type ColorStudioPreview } from './editor/ColorStudio'
+import EditorHelpPopup from './editor/EditorHelpPopup'
+import ResizableImage from './editor/ResizableImage'
+import './editor/editor.css'
 
 const CustomUnderline = Mark.create({
   name: 'customUnderline',
@@ -107,22 +121,40 @@ const CustomVideo = Node.create({
   },
 })
 
+// 글씨 색 + 테두리(-webkit-text-stroke) + 글로우(text-shadow) 를 한 span 에 함께 저장
+// (예전 글의 color 만 있는 span 도 그대로 읽고 씀)
 const CustomColor = Mark.create({
   name: 'customColor',
   addAttributes() {
+    // 스타일 문자열은 renderHTML 에서 한 번에 만듦 (테두리에는 paint-order 도 함께 필요)
     return {
       color: {
         default: null,
         parseHTML: el => el.style.color,
-        renderHTML: attrs => attrs.color ? { style: `color: ${attrs.color}` } : {},
+        renderHTML: () => ({}),
+      },
+      stroke: {
+        default: null,
+        parseHTML: el => el.style.getPropertyValue('-webkit-text-stroke') || el.style.webkitTextStroke || null,
+        renderHTML: () => ({}),
+      },
+      glow: {
+        default: null,
+        parseHTML: el => el.style.textShadow || null,
+        renderHTML: () => ({}),
       },
     }
   },
   parseHTML() {
-    return [{ tag: 'span[style*="color"]' }]
+    return [
+      { tag: 'span[style*="color"]' },
+      { tag: 'span[style*="text-stroke"]' },
+      { tag: 'span[style*="text-shadow"]' },
+    ]
   },
-  renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes(HTMLAttributes), 0]
+  renderHTML({ mark, HTMLAttributes }) {
+    const style = textMarkAttrsToCss(mark.attrs)
+    return ['span', mergeAttributes(HTMLAttributes, style ? { style } : {}), 0]
   },
 })
 
@@ -207,6 +239,37 @@ const SPECIAL_SYMBOLS = [
   '☞', '☜', '㈜', '™', 'ⓒ', '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'
 ]
 
+// 즐겨찾기 색(기기별 localStorage) 구독
+// - 내용이 같으면 같은 배열을 돌려줘야 useSyncExternalStore 가 무한 렌더하지 않음
+const NO_COLORS: string[] = []
+const favoriteColorCache: Record<FavoriteKind, { key: string; list: string[] }> = {
+  text: { key: '', list: NO_COLORS },
+  highlight: { key: '', list: NO_COLORS },
+}
+const getFavoriteSnapshot = (kind: FavoriteKind): string[] => {
+  const list = loadFavoriteColors(kind)
+  const key = list.join('|')
+  if (favoriteColorCache[kind].key !== key) favoriteColorCache[kind] = { key, list }
+  return favoriteColorCache[kind].list
+}
+const subscribeFavoriteColors = (onChange: () => void) => onFavoriteColorsChanged(() => onChange())
+const useFavoriteColors = (kind: FavoriteKind): string[] =>
+  useSyncExternalStore(
+    subscribeFavoriteColors,
+    () => getFavoriteSnapshot(kind),
+    () => NO_COLORS
+  )
+
+interface ColorStudioState {
+  mode: ColorStudioMode
+  initialText: TextStyleValue
+  initialHighlight: string | null
+  preview: ColorStudioPreview
+}
+
+const EMPTY_STUDIO_PREVIEW: ColorStudioPreview = { text: '' }
+const STUDIO_PREVIEW_MAX_CHARS = 24
+
 export default function Editor({ content, onChange, minHeight = '320px' }: EditorProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [isUploadingVideo, setIsUploadingVideo] = useState(false)
@@ -228,7 +291,14 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false)
   const [isSizeDropdownOpen, setIsSizeDropdownOpen] = useState(false)
   const [customSizeInput, setCustomSizeInput] = useState('')
-  const [customColorInput, setCustomColorInput] = useState('#ffffff')
+
+  // 글자 색/형광펜 상세 편집 팝업 + 열 때의 선택 범위 (팝업으로 포커스가 옮겨가도 원래 선택에 적용)
+  const [colorStudio, setColorStudio] = useState<ColorStudioState | null>(null)
+  const studioSelectionRef = useRef<{ from: number; to: number } | null>(null)
+  const favoriteTextColors = useFavoriteColors('text')
+  const favoriteHighlightColors = useFavoriteColors('highlight')
+
+  const [showHelpPopup, setShowHelpPopup] = useState(false)
 
   const [videoNoticePopup, setVideoNoticePopup] = useState(false)
   const [popup, setPopup] = useState<{ show: boolean; title: string; message: string }>({
@@ -243,7 +313,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
         bulletList: { keepMarks: true },
         orderedList: { keepMarks: true },
       }),
-      Image.configure({ inline: true }),
+      ResizableImage,
       CustomVideo,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
@@ -466,12 +536,79 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     setInputLinkText('')
   }
 
+  // 즐겨찾기 글씨 색 바로 적용
   const handleSetColor = (color: string) => {
     if (editor.state.selection.empty) {
       editor.chain().focus().insertContent(`<span style="color: ${color};">색상</span> `).run()
     } else {
+      // 이미 준 테두리/글로우는 그대로 두고 글씨 색만 변경
+      // (setMark 는 구간마다 기존 속성에 합쳐 적용 → 여러 스타일이 섞인 선택도 각자 테두리/글로우 유지)
       editor.chain().focus().setMark('customColor', { color }).run()
     }
+  }
+
+  // 글자 색 / 형광펜 상세 편집 팝업 열기
+  const openColorStudio = (mode: ColorStudioMode) => {
+    const { from, to } = editor.state.selection
+    studioSelectionRef.current = { from, to }
+    const selectedText = editor.state.doc.textBetween(from, to, ' ').trim()
+    setColorStudio({
+      mode,
+      initialText: markAttrsToTextStyle(editor.getAttributes('customColor')),
+      initialHighlight: editor.getAttributes('customHighlight').color ?? null,
+      preview: {
+        text: Array.from(selectedText).slice(0, STUDIO_PREVIEW_MAX_CHARS).join(''),
+        fontFamily: editor.getAttributes('customFontFamily').family ?? null,
+        bold: editor.isActive('bold'),
+        italic: editor.isActive('italic'),
+        underline: editor.isActive('customUnderline'),
+        strike: editor.isActive('strike'),
+      },
+    })
+  }
+
+  const closeColorStudio = () => {
+    setColorStudio(null)
+    studioSelectionRef.current = null
+  }
+
+  // 팝업을 열 때의 선택 범위로 되돌린 뒤 명령 실행
+  const chainAtStudioSelection = () => {
+    const saved = studioSelectionRef.current
+    const chain = editor.chain().focus()
+    if (!saved) return chain
+    const max = editor.state.doc.content.size
+    return chain.setTextSelection({ from: Math.min(saved.from, max), to: Math.min(saved.to, max) })
+  }
+
+  const handleColorStudioApply = (value: { text?: TextStyleValue; highlight?: string }) => {
+    if (!colorStudio) return
+    const saved = studioSelectionRef.current
+    const wasEmpty = !saved || saved.from === saved.to
+
+    if (colorStudio.mode === 'text' && value.text) {
+      const style = value.text
+      if (!style.color && !style.stroke && !style.glow) {
+        chainAtStudioSelection().unsetMark('customColor').run()
+      } else if (wasEmpty) {
+        // 선택 없이 적용: 기존처럼 '색상' 글자를 넣어 바로 이어서 쓸 수 있게
+        chainAtStudioSelection().insertContent(`<span style="${textStyleToCss(style)}">색상</span> `).run()
+      } else {
+        // 예전 테두리/글로우가 섞여 남지 않도록 지우고 새로 적용
+        chainAtStudioSelection().unsetMark('customColor').setMark('customColor', textStyleToMarkAttrs(style)).run()
+      }
+    } else if (colorStudio.mode === 'highlight' && value.highlight) {
+      chainAtStudioSelection().run()
+      handleSetHighlight(value.highlight)
+    }
+
+    closeColorStudio()
+  }
+
+  const handleColorStudioClear = () => {
+    if (!colorStudio) return
+    chainAtStudioSelection().unsetMark(colorStudio.mode === 'text' ? 'customColor' : 'customHighlight').run()
+    closeColorStudio()
   }
 
   const handleSetHighlight = (color: string) => {
@@ -699,8 +836,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           </button>
         </div>
 
-        {/* 미디어 첨부 버튼 (이미지 / 동영상) */}
-        <div className="ml-auto flex items-center gap-1.5">
+        {/* 미디어 첨부 버튼 (이미지 / 동영상) + 도구 설명 */}
+        {/* 좁은 화면에서 업로드 진행 문구가 길어져도 가로로 넘치지 않도록 줄바꿈 허용 */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -737,6 +875,17 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             className="hidden"
             onChange={handleVideoUpload}
           />
+
+          {/* 도구 설명 (모든 툴바 버튼 안내) */}
+          <button
+            type="button"
+            onClick={() => setShowHelpPopup(true)}
+            className="inline-flex items-center justify-center p-1.5 rounded-none border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+            title="도구 설명"
+            aria-label="도구 설명"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -925,39 +1074,55 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 글자 색상 팔레트 */}
-          <div className="flex items-center gap-1">
+          {/* 글자 색상: 상세 편집(글씨 색/테두리/글로우) + 즐겨찾기 색 */}
+          {/* 즐겨찾기가 많아도 좁은 화면에서 넘치지 않도록 줄바꿈 허용 */}
+          <div className="flex flex-wrap items-center gap-1">
             <Palette className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
-            <button type="button" onClick={() => handleSetColor('#ffffff')} className="w-4 h-4 bg-white border border-zinc-400" title="흰색" />
-            <button type="button" onClick={() => handleSetColor('#ef4444')} className="w-4 h-4 bg-red-500" title="빨간색" />
-            <button type="button" onClick={() => handleSetColor('#f97316')} className="w-4 h-4 bg-orange-500" title="주황색" />
-            <button type="button" onClick={() => handleSetColor('#eab308')} className="w-4 h-4 bg-yellow-500" title="노란색" />
-            <button type="button" onClick={() => handleSetColor('#10b981')} className="w-4 h-4 bg-emerald-500" title="초록색" />
-            <button type="button" onClick={() => handleSetColor('#3b82f6')} className="w-4 h-4 bg-blue-500" title="파란색" />
-            <button type="button" onClick={() => handleSetColor('#a855f7')} className="w-4 h-4 bg-purple-500" title="보라색" />
-            <button type="button" onClick={() => handleSetColor('#71717a')} className="w-4 h-4 bg-zinc-500" title="회색" />
-            <input
-              type="color"
-              value={customColorInput}
-              onChange={(e) => {
-                setCustomColorInput(e.target.value)
-                handleSetColor(e.target.value)
-              }}
-              className="w-5 h-5 p-0 border-0 cursor-pointer bg-transparent"
-              title="커스텀 색상 선택"
-            />
+            <button
+              type="button"
+              onClick={() => openColorStudio('text')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium text-zinc-900 dark:text-zinc-100"
+              title="글씨 색·테두리·글로우 상세 편집"
+            >
+              <span>색 상세 편집</span>
+            </button>
+            {favoriteTextColors.map((color, i) => (
+              <button
+                key={`${i}-${color}`}
+                type="button"
+                onClick={() => handleSetColor(color)}
+                className="w-4 h-4 border border-zinc-400 dark:border-zinc-500"
+                style={{ backgroundColor: color }}
+                title={`즐겨찾기 색 ${color}`}
+                aria-label={`즐겨찾기 글씨 색 ${color}`}
+              />
+            ))}
           </div>
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />
 
-          {/* 배경색상 / 하이라이트 */}
-          <div className="flex items-center gap-1">
+          {/* 배경색상 / 하이라이트: 상세 편집 + 즐겨찾기 색 + 지움 */}
+          <div className="flex flex-wrap items-center gap-1">
             <Highlighter className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
-            <button type="button" onClick={() => handleSetHighlight('#fef08a')} className="w-4 h-4 bg-yellow-200 border border-yellow-400" title="노랑 형광펜" />
-            <button type="button" onClick={() => handleSetHighlight('#bbf7d0')} className="w-4 h-4 bg-green-200 border border-green-400" title="연두 형광펜" />
-            <button type="button" onClick={() => handleSetHighlight('#fed7aa')} className="w-4 h-4 bg-orange-200 border border-orange-400" title="주황 형광펜" />
-            <button type="button" onClick={() => handleSetHighlight('#bae6fd')} className="w-4 h-4 bg-sky-200 border border-sky-400" title="하늘 형광펜" />
-            <button type="button" onClick={() => handleSetHighlight('#fbcfe8')} className="w-4 h-4 bg-pink-200 border border-pink-400" title="분홍 형광펜" />
+            <button
+              type="button"
+              onClick={() => openColorStudio('highlight')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium text-zinc-900 dark:text-zinc-100"
+              title="형광펜 색 상세 편집"
+            >
+              <span>형광펜 상세 편집</span>
+            </button>
+            {favoriteHighlightColors.map((color, i) => (
+              <button
+                key={`${i}-${color}`}
+                type="button"
+                onClick={() => handleSetHighlight(color)}
+                className="w-4 h-4 border border-zinc-400 dark:border-zinc-500"
+                style={{ backgroundColor: color }}
+                title={`즐겨찾기 형광펜 ${color}`}
+                aria-label={`즐겨찾기 형광펜 ${color}`}
+              />
+            ))}
             <button type="button" onClick={() => handleSetHighlight('clear')} className="px-1 text-[10px] border border-zinc-400" title="형광펜 지우기">지움</button>
           </div>
 
@@ -1091,6 +1256,21 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           </div>
         </div>
       )}
+
+      {/* 글자 색 / 형광펜 상세 편집 */}
+      <ColorStudio
+        isOpen={colorStudio !== null}
+        mode={colorStudio?.mode ?? 'text'}
+        initialText={colorStudio?.initialText}
+        initialHighlight={colorStudio?.initialHighlight ?? null}
+        preview={colorStudio?.preview ?? EMPTY_STUDIO_PREVIEW}
+        onApply={handleColorStudioApply}
+        onClear={handleColorStudioClear}
+        onClose={closeColorStudio}
+      />
+
+      {/* 툴바 도구 설명 */}
+      <EditorHelpPopup isOpen={showHelpPopup} onClose={() => setShowHelpPopup(false)} />
 
       {/* 동영상 업로드 사전 안내 팝업 (50MB 제한) */}
       <CustomPopup

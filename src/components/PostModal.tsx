@@ -9,10 +9,24 @@ import ReportModal from './ReportModal';
 import FreezeModal from './FreezeModal';
 import CommentsSection from './CommentsSection';
 import CustomPopup from './CustomPopup';
+import LinkConfirmPopup from './LinkConfirmPopup';
+import Avatar from './Avatar';
 import { fetchMyRole, fetchRoleMap, isCreatorEmail } from '@/lib/roles';
 import { fetchPostByRouteNo, type FeedType } from '@/lib/postRoute';
 import { emitPostsChanged } from '@/lib/feedStore';
-import { sanitizeDocument, escapeHtml } from '@/lib/sanitizeHtml';
+import { sanitizeDocument } from '@/lib/sanitizeHtml';
+import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile';
+import {
+  URL_REGEX,
+  KAKAO_REGEX,
+  DISCORD_REGEX,
+  YOUTUBE_REGEX,
+  readEmbedTitleCache,
+  fetchEmbedTitle,
+  resolveEmbedDisplayTitle,
+  buildEmbedBarHtml,
+  buildYoutubeEmbedHtml,
+} from '@/lib/embeds';
 import { getShareableUrl } from '@/lib/authUrl';
 import { copyText } from '@/lib/clipboard';
 import {
@@ -57,6 +71,8 @@ interface Post {
   is_preview_hidden?: boolean;
   feed_type?: string;
   board_category?: string;
+  /** 신고 누적 심사 상태 (null | pending | deleted | dismissed) – SQL 미적용 시 없음 */
+  report_review_status?: string | null;
 }
 
 interface PostModalProps {
@@ -66,30 +82,6 @@ interface PostModalProps {
   onClose: () => void;
   onDeleted?: () => void;
 }
-
-const URL_REGEX = /(https?:\/\/[^\s<>"']+)/gi;
-const KAKAO_REGEX = /open\.kakao\.com\/[a-zA-Z0-9_\/]+/i;
-const DISCORD_REGEX = /(?:discord\.gg|discord\.com\/invite)\/[a-zA-Z0-9-]+/i;
-const YOUTUBE_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
-
-const readEmbedTitleCache = (url: string): string | null => {
-  try {
-    const key = `embed_title_${url}`;
-    return sessionStorage.getItem(key) || localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-
-const writeEmbedTitleCache = (url: string, title: string) => {
-  try {
-    const key = `embed_title_${url}`;
-    sessionStorage.setItem(key, title);
-    localStorage.setItem(key, title);
-  } catch {
-    // 저장소 사용 불가(시크릿 모드 등) 시 무시
-  }
-};
 
 // 본문 렌더링: 보안 정화 후 카톡/디코/유튜브 임베드 변환 (캐시된 이름을 0초 시점에 즉시 주입)
 const renderRichContent = (rawHtml: string): string => {
@@ -134,6 +126,14 @@ const renderRichContent = (rawHtml: string): string => {
   };
   walkTextNodes(doc.body);
 
+  // 공용 임베드 HTML 조각(이미 이스케이프된 템플릿)을 링크 자리에 끼워 넣기
+  const replaceWithHtml = (target: Element, html: string) => {
+    const holder = doc.createElement('div');
+    holder.innerHTML = html;
+    const node = holder.firstElementChild;
+    if (node) target.replaceWith(node);
+  };
+
   const anchors = Array.from(doc.querySelectorAll('a'));
   anchors.forEach((a) => {
     const href = a.getAttribute('href') || '';
@@ -141,73 +141,15 @@ const renderRichContent = (rawHtml: string): string => {
     // 1. 유튜브
     const ytMatch = href.match(YOUTUBE_REGEX);
     if (ytMatch) {
-      const videoId = ytMatch[1];
-      const wrapper = doc.createElement('div');
-      wrapper.className = 'my-3 w-full max-w-2xl mx-auto not-prose';
-      wrapper.innerHTML = `
-        <div style="position: relative; width: 100%; height: 0; padding-bottom: 56.25%;">
-          <iframe
-            src="https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1"
-            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            loading="lazy"
-            allowfullscreen>
-          </iframe>
-        </div>
-      `;
-      a.replaceWith(wrapper);
+      replaceWithHtml(a, buildYoutubeEmbedHtml(ytMatch[1]));
       return;
     }
 
-    // 2. 카카오톡 (0초 시점에 캐시 즉시 참조)
-    const kakaoMatch = href.match(KAKAO_REGEX);
-    if (kakaoMatch) {
-      const cached = readEmbedTitleCache(href);
-      const rawTitle = (a.getAttribute('data-embed-title') || cached || a.textContent || '').trim();
-      const displayTitle = (!rawTitle || /^https?:\/\//i.test(rawTitle)) ? '카카오톡 오픈채팅방' : rawTitle;
-
-      const bar = doc.createElement('div');
-      bar.className = 'my-3 px-4 py-3 sm:py-3.5 bg-[#242111] dark:bg-[#1c190d] border border-[#FEE500]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
-      bar.setAttribute('data-embed-url', href);
-      bar.setAttribute('data-embed-type', 'kakaotalk');
-      bar.innerHTML = `
-        <div class="flex items-center gap-3 min-w-0">
-          <div class="w-8 h-8 rounded-none bg-[#FEE500] flex items-center justify-center text-[#191919] shrink-0">
-            <svg class="w-4.5 h-4.5 fill-current" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 3.185-9 7.115 0 2.557 1.707 4.8 4.27 6.054-.188.702-.682 2.545-.78 2.94-.124.498.182.492.383.359.158-.105 2.518-1.71 3.524-2.395.52.077 1.055.117 1.603.117 4.97 0 9-3.185 9-7.115S16.97 3 12 3z"/></svg>
-          </div>
-          <span class="text-sm sm:text-base font-extrabold text-white truncate embed-title-text group-hover:underline">
-            ${escapeHtml(displayTitle)}
-          </span>
-        </div>
-        <button type="button" class="px-4 py-1.5 sm:py-2 bg-[#FEE500] text-[#191919] text-xs sm:text-sm font-black rounded-none shrink-0">입장</button>
-      `;
-      a.replaceWith(bar);
-      return;
-    }
-
-    // 3. 디스코드 (0초 시점에 캐시 즉시 참조)
-    const discordMatch = href.match(DISCORD_REGEX);
-    if (discordMatch) {
-      const cached = readEmbedTitleCache(href);
-      const rawTitle = (a.getAttribute('data-embed-title') || cached || a.textContent || '').trim();
-      const displayTitle = (!rawTitle || /^https?:\/\//i.test(rawTitle)) ? '디스코드 서버' : rawTitle;
-
-      const bar = doc.createElement('div');
-      bar.className = 'my-3 px-4 py-3 sm:py-3.5 bg-[#111322] dark:bg-[#0c0d18] border border-[#5865F2]/50 rounded-none flex items-center justify-between gap-3 max-w-xl not-prose cursor-pointer select-none group';
-      bar.setAttribute('data-embed-url', href);
-      bar.setAttribute('data-embed-type', 'discord');
-      bar.innerHTML = `
-        <div class="flex items-center gap-3 min-w-0">
-          <div class="w-8 h-8 rounded-none bg-[#5865F2] flex items-center justify-center text-white shrink-0">
-            <svg class="w-4.5 h-4.5 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,45.91,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,45.91,96.12,53,91.08,65.69,84.69,65.69Z"/></svg>
-          </div>
-          <span class="text-sm sm:text-base font-extrabold text-white truncate embed-title-text group-hover:underline">
-            ${escapeHtml(displayTitle)}
-          </span>
-        </div>
-        <button type="button" class="px-4 py-1.5 sm:py-2 bg-[#5865F2] text-white text-xs sm:text-sm font-black rounded-none shrink-0">참가</button>
-      `;
-      a.replaceWith(bar);
+    // 2. 카카오톡 / 3. 디스코드 (0초 시점에 캐시 즉시 참조, 테두리 없는 브랜드 색 바)
+    const embedType = KAKAO_REGEX.test(href) ? 'kakaotalk' : DISCORD_REGEX.test(href) ? 'discord' : null;
+    if (embedType) {
+      const displayTitle = resolveEmbedDisplayTitle(embedType, href, a.getAttribute('data-embed-title'), a.textContent);
+      replaceWithHtml(a, buildEmbedBarHtml(embedType, href, displayTitle));
       return;
     }
 
@@ -268,6 +210,8 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
   const [isEditing, setIsEditing] = useState(false);
   const [authorRole, setAuthorRole] = useState<RoleType>(null);
   const [authorNickname, setAuthorNickname] = useState<string>("");
+  // 작성자 프로필 사진 (없으면 기존처럼 왕관+닉네임만 표시)
+  const [authorAvatarUrl, setAuthorAvatarUrl] = useState<string | null>(null);
 
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
@@ -367,39 +311,30 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
     fetchRoleMap().then((map) => {
       if (!cancelled) setAuthorRole(map[post.author_id] ?? null);
     });
+
+    // 사진 컬럼이 없거나 조회 실패 시 빈 결과 → 사진 없이 표시
+    const authorId = post.author_id;
+    fetchAvatarMap([authorId]).then((map) => {
+      if (!cancelled) setAuthorAvatarUrl(map[authorId] ?? null);
+    });
     return () => {
       cancelled = true;
     };
   }, [post?.author_id]);
 
-  // 카카오톡 및 디스코드 실제 이름 비동기 탐색 및 실시간 치환 헬퍼
+  // 카카오톡 및 디스코드 실제 이름 비동기 탐색 및 실시간 치환 헬퍼 (캐시 → 미리보기 API, 같은 링크는 1번만 요청)
   const refreshEmbedTitles = useCallback(() => {
     if (!contentContainerRef.current) return;
     const cards = contentContainerRef.current.querySelectorAll<HTMLElement>('[data-embed-url]');
-    cards.forEach(async (card) => {
+    cards.forEach((card) => {
       const url = card.getAttribute('data-embed-url');
       if (!url) return;
       const titleEl = card.querySelector<HTMLElement>('.embed-title-text');
       if (!titleEl) return;
 
-      const cached = readEmbedTitleCache(url);
-      if (cached && !/^https?:\/\//i.test(cached)) {
-        titleEl.textContent = cached;
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.title && !/^https?:\/\//i.test(data.title)) {
-            titleEl.textContent = data.title;
-            writeEmbedTitleCache(url, data.title);
-          }
-        }
-      } catch (e) {
-        console.warn('Embed preview fetch error:', e);
-      }
+      fetchEmbedTitle(url).then((title) => {
+        if (title && titleEl.isConnected) titleEl.textContent = title;
+      });
     });
   }, []);
 
@@ -772,7 +707,11 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
           {loading ? (
             <div className="py-20 text-center text-zinc-400 font-medium text-sm">게시글 데이터를 불러오는 중...</div>
           ) : !visiblePost ? (
-            <div className="py-20 text-center text-zinc-400 font-medium text-sm">삭제되었거나 존재하지 않는 게시글입니다.</div>
+            <div className="py-20 text-center text-zinc-400 font-medium text-sm">
+              {post?.report_review_status === 'pending' && !isAdmin
+                ? '신고가 누적되어 관리자가 검토 중인 게시글입니다.'
+                : '삭제되었거나 존재하지 않는 게시글입니다.'}
+            </div>
           ) : isEditing ? (
             <div className="space-y-4">
               <input
@@ -786,6 +725,19 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
           ) : (
             <div className="space-y-5">
               <header className="space-y-2 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                {/* 관리자 전용: 신고 누적 심사 상태 안내 */}
+                {isAdmin && visiblePost.report_review_status === 'pending' && (
+                  <div className="flex items-start gap-1.5 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[11px] sm:text-xs font-bold leading-snug break-keep">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    <span>신고 누적으로 임시 숨김 상태입니다. (관리자 심사 대기 — 신고 기록에서 처리)</span>
+                  </div>
+                )}
+                {isAdmin && visiblePost.report_review_status === 'deleted' && (
+                  <div className="flex items-start gap-1.5 px-3 py-2 rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-[11px] sm:text-xs font-bold leading-snug break-keep">
+                    <Trash2 className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    <span>신고 심사 결과 삭제된 게시글입니다.</span>
+                  </div>
+                )}
                 <h2 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white leading-tight break-words">
                   {visiblePost.feed_type === 'clan' && visiblePost.is_official && (
                     <span className="text-emerald-500 mr-2">[공식]</span>
@@ -793,10 +745,16 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
                   {visiblePost.title}
                 </h2>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-zinc-400">
-                  <span className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-zinc-200 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => openUserProfile(visiblePost.author_id)}
+                    title="프로필 보기"
+                    className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-zinc-200 min-w-0 text-left hover:underline"
+                  >
+                    {authorAvatarUrl && <Avatar src={authorAvatarUrl} size={22} alt={`${authorNickname || '작성자'} 프로필 사진`} fallback={null} />}
                     <CrownIcon role={authorRole} className="w-4 h-4 shrink-0" />
                     <span>{authorNickname || '작성자'}</span>
-                  </span>
+                  </button>
                   <span>{new Date(visiblePost.created_at).toLocaleDateString()}</span>
                 </div>
               </header>
@@ -830,6 +788,7 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
                   currentUserId={currentUserId}
                   currentUserRole={currentUserRole}
                   onCountChange={(count) => emitPostsChanged({ kind: 'patch', id: visiblePost.id, patch: { comments_count: count } })}
+                  onLinkClick={(url) => setLinkConfirmUrl(url)}
                 />
               )}
             </div>
@@ -924,36 +883,7 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
         document.body
       )}
 
-      {mounted && linkConfirmUrl && createPortal(
-        <div
-          className="fixed inset-0 z-[11000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setLinkConfirmUrl(null);
-          }}
-        >
-          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-none p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-bold">외부 링크 접속 확인</h3>
-            <p className="text-xs text-zinc-400">이 링크로 이동하시겠습니까?</p>
-            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-none text-xs font-mono break-all text-left max-h-24 overflow-y-auto">
-              {linkConfirmUrl}
-            </div>
-            <div className="flex justify-center gap-2 pt-2">
-              <button onClick={() => setLinkConfirmUrl(null)} className="px-4 py-2 text-xs border rounded-none">취소</button>
-              <button
-                onClick={() => {
-                  const url = linkConfirmUrl;
-                  setLinkConfirmUrl(null);
-                  window.open(url, '_blank', 'noopener,noreferrer');
-                }}
-                className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-none"
-              >
-                접속
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <LinkConfirmPopup url={mounted ? linkConfirmUrl : null} onClose={() => setLinkConfirmUrl(null)} />
 
       {mounted && previewImageUrl && createPortal(
         <div

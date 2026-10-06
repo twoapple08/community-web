@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { CrownIcon, RoleType } from './CrownIcon'
-import { ThumbsUp, ImageIcon, Trash2, Send, Loader2, X, Siren, CornerDownRight, ChevronDown, ChevronUp, MessageSquareQuote } from 'lucide-react'
+import { ThumbsUp, ImageIcon, Trash2, Send, Loader2, X, Siren, CornerDownRight, ChevronDown, ChevronUp, MessageSquareQuote, Pencil } from 'lucide-react'
 import CustomPopup from './CustomPopup'
+import LinkConfirmPopup from './LinkConfirmPopup'
+import CommentText from './CommentText'
+import Avatar from './Avatar'
 import { fetchRoleMap } from '@/lib/roles'
 import { compressCommentImage } from '@/lib/imageCompress'
+import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile'
 
 interface CommentItem {
   id: number
@@ -21,6 +25,10 @@ interface CommentItem {
   author_nickname?: string
   author_role?: RoleType
   user_liked?: boolean
+  /** 신고 누적 심사 상태 (null | pending | deleted | dismissed) – SQL 미적용 시 없음 */
+  report_review_status?: string | null
+  /** 마지막 수정 시각 (내용/사진이 바뀌면 DB 가 자동 기록) */
+  edited_at?: string | null
 }
 
 interface CommentsSectionProps {
@@ -29,9 +37,40 @@ interface CommentsSectionProps {
   currentUserRole: RoleType
   /** 댓글+답글 총 개수가 바뀌면 호출 (목록 화면의 댓글 수 동기화용) */
   onCountChange?: (count: number) => void
+  /** 댓글 속 링크/카드를 눌렀을 때 호출 (없으면 자체 링크 확인 팝업 사용) */
+  onLinkClick?: (url: string) => void
 }
 
-export default function CommentsSection({ postId, currentUserId, currentUserRole, onCountChange }: CommentsSectionProps) {
+const COMMENT_HASH_REGEX = /^#comment-(\d+)$/
+
+const REVIEW_PLACEHOLDER: Record<string, string> = {
+  pending: '신고가 누적되어 관리자가 검토 중인 댓글입니다.',
+  deleted: '관리자에 의해 삭제된 댓글입니다.',
+}
+
+/** 글 길이에 맞춰 높이가 늘어나는 수정용 입력칸 (열리면 커서를 글 끝에 둠) */
+function AutoGrowTextarea({ value, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    // border-box 이므로 테두리 두께까지 더해야 스크롤바가 생기지 않음
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`
+  }, [value])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.focus({ preventScroll: true })
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [])
+
+  return <textarea ref={ref} rows={1} value={value} {...rest} />
+}
+
+export default function CommentsSection({ postId, currentUserId, currentUserRole, onCountChange, onLinkClick }: CommentsSectionProps) {
   const [mounted, setMounted] = useState(false)
   const [comments, setComments] = useState<CommentItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,6 +100,28 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   const [commentCustomReason, setCommentCustomReason] = useState<string>('')
   const [submittingCommentReport, setSubmittingCommentReport] = useState(false)
 
+  // 삭제 확인 팝업 대상
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; isReply: boolean } | null>(null)
+
+  // 인라인 수정 (한 번에 하나의 댓글만)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [editImage, setEditImage] = useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  // 작성자 프로필 사진 (있는 사람만 표시)
+  const [avatarMap, setAvatarMap] = useState<Record<string, string | null>>({})
+
+  // 상위에서 링크 확인 팝업을 주지 않았을 때 쓰는 자체 팝업
+  const [localLinkUrl, setLocalLinkUrl] = useState<string | null>(null)
+
+  // 주소의 #comment-번호 로 이동 후 잠깐 강조
+  const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const [hashVersion, setHashVersion] = useState(0)
+  const handledHashRef = useRef<string | null>(null)
+  const anchorTimerRef = useRef<number | null>(null)
+  const highlightTimerRef = useRef<number | null>(null)
+
   const [popup, setPopup] = useState<{
     show: boolean;
     title: string;
@@ -74,6 +135,52 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   useEffect(() => {
     fetchComments()
   }, [postId, sortType])
+
+  // 주소의 해시가 바뀌면(알림 클릭 등) 다시 해당 댓글로 이동
+  useEffect(() => {
+    const bump = () => setHashVersion((v) => v + 1)
+    window.addEventListener('hashchange', bump)
+    window.addEventListener('popstate', bump)
+    return () => {
+      window.removeEventListener('hashchange', bump)
+      window.removeEventListener('popstate', bump)
+      if (anchorTimerRef.current) window.clearTimeout(anchorTimerRef.current)
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+    }
+  }, [])
+
+  // 댓글을 다 불러온 뒤 #comment-번호 위치로 스크롤 + 2초간 강조 (같은 해시는 1번만)
+  useEffect(() => {
+    if (loading) return
+    const hash = window.location.hash
+    const m = COMMENT_HASH_REGEX.exec(hash)
+    if (!m || handledHashRef.current === hash) return
+    const targetId = Number(m[1])
+    const target = comments.find((c) => c.id === targetId)
+    if (!target) return
+    handledHashRef.current = hash
+    const parentId = target.parent_id ?? null
+
+    // 펼친 답글이 화면에 그려질 때까지 잠깐씩 기다리며 찾기
+    const tryScroll = (triesLeft: number) => {
+      const el = document.getElementById(`comment-${targetId}`)
+      if (!el) {
+        if (triesLeft > 0) anchorTimerRef.current = window.setTimeout(() => tryScroll(triesLeft - 1), 60)
+        return
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightedId(targetId)
+      if (highlightTimerRef.current) window.clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = window.setTimeout(() => setHighlightedId(null), 2000)
+    }
+
+    if (anchorTimerRef.current) window.clearTimeout(anchorTimerRef.current)
+    anchorTimerRef.current = window.setTimeout(() => {
+      // 답글이면 부모 댓글의 답글 목록부터 펼침
+      if (parentId) setExpandedReplies((prev) => (prev[parentId] ? prev : { ...prev, [parentId]: true }))
+      tryScroll(10)
+    }, 0)
+  }, [loading, comments, hashVersion])
 
   // 댓글 수가 바뀌면 상위(목록 화면)에 알림
   const onCountChangeRef = useRef(onCountChange)
@@ -126,7 +233,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
         profileMap[p.id] = p.nickname
       })
 
-      let userLikesSet = new Set<number>()
+      const userLikesSet = new Set<number>()
       if (currentUserId) {
         const commentIds = commentsData.map((c) => c.id)
         const { data: likes } = await supabase
@@ -146,6 +253,9 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
           user_liked: userLikesSet.has(c.id),
         }))
       )
+
+      // 프로필 사진은 목록 표시를 막지 않도록 따로 불러와 덧붙임 (컬럼이 없으면 빈 결과)
+      fetchAvatarMap(authorIds).then((map) => setAvatarMap((prev) => ({ ...prev, ...map })))
     } else {
       setComments([])
     }
@@ -296,8 +406,151 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     if (error) {
       setPopup({ show: true, title: '삭제 실패', message: error.message })
     } else {
+      if (editingId === commentId) cancelEdit()
       fetchComments()
     }
+  }
+
+  const startEdit = (item: CommentItem) => {
+    setEditingId(item.id)
+    setEditContent(item.content || '')
+    setEditImage(item.image_url || null)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditContent('')
+    setEditImage(null)
+  }
+
+  const handleSaveEdit = async (item: CommentItem) => {
+    if (!currentUserId || savingEdit) return
+    const content = editContent.trim()
+    if (!content && !editImage) {
+      setPopup({ show: true, title: '내용 입력', message: '댓글 내용 또는 이미지를 첨부해 주십시오.' })
+      return
+    }
+    // 바뀐 것이 없으면 저장 요청 없이 닫기 ('(수정됨)' 표시가 괜히 붙지 않도록)
+    if (content === (item.content || '') && editImage === (item.image_url || null)) {
+      cancelEdit()
+      return
+    }
+
+    setSavingEdit(true)
+    const { data, error } = await supabase
+      .from('post_comments')
+      .update({ content, image_url: editImage })
+      .eq('id', item.id)
+      .eq('author_id', currentUserId)
+      .select()
+    setSavingEdit(false)
+
+    if (error) {
+      setPopup({ show: true, title: '수정 실패', message: error.message })
+      return
+    }
+    const row = (Array.isArray(data) ? data[0] : null) as Partial<CommentItem> | null
+    if (!row) {
+      // 권한 정책에 막히면 오류 없이 빈 결과가 옴
+      setPopup({ show: true, title: '수정 실패', message: '댓글을 수정할 수 없습니다. 이미 삭제되었거나 수정 권한이 없습니다.' })
+      return
+    }
+
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === item.id
+          ? {
+              ...c,
+              content: typeof row.content === 'string' ? row.content : content,
+              image_url: row.image_url !== undefined ? row.image_url : editImage,
+              edited_at: row.edited_at !== undefined ? row.edited_at : c.edited_at,
+            }
+          : c
+      )
+    )
+    cancelEdit()
+  }
+
+  const handleLinkClick = (url: string) => {
+    if (onLinkClick) onLinkClick(url)
+    else setLocalLinkUrl(url)
+  }
+
+  // 수정 모드: 댓글 글자 자리가 그대로 입력칸으로 바뀜
+  const renderEditForm = (item: CommentItem, isReply: boolean) => (
+    <div className={`space-y-1 ${isReply ? 'pl-3' : ''}`}>
+      <AutoGrowTextarea
+        value={editContent}
+        onChange={(e) => setEditContent(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault()
+            handleSaveEdit(item)
+          } else if (e.key === 'Escape') {
+            // 바깥 창(프로필 등)의 Esc 닫기가 같이 실행되지 않도록 전파 차단
+            e.preventDefault()
+            e.stopPropagation()
+            cancelEdit()
+          }
+        }}
+        placeholder={isReply ? '답글 내용을 입력하세요' : '댓글 내용을 입력하세요'}
+        aria-label={isReply ? '답글 수정' : '댓글 수정'}
+        className={`block w-full px-1.5 py-1 leading-snug bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-none text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 resize-none overflow-hidden focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+          isReply ? 'text-[11px]' : 'text-[11px] sm:text-xs'
+        }`}
+      />
+
+      {editImage && (
+        <div className="relative inline-block border border-zinc-300 dark:border-zinc-700">
+          <img src={editImage} alt="첨부 이미지" className="w-12 h-12 object-cover" />
+          <button
+            type="button"
+            onClick={() => setEditImage(null)}
+            className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5"
+            title="이미지 빼기"
+          >
+            <X className="w-2.5 h-2.5" />
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-1">
+        <button
+          type="button"
+          onClick={cancelEdit}
+          disabled={savingEdit}
+          className="px-2 py-0.5 text-[10px] border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-800 transition disabled:opacity-50"
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSaveEdit(item)}
+          disabled={savingEdit}
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-none transition disabled:opacity-50"
+        >
+          {savingEdit && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+          <span>{savingEdit ? '저장 중...' : '저장'}</span>
+        </button>
+      </div>
+    </div>
+  )
+
+  // 관리자에게만 보이는 심사 상태 배지
+  const renderReviewBadge = (status: string | null | undefined) => {
+    if (status !== 'pending' && status !== 'deleted') return null
+    return (
+      <span
+        className={`px-1 py-px text-[9px] font-black leading-none rounded-none border ${
+          status === 'pending'
+            ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800'
+            : 'bg-red-50 text-red-700 border-red-300 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800'
+        }`}
+      >
+        {status === 'pending' ? '검토 중' : '삭제됨'}
+      </span>
+    )
   }
 
   const handleCommentReportSubmit = async (e: React.FormEvent) => {
@@ -333,6 +586,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
   }
 
   const rootComments = comments.filter((c) => !c.parent_id)
+  const isAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin'
 
   return (
     <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-3">
@@ -436,21 +690,46 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
 
             const isRepliesOpen = Boolean(expandedReplies[comment.id])
 
+            // 신고 누적 심사 상태: 일반 유저는 안내 문구, 관리자는 흐리게 + 배지
+            const reviewStatus = comment.report_review_status
+            const isUnderReview = reviewStatus === 'pending' || reviewStatus === 'deleted'
+            const showPlaceholder = isUnderReview && !isAdmin
+            const canEdit = Boolean(isCommentAuthor) && !isUnderReview
+            const isEditingThis = editingId === comment.id
+            const avatarUrl = avatarMap[comment.author_id]
+
             return (
               <div key={comment.id} className="space-y-1.5">
                 {/* 1. 최상위 댓글 카드 (세로폭 대폭 축소) */}
-                <div className="p-2 sm:p-2.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold text-zinc-800 dark:text-zinc-200">
-                      <CrownIcon role={comment.author_role} className="w-3 h-3 shrink-0" />
-                      <span className="text-[11px] sm:text-xs">{comment.author_nickname}</span>
+                <div
+                  id={`comment-${comment.id}`}
+                  className={`p-2 sm:p-2.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-1.5 text-xs transition-shadow duration-500 ${
+                    highlightedId === comment.id ? 'ring-2 ring-amber-400' : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0 font-bold text-zinc-800 dark:text-zinc-200">
+                      <button
+                        type="button"
+                        onClick={() => openUserProfile(comment.author_id)}
+                        title="프로필 보기"
+                        className="flex items-center gap-1.5 min-w-0 text-left hover:underline"
+                      >
+                        {avatarUrl && <Avatar src={avatarUrl} size={16} alt={`${comment.author_nickname} 프로필 사진`} fallback={null} />}
+                        <CrownIcon role={comment.author_role} className="w-3 h-3 shrink-0" />
+                        <span className="text-[11px] sm:text-xs">{comment.author_nickname}</span>
+                      </button>
                       <span className="text-[10px] text-zinc-400 font-normal">
                         {new Date(comment.created_at).toLocaleDateString()}
                       </span>
+                      {comment.edited_at && !showPlaceholder && (
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-400 font-normal">(수정됨)</span>
+                      )}
+                      {isAdmin && renderReviewBadge(reviewStatus)}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      {!isCommentAuthor && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!isCommentAuthor && !showPlaceholder && (
                         <button
                           type="button"
                           onClick={() => {
@@ -466,10 +745,20 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                           <Siren className="w-3 h-3" />
                         </button>
                       )}
-                      {canDelete && (
+                      {canEdit && (
                         <button
                           type="button"
-                          onClick={() => handleDeleteComment(comment.id)}
+                          onClick={() => (isEditingThis ? cancelEdit() : startEdit(comment))}
+                          className={`transition p-0.5 ${isEditingThis ? 'text-blue-500' : 'text-zinc-400 hover:text-blue-500'}`}
+                          title="댓글 수정"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                      {canDelete && !showPlaceholder && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget({ id: comment.id, isReply: false })}
                           className="text-zinc-400 hover:text-red-500 transition p-0.5"
                           title="댓글 삭제"
                         >
@@ -479,67 +768,87 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                     </div>
                   </div>
 
-                  {comment.content && (
-                    <p className="text-zinc-700 dark:text-zinc-300 leading-snug whitespace-pre-wrap break-words text-[11px] sm:text-xs">
-                      {comment.content}
+                  {showPlaceholder ? (
+                    <p className="italic text-zinc-400 dark:text-zinc-400 leading-snug text-[11px] sm:text-xs">
+                      {REVIEW_PLACEHOLDER[reviewStatus as string]}
                     </p>
+                  ) : isEditingThis ? (
+                    renderEditForm(comment, false)
+                  ) : (
+                    <>
+                      {comment.content && (
+                        <CommentText
+                          text={comment.content}
+                          onLinkClick={handleLinkClick}
+                          className={`text-zinc-700 dark:text-zinc-300 leading-snug whitespace-pre-wrap break-words text-[11px] sm:text-xs ${
+                            isUnderReview ? 'opacity-60' : ''
+                          }`}
+                        />
+                      )}
+
+                      {comment.image_url && (
+                        <div className={`pt-0.5 ${isUnderReview ? 'opacity-60' : ''}`}>
+                          <img
+                            src={comment.image_url}
+                            alt="댓글 이미지"
+                            loading="lazy"
+                            className="w-1/4 max-w-[120px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
+                            onClick={() => window.open(comment.image_url || '', '_blank')}
+                            title="클릭하여 원본 보기"
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {comment.image_url && (
-                    <div className="pt-0.5">
-                      <img
-                        src={comment.image_url}
-                        alt="댓글 이미지"
-                        loading="lazy"
-                        className="w-1/4 max-w-[120px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
-                        onClick={() => window.open(comment.image_url || '', '_blank')}
-                        title="클릭하여 원본 보기"
-                      />
-                    </div>
-                  )}
+                  {/* 하단 액션 바: 답글 접기/펼치기 토글 + 좋아요 (심사 중 안내 댓글은 답글 토글만) */}
+                  {(!showPlaceholder || replies.length > 0) && (
+                    <div className="flex items-center justify-between pt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
+                      <div className="flex items-center gap-2">
+                        {!showPlaceholder && (
+                          <button
+                            type="button"
+                            onClick={() => setReplyingToId(replyingToId === comment.id ? null : comment.id)}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-bold text-zinc-500 hover:text-blue-500 transition"
+                          >
+                            <CornerDownRight className="w-2.5 h-2.5" />
+                            <span>{replyingToId === comment.id ? '취소' : '답글 달기'}</span>
+                          </button>
+                        )}
 
-                  {/* 하단 액션 바: 답글 접기/펼치기 토글 + 좋아요 */}
-                  <div className="flex items-center justify-between pt-1 border-t border-zinc-200/50 dark:border-zinc-800/50">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setReplyingToId(replyingToId === comment.id ? null : comment.id)}
-                        className="inline-flex items-center gap-0.5 text-[10px] font-bold text-zinc-500 hover:text-blue-500 transition"
-                      >
-                        <CornerDownRight className="w-2.5 h-2.5" />
-                        <span>{replyingToId === comment.id ? '취소' : '답글 달기'}</span>
-                      </button>
+                        {/* 답글 접었다 피는 토글 버튼 (기본적으로 접힌 상태) */}
+                        {replies.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleRepliesExpand(comment.id)}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400 hover:underline transition"
+                          >
+                            <span>{isRepliesOpen ? '답글 접기' : `답글 ${replies.length}개 보기`}</span>
+                            {isRepliesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        )}
+                      </div>
 
-                      {/* 답글 접었다 피는 토글 버튼 (기본적으로 접힌 상태) */}
-                      {replies.length > 0 && (
+                      {!showPlaceholder && (
                         <button
                           type="button"
-                          onClick={() => toggleRepliesExpand(comment.id)}
-                          className="inline-flex items-center gap-0.5 text-[10px] font-extrabold text-blue-600 dark:text-blue-400 hover:underline transition"
+                          onClick={() => handleToggleCommentLike(comment)}
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[10px] font-bold border transition ${
+                            comment.user_liked
+                              ? 'bg-blue-50 text-blue-600 border-blue-300 dark:bg-blue-950/60 dark:text-blue-400 dark:border-blue-800'
+                              : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          }`}
                         >
-                          <span>{isRepliesOpen ? '답글 접기' : `답글 ${replies.length}개 보기`}</span>
-                          {isRepliesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          <ThumbsUp className={`w-2.5 h-2.5 ${comment.user_liked ? 'fill-current' : ''}`} />
+                          <span>{comment.likes_count}</span>
                         </button>
                       )}
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggleCommentLike(comment)}
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[10px] font-bold border transition ${
-                        comment.user_liked
-                          ? 'bg-blue-50 text-blue-600 border-blue-300 dark:bg-blue-950/60 dark:text-blue-400 dark:border-blue-800'
-                          : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                      }`}
-                    >
-                      <ThumbsUp className={`w-2.5 h-2.5 ${comment.user_liked ? 'fill-current' : ''}`} />
-                      <span>{comment.likes_count}</span>
-                    </button>
-                  </div>
+                  )}
                 </div>
 
                 {/* 2. 대댓글 작성 인라인 폼 (컴팩트) */}
-                {replyingToId === comment.id && (
+                {replyingToId === comment.id && !showPlaceholder && (
                   <div className="ml-3 sm:ml-5 pl-2.5 border-l-2 border-blue-500 space-y-1.5 py-0.5 animate-in fade-in duration-150">
                     <div className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-none space-y-1.5">
                       <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-400">
@@ -624,23 +933,45 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                         currentUserRole === 'super_admin' ||
                         currentUserRole === 'admin'
 
+                      const replyReviewStatus = reply.report_review_status
+                      const isReplyUnderReview = replyReviewStatus === 'pending' || replyReviewStatus === 'deleted'
+                      const showReplyPlaceholder = isReplyUnderReview && !isAdmin
+                      const canEditReply = Boolean(isReplyAuthor) && !isReplyUnderReview
+                      const isEditingReply = editingId === reply.id
+                      const replyAvatarUrl = avatarMap[reply.author_id]
+
                       return (
                         <div
                           key={reply.id}
-                          className="p-2 bg-zinc-100/70 dark:bg-zinc-950/70 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-1 text-xs"
+                          id={`comment-${reply.id}`}
+                          className={`p-2 bg-zinc-100/70 dark:bg-zinc-950/70 border border-zinc-200 dark:border-zinc-800 rounded-none space-y-1 text-xs transition-shadow duration-500 ${
+                            highlightedId === reply.id ? 'ring-2 ring-amber-400' : ''
+                          }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1 font-bold text-zinc-800 dark:text-zinc-200">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 min-w-0 font-bold text-zinc-800 dark:text-zinc-200">
                               <CornerDownRight className="w-2.5 h-2.5 text-blue-500 shrink-0" />
-                              <CrownIcon role={reply.author_role} className="w-2.5 h-2.5 shrink-0" />
-                              <span className="text-[11px]">{reply.author_nickname}</span>
+                              <button
+                                type="button"
+                                onClick={() => openUserProfile(reply.author_id)}
+                                title="프로필 보기"
+                                className="flex items-center gap-1 min-w-0 text-left hover:underline"
+                              >
+                                {replyAvatarUrl && <Avatar src={replyAvatarUrl} size={14} alt={`${reply.author_nickname} 프로필 사진`} fallback={null} />}
+                                <CrownIcon role={reply.author_role} className="w-2.5 h-2.5 shrink-0" />
+                                <span className="text-[11px]">{reply.author_nickname}</span>
+                              </button>
                               <span className="text-[9px] text-zinc-400 font-normal">
                                 {new Date(reply.created_at).toLocaleDateString()}
                               </span>
+                              {reply.edited_at && !showReplyPlaceholder && (
+                                <span className="text-[9px] text-zinc-400 dark:text-zinc-400 font-normal">(수정됨)</span>
+                              )}
+                              {isAdmin && renderReviewBadge(replyReviewStatus)}
                             </div>
 
-                            <div className="flex items-center gap-1">
-                              {!isReplyAuthor && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {!isReplyAuthor && !showReplyPlaceholder && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -656,10 +987,20 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                                   <Siren className="w-2.5 h-2.5" />
                                 </button>
                               )}
-                              {canDeleteReply && (
+                              {canEditReply && (
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteComment(reply.id)}
+                                  onClick={() => (isEditingReply ? cancelEdit() : startEdit(reply))}
+                                  className={`transition p-0.5 ${isEditingReply ? 'text-blue-500' : 'text-zinc-400 hover:text-blue-500'}`}
+                                  title="답글 수정"
+                                >
+                                  <Pencil className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+                              {canDeleteReply && !showReplyPlaceholder && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteTarget({ id: reply.id, isReply: true })}
                                   className="text-zinc-400 hover:text-red-500 transition p-0.5"
                                   title="답글 삭제"
                                 >
@@ -669,39 +1010,55 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                             </div>
                           </div>
 
-                          {reply.content && (
-                            <p className="text-zinc-700 dark:text-zinc-300 leading-snug whitespace-pre-wrap break-words pl-3 text-[11px]">
-                              {reply.content}
+                          {showReplyPlaceholder ? (
+                            <p className="italic text-zinc-400 dark:text-zinc-400 leading-snug pl-3 text-[11px]">
+                              {REVIEW_PLACEHOLDER[replyReviewStatus as string]}
                             </p>
+                          ) : isEditingReply ? (
+                            renderEditForm(reply, true)
+                          ) : (
+                            <>
+                              {reply.content && (
+                                <CommentText
+                                  text={reply.content}
+                                  onLinkClick={handleLinkClick}
+                                  className={`text-zinc-700 dark:text-zinc-300 leading-snug whitespace-pre-wrap break-words pl-3 text-[11px] ${
+                                    isReplyUnderReview ? 'opacity-60' : ''
+                                  }`}
+                                />
+                              )}
+
+                              {reply.image_url && (
+                                <div className={`pt-0.5 pl-3 ${isReplyUnderReview ? 'opacity-60' : ''}`}>
+                                  <img
+                                    src={reply.image_url}
+                                    alt="답글 이미지"
+                                    loading="lazy"
+                                    className="w-1/4 max-w-[100px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
+                                    onClick={() => window.open(reply.image_url || '', '_blank')}
+                                    title="클릭하여 원본 보기"
+                                  />
+                                </div>
+                              )}
+                            </>
                           )}
 
-                          {reply.image_url && (
-                            <div className="pt-0.5 pl-3">
-                              <img
-                                src={reply.image_url}
-                                alt="답글 이미지"
-                                loading="lazy"
-                                className="w-1/4 max-w-[100px] aspect-auto object-cover rounded-none border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:opacity-90 transition"
-                                onClick={() => window.open(reply.image_url || '', '_blank')}
-                                title="클릭하여 원본 보기"
-                              />
+                          {!showReplyPlaceholder && (
+                            <div className="flex justify-end pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCommentLike(reply)}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[9px] font-bold border transition ${
+                                  reply.user_liked
+                                    ? 'bg-blue-50 text-blue-600 border-blue-300 dark:bg-blue-950/60 dark:text-blue-400 dark:border-blue-800'
+                                    : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                                }`}
+                              >
+                                <ThumbsUp className={`w-2 h-2 ${reply.user_liked ? 'fill-current' : ''}`} />
+                                <span>{reply.likes_count}</span>
+                              </button>
                             </div>
                           )}
-
-                          <div className="flex justify-end pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleCommentLike(reply)}
-                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[9px] font-bold border transition ${
-                                reply.user_liked
-                                  ? 'bg-blue-50 text-blue-600 border-blue-300 dark:bg-blue-950/60 dark:text-blue-400 dark:border-blue-800'
-                                  : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                              }`}
-                            >
-                              <ThumbsUp className={`w-2 h-2 ${reply.user_liked ? 'fill-current' : ''}`} />
-                              <span>{reply.likes_count}</span>
-                            </button>
-                          </div>
                         </div>
                       )
                     })}
@@ -781,6 +1138,24 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
         </div>,
         document.body
       )}
+
+      {/* 댓글/답글 삭제 확인 (확인을 눌러야만 삭제) */}
+      <CustomPopup
+        isOpen={Boolean(deleteTarget)}
+        type="confirm"
+        isDanger
+        title={deleteTarget?.isReply ? '답글 삭제' : '댓글 삭제'}
+        message={'이 댓글을 삭제하시겠습니까?\n삭제한 댓글은 복구할 수 없습니다.'}
+        confirmText="삭제"
+        onConfirm={() => {
+          const target = deleteTarget
+          setDeleteTarget(null)
+          if (target) handleDeleteComment(target.id)
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {!onLinkClick && <LinkConfirmPopup url={localLinkUrl} onClose={() => setLocalLinkUrl(null)} />}
 
       <CustomPopup
         isOpen={popup.show}
