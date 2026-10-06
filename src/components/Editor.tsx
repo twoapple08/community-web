@@ -1,6 +1,6 @@
 'use client'
 
-import { useEditor, EditorContent, Mark, Node, mergeAttributes } from '@tiptap/react'
+import { useEditor, EditorContent, Extension, Mark, Node, mergeAttributes } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
@@ -25,7 +25,6 @@ import {
   Table as TableIcon,
   Code,
   Minus,
-  Sparkles,
   Palette,
   Highlighter,
   Type,
@@ -36,10 +35,6 @@ import {
   AlignJustify,
   Indent,
   Outdent,
-  Plus,
-  Trash2,
-  Split,
-  Maximize2,
   HelpCircle
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -47,20 +42,62 @@ import { useState, useRef, useMemo, useEffect, useSyncExternalStore } from 'reac
 import { captureVideoFirstFrame } from '@/lib/videoUtils'
 import { compressPostImage } from '@/lib/imageCompress'
 import {
+  applyTextStylePatch,
+  isEmptyTextStylePatch,
+  isSameColor,
   loadFavoriteColors,
   markAttrsToTextStyle,
   onFavoriteColorsChanged,
   textMarkAttrsToCss,
   textStyleToCss,
-  textStyleToMarkAttrs,
   type FavoriteKind,
+  type TextStylePatch,
   type TextStyleValue,
 } from '@/lib/colorUtils'
 import CustomPopup from './CustomPopup'
-import ColorStudio, { type ColorStudioMode, type ColorStudioPreview } from './editor/ColorStudio'
+import ColorStudio, {
+  type ColorStudioMixed,
+  type ColorStudioMode,
+  type ColorStudioPreview,
+  type ColorStudioPreviewSegment,
+} from './editor/ColorStudio'
 import EditorHelpPopup from './editor/EditorHelpPopup'
 import ResizableImage from './editor/ResizableImage'
 import './editor/editor.css'
+
+// 한 span 에 여러 스타일(글씨 색 + 크기 + 글꼴 + 배경색 등)이 함께 있어도 각 서식이 모두 읽히도록
+// - consuming: false → 이 규칙이 맞아도 다른 서식 규칙도 계속 검사 (예전에는 첫 서식 하나만 남고 나머지가 사라짐)
+// - 해당 스타일 값이 실제로 있을 때만 매치 (예: 'background-color' 가 'color' 로 잘못 읽혀 형광펜이 사라지던 문제)
+const styledSpanRule = (hasStyle: (el: HTMLElement) => boolean) => ({
+  tag: 'span[style]',
+  consuming: false,
+  getAttrs: (el: HTMLElement) => (hasStyle(el) ? {} : false),
+})
+
+// 문단 들여쓰기 (단계마다 24px, 최대 8단계)
+// 예전에는 문단에 style 속성이 없어 들여쓰기/내어쓰기 버튼을 눌러도 아무 변화가 없었음
+const INDENT_STEP_PX = 24
+const MAX_INDENT_LEVEL = 8
+const ParagraphIndent = Extension.create({
+  name: 'paragraphIndent',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph', 'heading'],
+        attributes: {
+          indent: {
+            default: 0,
+            parseHTML: (el) => {
+              const px = parseFloat(el.style.paddingLeft || '0')
+              return Number.isFinite(px) && px > 0 ? Math.min(MAX_INDENT_LEVEL, Math.round(px / INDENT_STEP_PX)) : 0
+            },
+            renderHTML: (attrs) => (attrs.indent > 0 ? { style: `padding-left: ${attrs.indent * INDENT_STEP_PX}px` } : {}),
+          },
+        },
+      },
+    ]
+  },
+})
 
 const CustomUnderline = Mark.create({
   name: 'customUnderline',
@@ -69,6 +106,13 @@ const CustomUnderline = Mark.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['u', mergeAttributes(HTMLAttributes), 0]
+  },
+  // 기본 밑줄 확장은 끔 (툴바 밑줄과 Ctrl+U 밑줄이 서로 다른 서식이라 툴바로 지울 수 없던 문제)
+  addKeyboardShortcuts() {
+    return {
+      'Mod-u': () => this.editor.commands.toggleMark(this.name),
+      'Mod-U': () => this.editor.commands.toggleMark(this.name),
+    }
   },
 })
 
@@ -121,6 +165,9 @@ const CustomVideo = Node.create({
   },
 })
 
+const readTextStroke = (el: HTMLElement): string | null =>
+  el.style.getPropertyValue('-webkit-text-stroke') || el.style.webkitTextStroke || null
+
 // 글씨 색 + 테두리(-webkit-text-stroke) + 글로우(text-shadow) 를 한 span 에 함께 저장
 // (예전 글의 color 만 있는 span 도 그대로 읽고 씀)
 const CustomColor = Mark.create({
@@ -130,12 +177,13 @@ const CustomColor = Mark.create({
     return {
       color: {
         default: null,
-        parseHTML: el => el.style.color,
+        // 빈 문자열 대신 null 로 통일 (같은 모양인데 서로 다른 서식으로 취급돼 쪼개지던 문제)
+        parseHTML: el => el.style.color || el.getAttribute('color') || null,
         renderHTML: () => ({}),
       },
       stroke: {
         default: null,
-        parseHTML: el => el.style.getPropertyValue('-webkit-text-stroke') || el.style.webkitTextStroke || null,
+        parseHTML: el => readTextStroke(el),
         renderHTML: () => ({}),
       },
       glow: {
@@ -147,9 +195,9 @@ const CustomColor = Mark.create({
   },
   parseHTML() {
     return [
-      { tag: 'span[style*="color"]' },
-      { tag: 'span[style*="text-stroke"]' },
-      { tag: 'span[style*="text-shadow"]' },
+      styledSpanRule((el) => Boolean(el.style.color || readTextStroke(el) || el.style.textShadow)),
+      // 다른 곳에서 붙여 넣은 옛 <font color> 글씨 색
+      { tag: 'font[color]', consuming: false },
     ]
   },
   renderHTML({ mark, HTMLAttributes }) {
@@ -164,13 +212,13 @@ const CustomFontSize = Mark.create({
     return {
       size: {
         default: null,
-        parseHTML: el => el.style.fontSize,
+        parseHTML: el => el.style.fontSize || null,
         renderHTML: attrs => attrs.size ? { style: `font-size: ${attrs.size}` } : {},
       },
     }
   },
   parseHTML() {
-    return [{ tag: 'span[style*="font-size"]' }]
+    return [styledSpanRule((el) => Boolean(el.style.fontSize))]
   },
   renderHTML({ HTMLAttributes }) {
     return ['span', mergeAttributes(HTMLAttributes), 0]
@@ -183,13 +231,13 @@ const CustomFontFamily = Mark.create({
     return {
       family: {
         default: null,
-        parseHTML: el => el.style.fontFamily,
+        parseHTML: el => el.style.fontFamily || null,
         renderHTML: attrs => attrs.family ? { style: `font-family: ${attrs.family}` } : {},
       },
     }
   },
   parseHTML() {
-    return [{ tag: 'span[style*="font-family"]' }]
+    return [styledSpanRule((el) => Boolean(el.style.fontFamily))]
   },
   renderHTML({ HTMLAttributes }) {
     return ['span', mergeAttributes(HTMLAttributes), 0]
@@ -198,17 +246,20 @@ const CustomFontFamily = Mark.create({
 
 const CustomHighlight = Mark.create({
   name: 'customHighlight',
+  // 굵게·글씨 색 등 다른 서식보다 바깥에 그려지게 → 형광펜 안에 여러 색/굵기가 섞여도 한 덩어리로 유지
+  // (예전에는 형광펜이 조각나 조각마다 좌우 여백이 붙어 글자 사이가 벌어짐)
+  priority: 200,
   addAttributes() {
     return {
       color: {
         default: null,
-        parseHTML: el => el.style.backgroundColor,
+        parseHTML: el => el.style.backgroundColor || null,
         renderHTML: attrs => attrs.color ? { style: `background-color: ${attrs.color}; padding: 0 4px;` } : {},
       },
     }
   },
   parseHTML() {
-    return [{ tag: 'mark' }, { tag: 'span[style*="background-color"]' }]
+    return [{ tag: 'mark', consuming: false }, styledSpanRule((el) => Boolean(el.style.backgroundColor))]
   },
   renderHTML({ HTMLAttributes }) {
     return ['mark', mergeAttributes(HTMLAttributes), 0]
@@ -264,6 +315,7 @@ interface ColorStudioState {
   mode: ColorStudioMode
   initialText: TextStyleValue
   initialHighlight: string | null
+  mixed: ColorStudioMixed
   preview: ColorStudioPreview
 }
 
@@ -310,6 +362,8 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
+        // 밑줄은 CustomUnderline 하나만 사용 (두 종류가 섞이면 툴바로 밑줄을 지울 수 없음)
+        underline: false,
         bulletList: { keepMarks: true },
         orderedList: { keepMarks: true },
       }),
@@ -324,6 +378,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
       TableRow,
       TableHeader,
       TableCell,
+      ParagraphIndent,
       CustomUnderline,
       CustomLink,
       CustomColor,
@@ -467,11 +522,11 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           onChange(editor.getHTML())
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       setPopup({
         show: true,
         title: '오류 발생',
-        message: `처리 도중 오류가 발생했습니다: ${err.message}`,
+        message: `처리 도중 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`,
       })
     }
 
@@ -547,16 +602,78 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     }
   }
 
+  // 선택한 글자들의 글씨 색/테두리/글로우/형광펜을 모아, 처음 값과 '여러 값이 섞였는지'를 알아냄
+  // (editor.getAttributes 는 여러 값 중 하나만 돌려줘서, 섞인 선택에서 그 값 하나로 전부 덮어쓰던 원인)
+  const inspectSelectionStyles = (from: number, to: number) => {
+    const { doc, schema } = editor.state
+    const colorType = schema.marks.customColor
+    const highlightType = schema.marks.customHighlight
+    if (from === to || !colorType || !highlightType) {
+      return {
+        initialText: markAttrsToTextStyle(editor.getAttributes('customColor')),
+        initialHighlight: (editor.getAttributes('customHighlight').color as string | null) ?? null,
+        mixed: {},
+        segments: [] as ColorStudioPreviewSegment[],
+      }
+    }
+    const seen = { color: new Set<string>(), stroke: new Set<string>(), glow: new Set<string>(), highlight: new Set<string>() }
+    let firstText: TextStyleValue = { color: null, stroke: null, glow: null }
+    let firstHighlight: string | null = null
+    // 미리보기용: 선택 앞부분 글자를 원래 색/효과와 함께 (적용 결과를 글자마다 정확히 보여 줌)
+    const segments: ColorStudioPreviewSegment[] = []
+    let segmentChars = 0
+    doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isText) return
+      const rawAttrs = colorType.isInSet(node.marks)?.attrs
+      if (segmentChars < STUDIO_PREVIEW_MAX_CHARS) {
+        const text = (node.text ?? '').slice(Math.max(0, from - pos), Math.max(0, to - pos))
+        const chars = Array.from(text).slice(0, STUDIO_PREVIEW_MAX_CHARS - segmentChars)
+        if (chars.length > 0) {
+          segmentChars += chars.length
+          segments.push({
+            text: chars.join(''),
+            style: { color: rawAttrs?.color ?? null, stroke: rawAttrs?.stroke ?? null, glow: rawAttrs?.glow ?? null },
+            highlight: (highlightType.isInSet(node.marks)?.attrs.color as string | null) ?? null,
+          })
+        }
+      }
+      const style = markAttrsToTextStyle(rawAttrs)
+      seen.color.add(style.color ?? '')
+      seen.stroke.add(style.stroke ? JSON.stringify(style.stroke) : '')
+      seen.glow.add(style.glow ? JSON.stringify(style.glow) : '')
+      firstText = {
+        color: firstText.color ?? style.color,
+        stroke: firstText.stroke ?? style.stroke,
+        glow: firstText.glow ?? style.glow,
+      }
+      const hl = (highlightType.isInSet(node.marks)?.attrs.color as string | null) ?? null
+      if (![...seen.highlight].some((c) => (c === '' ? !hl : isSameColor(c, hl)))) seen.highlight.add(hl ?? '')
+      firstHighlight = firstHighlight ?? hl
+    })
+    return {
+      initialText: firstText,
+      initialHighlight: firstHighlight,
+      segments,
+      mixed: {
+        color: seen.color.size > 1,
+        stroke: seen.stroke.size > 1,
+        glow: seen.glow.size > 1,
+        highlight: seen.highlight.size > 1,
+      },
+    }
+  }
+
   // 글자 색 / 형광펜 상세 편집 팝업 열기
   const openColorStudio = (mode: ColorStudioMode) => {
     const { from, to } = editor.state.selection
     studioSelectionRef.current = { from, to }
     const selectedText = editor.state.doc.textBetween(from, to, ' ').trim()
+    const { segments, ...styles } = inspectSelectionStyles(from, to)
     setColorStudio({
       mode,
-      initialText: markAttrsToTextStyle(editor.getAttributes('customColor')),
-      initialHighlight: editor.getAttributes('customHighlight').color ?? null,
+      ...styles,
       preview: {
+        segments,
         text: Array.from(selectedText).slice(0, STUDIO_PREVIEW_MAX_CHARS).join(''),
         fontFamily: editor.getAttributes('customFontFamily').family ?? null,
         bold: editor.isActive('bold'),
@@ -581,25 +698,52 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     return chain.setTextSelection({ from: Math.min(saved.from, max), to: Math.min(saved.to, max) })
   }
 
-  const handleColorStudioApply = (value: { text?: TextStyleValue; highlight?: string }) => {
+  // 선택 구간의 글자마다 기존 글씨 색/테두리/글로우에 '바꾼 항목만' 합쳐서 적용 (한 번의 되돌리기 단위)
+  // → 여러 색이 섞인 글자에 테두리만 켜도 각 글자의 색이 그대로 유지됨
+  const applyTextPatchAtStudioSelection = (patch: TextStylePatch) => {
+    chainAtStudioSelection()
+      .command(({ tr, state }) => {
+        const type = state.schema.marks.customColor
+        if (!type) return false
+        const { from, to } = state.selection
+        state.doc.nodesBetween(from, to, (node, pos) => {
+          if (!node.isText) return
+          const start = Math.max(from, pos)
+          const end = Math.min(to, pos + node.nodeSize)
+          if (start >= end) return
+          const next = applyTextStylePatch(type.isInSet(node.marks)?.attrs, patch)
+          if (!next.color && !next.stroke && !next.glow) tr.removeMark(start, end, type)
+          else tr.addMark(start, end, type.create(next))
+        })
+        return true
+      })
+      .run()
+  }
+
+  const handleColorStudioApply = (value: { text?: TextStyleValue; textPatch?: TextStylePatch; highlight?: string }) => {
     if (!colorStudio) return
     const saved = studioSelectionRef.current
     const wasEmpty = !saved || saved.from === saved.to
 
     if (colorStudio.mode === 'text' && value.text) {
       const style = value.text
-      if (!style.color && !style.stroke && !style.glow) {
-        chainAtStudioSelection().unsetMark('customColor').run()
-      } else if (wasEmpty) {
-        // 선택 없이 적용: 기존처럼 '색상' 글자를 넣어 바로 이어서 쓸 수 있게
-        chainAtStudioSelection().insertContent(`<span style="${textStyleToCss(style)}">색상</span> `).run()
+      if (wasEmpty) {
+        if (!style.color && !style.stroke && !style.glow) {
+          chainAtStudioSelection().unsetMark('customColor').run()
+        } else {
+          // 선택 없이 적용: 기존처럼 '색상' 글자를 넣어 바로 이어서 쓸 수 있게
+          chainAtStudioSelection().insertContent(`<span style="${textStyleToCss(style)}">색상</span> `).run()
+        }
+      } else if (value.textPatch && !isEmptyTextStylePatch(value.textPatch)) {
+        applyTextPatchAtStudioSelection(value.textPatch)
       } else {
-        // 예전 테두리/글로우가 섞여 남지 않도록 지우고 새로 적용
-        chainAtStudioSelection().unsetMark('customColor').setMark('customColor', textStyleToMarkAttrs(style)).run()
+        // 아무것도 바꾸지 않고 적용 → 그대로 (선택만 되돌림)
+        chainAtStudioSelection().run()
       }
-    } else if (colorStudio.mode === 'highlight' && value.highlight) {
+    } else if (colorStudio.mode === 'highlight') {
       chainAtStudioSelection().run()
-      handleSetHighlight(value.highlight)
+      // 색을 바꾸지 않았으면(value.highlight 없음) 여러 형광펜이 섞인 선택도 그대로 둠
+      if (value.highlight) handleSetHighlight(value.highlight)
     }
 
     closeColorStudio()
@@ -648,15 +792,13 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
   // 들여쓰기 / 내어쓰기 함수
   const handleIndent = (direction: 'in' | 'out') => {
-    const padding = direction === 'in' ? '24px' : '0px';
     editor.chain().focus().command(({ tr, state }) => {
       const { from, to } = state.selection;
       state.doc.nodesBetween(from, to, (node, pos) => {
-        if (node.type.name === 'paragraph') {
-          tr.setNodeMarkup(pos, undefined, {
-            ...node.attrs,
-            style: direction === 'in' ? 'padding-left: 24px;' : '',
-          });
+        if (node.type.name === 'paragraph' || node.type.name === 'heading') {
+          const current = Number(node.attrs.indent) || 0;
+          const next = Math.max(0, Math.min(MAX_INDENT_LEVEL, current + (direction === 'in' ? 1 : -1)));
+          if (next !== current) tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: next });
         }
       });
       return true;
@@ -1261,6 +1403,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
       <ColorStudio
         isOpen={colorStudio !== null}
         mode={colorStudio?.mode ?? 'text'}
+        mixed={colorStudio?.mixed}
         initialText={colorStudio?.initialText}
         initialHighlight={colorStudio?.initialHighlight ?? null}
         preview={colorStudio?.preview ?? EMPTY_STUDIO_PREVIEW}

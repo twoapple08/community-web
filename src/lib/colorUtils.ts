@@ -160,10 +160,15 @@ export const buildStrokeCss = (stroke: StrokeStyle): string => `${round2(stroke.
 
 export const parseStrokeCss = (value: string | null | undefined): StrokeStyle | null => {
   if (!value) return null
-  const m = value.trim().match(/^([\d.]+)px\s+(.+)$/i)
-  if (!m) return null
-  const width = parseFloat(m[1])
-  const color = parseCssColor(m[2])
+  const trimmed = value.trim()
+  // 브라우저에 따라 "2px rgb(...)" 또는 "rgb(...) 2px" 순서로 정규화되므로 둘 다 처리
+  const widthFirst = trimmed.match(/^([\d.]+)px\s+(.+)$/i)
+  const colorFirst = widthFirst ? null : trimmed.match(/^(.+?)\s+([\d.]+)px$/i)
+  const widthText = widthFirst?.[1] ?? colorFirst?.[2]
+  const colorText = widthFirst?.[2] ?? colorFirst?.[1]
+  if (!widthText || !colorText) return null
+  const width = parseFloat(widthText)
+  const color = parseCssColor(colorText)
   if (!Number.isFinite(width) || width <= 0 || !color) return null
   return { width: clamp(width, STROKE_WIDTH_RANGE.min, STROKE_WIDTH_RANGE.max), color: formatCssColor(color) }
 }
@@ -238,6 +243,59 @@ export const markAttrsToTextStyle = (attrs: { color?: string | null; stroke?: st
 
 /** TextStyleValue → 인라인 CSS (미리보기 및 빈 선택 시 삽입용) */
 export const textStyleToCss = (value: TextStyleValue): string => textMarkAttrsToCss(textStyleToMarkAttrs(value))
+
+// ---------------------------------------------------------------------
+// 부분 적용 (여러 색/효과가 섞인 선택 영역에서 '바꾼 항목만' 적용)
+// ---------------------------------------------------------------------
+export interface RawTextMarkAttrs {
+  color?: string | null
+  stroke?: string | null
+  glow?: string | null
+}
+
+/**
+ * 효과(테두리/글로우) 변경 방법
+ * - null: 지움
+ * - { set }: 선택한 모든 글자에 이 값으로 (효과를 새로 켠 경우)
+ * - { merge }: 이미 효과가 있는 글자에만, 바꾼 값(두께·색 등)만 덮어씀 (나머지 값과 효과 없는 글자는 그대로)
+ */
+export type EffectPatch<T> = null | { set: T } | { merge: Partial<T> }
+
+/** 각 항목: undefined = 그대로 둠 */
+export interface TextStylePatch {
+  color?: string | null
+  stroke?: EffectPatch<StrokeStyle>
+  glow?: EffectPatch<GlowStyle>
+}
+
+export const isEmptyTextStylePatch = (patch: TextStylePatch): boolean =>
+  patch.color === undefined && patch.stroke === undefined && patch.glow === undefined
+
+const resolveEffectPatch = <T>(
+  raw: string | null,
+  patch: EffectPatch<T>,
+  parse: (value: string | null) => T | null,
+  build: (value: T) => string
+): string | null => {
+  if (patch === null) return null
+  if ('set' in patch) return build(patch.set)
+  const current = parse(raw)
+  // 효과가 없거나 사이트 형식이 아닌 효과(직접 붙여 넣은 그림자 등)는 건드리지 않음
+  if (!current) return raw
+  return build({ ...current, ...patch.merge })
+}
+
+/** 글자 한 구간의 기존 속성 + 변경 내용 → 새 속성 (바꾸지 않은 항목은 원래 문자열 그대로) */
+export const applyTextStylePatch = (
+  old: RawTextMarkAttrs | null | undefined,
+  patch: TextStylePatch
+): { color: string | null; stroke: string | null; glow: string | null } => {
+  const next = { color: old?.color || null, stroke: old?.stroke || null, glow: old?.glow || null }
+  if (patch.color !== undefined) next.color = patch.color
+  if (patch.stroke !== undefined) next.stroke = resolveEffectPatch(next.stroke, patch.stroke, parseStrokeCss, buildStrokeCss)
+  if (patch.glow !== undefined) next.glow = resolveEffectPatch(next.glow, patch.glow, parseGlowCss, buildGlowCss)
+  return next
+}
 
 // ---------------------------------------------------------------------
 // 즐겨찾기 색 (기기별 저장)

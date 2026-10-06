@@ -16,6 +16,7 @@ import { Moon, Star, Sun, X } from 'lucide-react'
 import ColorWheel, { CHECKERBOARD_STYLE } from './ColorWheel'
 import VerticalSlider from './VerticalSlider'
 import {
+  applyTextStylePatch,
   formatCssColor,
   GLOW_SIZE_RANGE,
   GLOW_STRENGTH_RANGE,
@@ -33,7 +34,9 @@ import {
   toggleFavoriteColor,
   type FavoriteKind,
   type HSV,
+  type RawTextMarkAttrs,
   type RGBA,
+  type TextStylePatch,
   type TextStyleValue,
 } from '@/lib/colorUtils'
 
@@ -42,8 +45,17 @@ import {
 
 export type ColorStudioMode = 'text' | 'highlight'
 
+/** 미리보기 글자 조각 (선택한 글자의 원래 글씨 색/효과/형광펜) */
+export interface ColorStudioPreviewSegment {
+  text: string
+  style: RawTextMarkAttrs
+  highlight: string | null
+}
+
 export interface ColorStudioPreview {
   text: string
+  /** 있으면 글자마다 원래 스타일에 바꾼 항목만 합쳐서 미리보기 (실제 적용 결과와 같음) */
+  segments?: ColorStudioPreviewSegment[]
   fontFamily?: string | null
   bold?: boolean
   italic?: boolean
@@ -51,15 +63,30 @@ export interface ColorStudioPreview {
   strike?: boolean
 }
 
+/** 선택한 글자들에 서로 다른 값이 섞여 있는 항목 */
+export interface ColorStudioMixed {
+  color?: boolean
+  stroke?: boolean
+  glow?: boolean
+  highlight?: boolean
+}
+
 export interface ColorStudioProps {
   isOpen: boolean
   mode: ColorStudioMode
+  /** 여러 값이 섞인 항목 (바꾸지 않으면 글자마다 원래 값 유지) */
+  mixed?: ColorStudioMixed
   /** mode 'text': 선택 영역의 현재 글씨 색/테두리/글로우 */
   initialText?: TextStyleValue
   /** mode 'highlight': 현재 형광펜 색 */
   initialHighlight?: string | null
   preview: ColorStudioPreview
-  onApply: (value: { text?: TextStyleValue; highlight?: string }) => void
+  /**
+   * text: 전체 결과 (선택 없이 새 글자를 넣을 때 사용)
+   * textPatch: 바꾼 항목만 (선택한 글자에 적용할 때 사용 → 바꾸지 않은 색/효과는 글자마다 그대로)
+   * highlight: 바꾼 형광펜 색 (바꾸지 않았으면 없음)
+   */
+  onApply: (value: { text?: TextStyleValue; textPatch?: TextStylePatch; highlight?: string }) => void
   /** 글씨 색·테두리·글로우(text) 또는 형광펜(highlight) 제거 */
   onClear: () => void
   onClose: () => void
@@ -128,7 +155,12 @@ export default function ColorStudio(props: ColorStudioProps) {
   return createPortal(<ColorStudioPanel key={props.mode} {...props} />, document.body)
 }
 
-function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onApply, onClear, onClose }: ColorStudioProps) {
+// 여러 값이 섞인 항목의 탭 점 (무지개)
+const MIXED_DOT_STYLE: CSSProperties = {
+  backgroundImage: 'conic-gradient(#ef4444, #f59e0b, #22c55e, #3b82f6, #a855f7, #ef4444)',
+}
+
+function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, preview, onApply, onClear, onClose }: ColorStudioProps) {
   const isText = mode === 'text'
   const favoriteKind: FavoriteKind = isText ? 'text' : 'highlight'
   const titleId = useId()
@@ -136,29 +168,53 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
   const backdropDownRef = useRef(false)
 
   const [tab, setTab] = useState<TabKey>('color')
-  const [textColor, setTextColorState] = useState<ColorState>(() => toColorState(initialText?.color, DEFAULT_TEXT_COLOR, true))
-  // 원래 글씨 색이 없던 글자에 테두리/글로우만 줄 때 기본색(빨강)까지 칠해지지 않도록, 글씨 색을 직접 바꿨을 때만 색을 적용
-  const [textColorTouched, setTextColorTouched] = useState(() => Boolean(initialText?.color))
-  const setTextColor = (updater: (prev: ColorState) => ColorState) => {
-    setTextColorTouched(true)
-    setTextColorState(updater)
+  // 사용자가 직접 바꾼 항목 기록 → 적용할 때 바꾼 항목만 글자에 반영
+  // (예전에는 열 때 읽은 값 하나로 전체를 덮어써서, 여러 색이 섞인 글자가 한 색으로 초기화됨)
+  const [changed, setChanged] = useState({
+    color: false,
+    strokeSwitch: false,
+    strokeWidth: false,
+    strokeColor: false,
+    glowSwitch: false,
+    glowSize: false,
+    glowStrength: false,
+    glowColor: false,
+    highlight: false,
+  })
+  const markChanged = (key: keyof typeof changed) => setChanged((prev) => (prev[key] ? prev : { ...prev, [key]: true }))
+  const tracked = <T,>(key: keyof typeof changed, set: (updater: T) => void) => (updater: T) => {
+    markChanged(key)
+    set(updater)
   }
-  const [strokeOn, setStrokeOn] = useState(() => Boolean(initialText?.stroke))
-  const [strokeColor, setStrokeColor] = useState<ColorState>(() =>
+
+  const [textColor, setTextColorState] = useState<ColorState>(() => toColorState(initialText?.color, DEFAULT_TEXT_COLOR, true))
+  const setTextColor = tracked('color', setTextColorState)
+  const initialStrokeOn = Boolean(initialText?.stroke)
+  const [strokeOn, setStrokeOnState] = useState(initialStrokeOn)
+  const setStrokeOn = tracked('strokeSwitch', setStrokeOnState)
+  const [strokeColor, setStrokeColorState] = useState<ColorState>(() =>
     toColorState(initialText?.stroke?.color, DEFAULT_STROKE.color, false)
   )
-  const [strokeWidth, setStrokeWidth] = useState(() =>
+  const setStrokeColor = tracked('strokeColor', setStrokeColorState)
+  const [strokeWidth, setStrokeWidthState] = useState(() =>
     clamp(initialText?.stroke?.width ?? DEFAULT_STROKE.width, STROKE_WIDTH_RANGE.min, STROKE_WIDTH_RANGE.max)
   )
-  const [glowOn, setGlowOn] = useState(() => Boolean(initialText?.glow))
-  const [glowColor, setGlowColor] = useState<ColorState>(() => toColorState(initialText?.glow?.color, DEFAULT_GLOW.color, false))
-  const [glowSize, setGlowSize] = useState(() =>
+  const setStrokeWidth = tracked('strokeWidth', setStrokeWidthState)
+  const initialGlowOn = Boolean(initialText?.glow)
+  const [glowOn, setGlowOnState] = useState(initialGlowOn)
+  const setGlowOn = tracked('glowSwitch', setGlowOnState)
+  const [glowColor, setGlowColorState] = useState<ColorState>(() => toColorState(initialText?.glow?.color, DEFAULT_GLOW.color, false))
+  const setGlowColor = tracked('glowColor', setGlowColorState)
+  const [glowSize, setGlowSizeState] = useState(() =>
     clamp(initialText?.glow?.size ?? DEFAULT_GLOW.size, GLOW_SIZE_RANGE.min, GLOW_SIZE_RANGE.max)
   )
-  const [glowStrength, setGlowStrength] = useState(() =>
+  const setGlowSize = tracked('glowSize', setGlowSizeState)
+  const [glowStrength, setGlowStrengthState] = useState(() =>
     clamp(Math.round(initialText?.glow?.strength ?? DEFAULT_GLOW.strength), GLOW_STRENGTH_RANGE.min, GLOW_STRENGTH_RANGE.max)
   )
-  const [highlight, setHighlight] = useState<ColorState>(() => toColorState(initialHighlight, DEFAULT_HIGHLIGHT, true))
+  const setGlowStrength = tracked('glowStrength', setGlowStrengthState)
+  const [highlight, setHighlightState] = useState<ColorState>(() => toColorState(initialHighlight, DEFAULT_HIGHLIGHT, true))
+  const setHighlight = tracked('highlight', setHighlightState)
   const [favorites, setFavorites] = useState<string[]>(() => loadFavoriteColors(favoriteKind))
   const [favEditing, setFavEditing] = useState(false)
   // HEX 입력칸에 입력 중인 값 (포커스 중에만 존재)
@@ -208,12 +264,50 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
   // 꺼진 테두리/글로우 탭은 회색 처리 + 조작 불가
   const sectionOff = isText && ((tab === 'stroke' && !strokeOn) || (tab === 'glow' && !glowOn))
 
-  const buildTextResult = (text: ColorState, stroke: ColorState, glow: ColorState, colorTouched = textColorTouched): TextStyleValue => ({
-    color: colorTouched ? toCss(text) : null,
+  // 원래 글씨 색이 없던 글자에 테두리/글로우만 줄 때 기본색(빨강)까지 칠해지지 않도록, 글씨 색은 직접 바꿨거나 원래 있던 경우만
+  const keptColor = initialText?.color && !mixed.color ? initialText.color : null
+  const buildTextResult = (text: ColorState, stroke: ColorState, glow: ColorState, colorChanged = changed.color): TextStyleValue => ({
+    color: colorChanged ? toCss(text) : keptColor,
     stroke: strokeOn ? { width: strokeWidth, color: toCss(stroke) } : null,
     glow: glowOn ? { size: glowSize, strength: glowStrength, color: toCss(glow) } : null,
   })
   const textResult = buildTextResult(textColor, strokeColor, glowColor)
+
+  /** 바꾼 항목만 담은 변경 내용 (선택한 글자마다 기존 값과 합쳐짐) */
+  const buildTextPatch = (
+    result: TextStyleValue,
+    c: typeof changed
+  ): TextStylePatch => {
+    const patch: TextStylePatch = {}
+    if (c.color && result.color) patch.color = result.color
+
+    if (!strokeOn) {
+      if (initialStrokeOn) patch.stroke = null
+    } else if (result.stroke) {
+      // 새로 켰거나 스위치를 다시 켠 경우 → 선택한 모든 글자에 같은 테두리
+      if (!initialStrokeOn || c.strokeSwitch) patch.stroke = { set: result.stroke }
+      else {
+        const merge: Partial<typeof result.stroke> = {}
+        if (c.strokeWidth) merge.width = result.stroke.width
+        if (c.strokeColor) merge.color = result.stroke.color
+        if (Object.keys(merge).length > 0) patch.stroke = { merge }
+      }
+    }
+
+    if (!glowOn) {
+      if (initialGlowOn) patch.glow = null
+    } else if (result.glow) {
+      if (!initialGlowOn || c.glowSwitch) patch.glow = { set: result.glow }
+      else {
+        const merge: Partial<typeof result.glow> = {}
+        if (c.glowSize) merge.size = result.glow.size
+        if (c.glowStrength) merge.strength = result.glow.strength
+        if (c.glowColor) merge.color = result.glow.color
+        if (Object.keys(merge).length > 0) patch.glow = { merge }
+      }
+    }
+    return patch
+  }
   const highlightResult = toCss(highlight)
 
   // ---------------------------------------------------------------
@@ -291,25 +385,37 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
     fontSize: '20px', // 실제 글자 크기와 무관하게 고정
     lineHeight: 1.5,
   }
+  const textAttrsToStyle = (attrs: RawTextMarkAttrs): CSSProperties => ({
+    color: attrs.color ?? undefined,
+    WebkitTextStroke: attrs.stroke ?? undefined,
+    paintOrder: attrs.stroke ? 'stroke fill' : undefined,
+    textShadow: attrs.glow ?? undefined,
+  })
+  const highlightStyle = (color: string | null): CSSProperties =>
+    color ? { backgroundColor: color, padding: '0 4px', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' } : {}
+  const highlightApplies = changed.highlight || !initialHighlight
+
   let previewStyle: CSSProperties
   if (isText) {
-    const attrs = textStyleToMarkAttrs(textResult)
-    previewStyle = {
-      ...baseTextStyle,
-      color: attrs.color ?? undefined,
-      WebkitTextStroke: attrs.stroke ?? undefined,
-      paintOrder: attrs.stroke ? 'stroke fill' : undefined,
-      textShadow: attrs.glow ?? undefined,
-    }
+    previewStyle = { ...baseTextStyle, ...textAttrsToStyle(textStyleToMarkAttrs(textResult)) }
   } else {
-    previewStyle = {
-      ...baseTextStyle,
-      backgroundColor: highlightResult,
-      padding: '0 4px',
-      boxDecorationBreak: 'clone',
-      WebkitBoxDecorationBreak: 'clone',
-    }
+    previewStyle = { ...baseTextStyle, ...highlightStyle(highlightResult) }
   }
+
+  // 선택한 글자가 있으면 글자 조각마다 실제 적용 결과로 미리보기 (섞인 색이 그대로 유지되는지 확인 가능)
+  const previewSegments = useMemo(() => {
+    const list = preview.segments ?? []
+    let used = 0
+    const result: ColorStudioPreviewSegment[] = []
+    for (const seg of list) {
+      if (used >= PREVIEW_MAX_CHARS) break
+      const chars = Array.from(seg.text.replace(/\s+/g, ' ')).slice(0, PREVIEW_MAX_CHARS - used)
+      used += chars.length
+      result.push({ ...seg, text: chars.join('') })
+    }
+    return result.some((seg) => seg.text.trim()) ? result : []
+  }, [preview.segments])
+  const livePatch = isText ? buildTextPatch(textResult, changed) : null
 
   // ---------------------------------------------------------------
   // 버튼 동작
@@ -319,17 +425,21 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
     const draft = parseHexDraft()
     const withDraft = (key: ColorKey, state: ColorState): ColorState =>
       draft && key === activeKey ? { ...state, hsv: keepHue(draft, state.hsv) } : state
+    const draftKey = draft ? activeKey : null
+    const c = {
+      ...changed,
+      color: changed.color || draftKey === 'text',
+      strokeColor: changed.strokeColor || draftKey === 'stroke',
+      glowColor: changed.glowColor || draftKey === 'glow',
+      highlight: changed.highlight || draftKey === 'highlight',
+    }
     if (isText) {
-      onApply({
-        text: buildTextResult(
-          withDraft('text', textColor),
-          withDraft('stroke', strokeColor),
-          withDraft('glow', glowColor),
-          textColorTouched || Boolean(draft && activeKey === 'text')
-        ),
-      })
+      const text = buildTextResult(withDraft('text', textColor), withDraft('stroke', strokeColor), withDraft('glow', glowColor), c.color)
+      onApply({ text, textPatch: buildTextPatch(text, c) })
     } else {
-      onApply({ highlight: toCss(withDraft('highlight', highlight)) })
+      // 형광펜이 원래 없던 곳은 바로 적용, 원래 있던 곳은 색을 바꿨을 때만 (섞인 형광펜이 한 색으로 바뀌지 않게)
+      const shouldApply = c.highlight || !initialHighlight
+      onApply(shouldApply ? { highlight: toCss(withDraft('highlight', highlight)) } : {})
     }
     // onClose 는 부모가 처리
   }
@@ -395,9 +505,14 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
       </>
     )
 
-  // 탭 이름 옆 작은 색 점 (꺼진 효과는 빈 점)
+  // 탭 이름 옆 작은 색 점 (꺼진 효과는 빈 점, 바꾸지 않은 섞인 항목은 무지개 점)
+  const tabMixed = (key: TabKey): boolean => {
+    if (key === 'color') return Boolean(mixed.color) && !changed.color
+    if (key === 'stroke') return Boolean(mixed.stroke) && strokeOn && !changed.strokeSwitch && !changed.strokeColor
+    return Boolean(mixed.glow) && glowOn && !changed.glowSwitch && !changed.glowColor
+  }
   const tabDot = (key: TabKey): string | null => {
-    if (key === 'color') return toCss(textColor)
+    if (key === 'color') return changed.color || initialText?.color ? toCss(textColor) : null
     if (key === 'stroke') return strokeOn ? toCss(strokeColor) : null
     return glowOn ? toCss(glowColor) : null
   }
@@ -474,13 +589,27 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
                   <span
                     aria-hidden="true"
                     className="w-2.5 h-2.5 shrink-0 rounded-full border border-zinc-400 dark:border-zinc-500 transition-none"
-                    style={dot ? { ...CHECKERBOARD_STYLE, backgroundImage: `linear-gradient(${dot}, ${dot}), ${CHECKERBOARD_STYLE.backgroundImage}` } : undefined}
+                    style={
+                      tabMixed(t.key)
+                        ? MIXED_DOT_STYLE
+                        : dot
+                          ? { ...CHECKERBOARD_STYLE, backgroundImage: `linear-gradient(${dot}, ${dot}), ${CHECKERBOARD_STYLE.backgroundImage}` }
+                          : undefined
+                    }
                   />
                   <span className="truncate">{t.label}</span>
                 </button>
               )
             })}
           </div>
+        )}
+
+        {/* 여러 색/효과가 섞인 선택: 바꾼 항목만 적용된다는 안내 */}
+        {(isText ? mixed.color || mixed.stroke || mixed.glow : mixed.highlight) && (
+          <p className="flex items-start gap-1.5 px-2.5 py-2 text-[11px] leading-snug rounded-none border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300">
+            <span aria-hidden="true" className="mt-0.5 w-2.5 h-2.5 shrink-0 rounded-full border border-zinc-400 dark:border-zinc-500" style={MIXED_DOT_STYLE} />
+            <span>선택한 글자에 서로 다른 {isText ? '색·효과' : '형광펜'}가 섞여 있습니다. 직접 바꾼 항목만 적용되고, 나머지는 글자마다 그대로 유지됩니다.</span>
+          </p>
         )}
 
         {/* 테두리/글로우 켜기 스위치 */}
@@ -669,9 +798,27 @@ function ColorStudioPanel({ mode, initialText, initialHighlight, preview, onAppl
             className="px-3 py-3 min-h-[3.5rem] max-h-36 overflow-hidden rounded-none border border-zinc-300 dark:border-zinc-700 break-words"
             style={{ backgroundColor: previewTheme.bg, color: previewTheme.fg }}
           >
-            <span className="transition-none" style={previewStyle}>
-              {previewText}
-            </span>
+            {previewSegments.length > 0 ? (
+              <span className="transition-none" style={baseTextStyle}>
+                {previewSegments.map((seg, i) => (
+                  <span
+                    key={i}
+                    className="transition-none"
+                    style={
+                      livePatch
+                        ? textAttrsToStyle(applyTextStylePatch(seg.style, livePatch))
+                        : highlightStyle(highlightApplies ? highlightResult : seg.highlight)
+                    }
+                  >
+                    {seg.text}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="transition-none" style={previewStyle}>
+                {previewText}
+              </span>
+            )}
           </div>
         </div>
 
