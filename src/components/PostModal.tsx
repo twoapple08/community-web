@@ -14,6 +14,7 @@ import Avatar from './Avatar';
 import { fetchMyRole, fetchRoleMap, isCreatorEmail } from '@/lib/roles';
 import { fetchPostByRouteNo, type FeedType } from '@/lib/postRoute';
 import { emitPostsChanged } from '@/lib/feedStore';
+import { recordPostView } from '@/lib/postViews';
 import { sanitizeDocument } from '@/lib/sanitizeHtml';
 import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile';
 import {
@@ -39,7 +40,8 @@ import {
   Heart,
   ShieldCheck,
   Send,
-  Siren
+  Siren,
+  Eye
 } from 'lucide-react';
 
 // 에디터(TipTap)는 용량이 커서 '수정' 버튼을 누를 때만 내려받습니다. (일반 열람 시 로딩 속도 향상)
@@ -62,6 +64,8 @@ interface Post {
   author_id: string;
   likes_count?: number;
   comments_count?: number;
+  /** 조회수 – SQL 미적용 시 없음 */
+  view_count?: number | null;
   is_official?: boolean;
   is_deleted?: boolean;
   delete_requested?: boolean;
@@ -204,6 +208,8 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
 
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
+  // 조회수 (SQL 미적용으로 컬럼이 없으면 null → 표시 안 함)
+  const [viewCount, setViewCount] = useState<number | null>(null);
   const [likeLoading, setLikeLoading] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -269,6 +275,18 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
         setEditTitle(postData.title);
         setEditContent(postData.content);
         setLikesCount(postData.likes_count ?? 0);
+
+        // 조회 기록 (같은 사람은 하루 1번만 셈). 완료되면 새 숫자로 바꾸고 목록에도 반영
+        const loadedViews = typeof postData.view_count === 'number' ? postData.view_count : null;
+        setViewCount(loadedViews);
+        if (loadedViews !== null) {
+          const viewedId = postData.id;
+          recordPostView(viewedId).then((count) => {
+            if (cancelled || count === null) return;
+            setViewCount(count);
+            emitPostsChanged({ kind: 'patch', id: viewedId, patch: { view_count: count } });
+          });
+        }
 
         if (uid) {
           const { data: likeRecord } = await supabase
@@ -756,6 +774,12 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
                     <span>{authorNickname || '작성자'}</span>
                   </button>
                   <span>{new Date(visiblePost.created_at).toLocaleDateString()}</span>
+                  {viewCount !== null && (
+                    <span className="flex items-center gap-1" title="조회수">
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>조회 {viewCount.toLocaleString('ko-KR')}</span>
+                    </span>
+                  )}
                 </div>
               </header>
 

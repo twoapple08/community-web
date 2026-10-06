@@ -21,10 +21,12 @@ import {
   Siren,
   Check,
   Video as VideoIcon,
+  Eye,
 } from 'lucide-react';
 import NoticeBanner from '@/components/NoticeBanner';
 import FeedMedia from '@/components/FeedMedia';
 import VideoThumb from '@/components/VideoThumb';
+import { formatViewCount } from '@/lib/postViews';
 import AdminReportModal from '@/components/AdminReportModal';
 import Avatar from '@/components/Avatar';
 import Link from 'next/link';
@@ -55,6 +57,8 @@ interface Post {
   created_at: string;
   author_id: string;
   likes_count?: number;
+  /** 조회수 – SQL 미적용 시 없음 */
+  view_count?: number | null;
   comments_count?: number;
   author_nickname?: string;
   author_role?: RoleType;
@@ -651,6 +655,13 @@ function CommunityFeedContent() {
                             <span>{post.comments_count ?? 0}</span>
                           </span>
 
+                          {typeof post.view_count === 'number' && (
+                            <span className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 font-medium" title="조회수">
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{formatViewCount(post.view_count)}</span>
+                            </span>
+                          )}
+
                           {imageCount > 1 && (
                             <span className="flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-900/50">
                               <ImageIcon className="w-3.5 h-3.5" />
@@ -759,6 +770,12 @@ function CommunityFeedContent() {
                           <span>댓글 {post.comments_count ?? 0}</span>
                         </div>
                       </div>
+                      {typeof post.view_count === 'number' && (
+                        <span className="flex items-center gap-1.5 font-bold text-zinc-500 dark:text-zinc-400" title="조회수">
+                          <Eye className="w-4 h-4" />
+                          <span>조회 {formatViewCount(post.view_count)}</span>
+                        </span>
+                      )}
                     </div>
                   </article>
                 );
@@ -809,6 +826,13 @@ function CommunityFeedContent() {
                               {videoCount}
                             </span>
                           )}
+                        </span>
+                      )}
+
+                      {typeof post.view_count === 'number' && (
+                        <span className="absolute bottom-2 left-2 flex items-center gap-0.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm" title="조회수">
+                          <Eye className="w-3 h-3" />
+                          {formatViewCount(post.view_count)}
                         </span>
                       )}
                     </div>

@@ -188,7 +188,13 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
   }
 
   const [textColor, setTextColorState] = useState<ColorState>(() => toColorState(initialText?.color, DEFAULT_TEXT_COLOR, true))
-  const setTextColor = tracked('color', setTextColorState)
+  const setTextColorTracked = tracked('color', setTextColorState)
+  // 글씨 색 초기화: 지정한 색을 지우고 다크/라이트 모드에 따라 바뀌는 기본 글자색으로 (색을 다시 고르면 해제)
+  const [textColorReset, setTextColorReset] = useState(false)
+  const setTextColor = (updater: (prev: ColorState) => ColorState) => {
+    setTextColorReset(false)
+    setTextColorTracked(updater)
+  }
   const initialStrokeOn = Boolean(initialText?.stroke)
   const [strokeOn, setStrokeOnState] = useState(initialStrokeOn)
   const setStrokeOn = tracked('strokeSwitch', setStrokeOnState)
@@ -266,8 +272,14 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
 
   // 원래 글씨 색이 없던 글자에 테두리/글로우만 줄 때 기본색(빨강)까지 칠해지지 않도록, 글씨 색은 직접 바꿨거나 원래 있던 경우만
   const keptColor = initialText?.color && !mixed.color ? initialText.color : null
-  const buildTextResult = (text: ColorState, stroke: ColorState, glow: ColorState, colorChanged = changed.color): TextStyleValue => ({
-    color: colorChanged ? toCss(text) : keptColor,
+  const buildTextResult = (
+    text: ColorState,
+    stroke: ColorState,
+    glow: ColorState,
+    colorChanged = changed.color,
+    colorReset = textColorReset
+  ): TextStyleValue => ({
+    color: colorReset ? null : colorChanged ? toCss(text) : keptColor,
     stroke: strokeOn ? { width: strokeWidth, color: toCss(stroke) } : null,
     glow: glowOn ? { size: glowSize, strength: glowStrength, color: toCss(glow) } : null,
   })
@@ -279,7 +291,8 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
     c: typeof changed
   ): TextStylePatch => {
     const patch: TextStylePatch = {}
-    if (c.color && result.color) patch.color = result.color
+    // 글씨 색을 바꿨으면 그 색으로, '기본색'을 눌렀으면 지정 색을 지움(null)
+    if (c.color) patch.color = result.color ?? null
 
     if (!strokeOn) {
       if (initialStrokeOn) patch.stroke = null
@@ -313,7 +326,8 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
   // ---------------------------------------------------------------
   // HEX 입력
   // ---------------------------------------------------------------
-  const hexValue = hexDraft ?? currentHex
+  // 글씨 색을 '기본색'으로 되돌린 상태면 HEX 칸은 비워 둠
+  const hexValue = hexDraft ?? (activeKey === 'text' && textColorReset ? '' : currentHex)
   const hexValid = hexDraft === null || HEX_RE.test(hexDraft.trim())
 
   /** 입력 중인 HEX 값 → 색 (잘못된 값이면 null) */
@@ -434,7 +448,13 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
       highlight: changed.highlight || draftKey === 'highlight',
     }
     if (isText) {
-      const text = buildTextResult(withDraft('text', textColor), withDraft('stroke', strokeColor), withDraft('glow', glowColor), c.color)
+      const text = buildTextResult(
+        withDraft('text', textColor),
+        withDraft('stroke', strokeColor),
+        withDraft('glow', glowColor),
+        c.color,
+        textColorReset && draftKey !== 'text'
+      )
       onApply({ text, textPatch: buildTextPatch(text, c) })
     } else {
       // 형광펜이 원래 없던 곳은 바로 적용, 원래 있던 곳은 색을 바꿨을 때만 (섞인 형광펜이 한 색으로 바뀌지 않게)
@@ -448,6 +468,14 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
     onClear()
     onClose()
   }
+
+  const handleResetTextColor = () => {
+    setHexDraft(null)
+    setTextColorReset(true)
+    markChanged('color')
+  }
+  const showColorReset = isText && tab === 'color'
+  const textColorIsDefault = textColorReset || (!changed.color && !initialText?.color)
 
   // ---------------------------------------------------------------
   // 슬라이더 (현재 탭의 숫자 옵션)
@@ -512,7 +540,7 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
     return Boolean(mixed.glow) && glowOn && !changed.glowSwitch && !changed.glowColor
   }
   const tabDot = (key: TabKey): string | null => {
-    if (key === 'color') return changed.color || initialText?.color ? toCss(textColor) : null
+    if (key === 'color') return textColorReset ? null : changed.color || initialText?.color ? toCss(textColor) : null
     if (key === 'stroke') return strokeOn ? toCss(strokeColor) : null
     return glowOn ? toCss(glowColor) : null
   }
@@ -660,9 +688,11 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
                 type="text"
                 value={hexValue}
                 onFocus={(e) => {
-                  setHexDraft(currentHex)
+                  // 기본색 상태에서 칸을 눌렀다 떼기만 해도 예전 색으로 돌아가지 않도록 빈 칸에서 시작
+                  setHexDraft(activeKey === 'text' && textColorReset ? '' : currentHex)
                   e.currentTarget.select()
                 }}
+                placeholder={activeKey === 'text' && textColorReset ? '기본색' : undefined}
                 onChange={(e) => setHexDraft(e.target.value)}
                 onBlur={commitHex}
                 onKeyDown={handleHexKeyDown}
@@ -680,7 +710,22 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
                 }`}
               />
             </label>
-            {alphaEnabled && active.a < 1 && (
+            {showColorReset && (
+              <button
+                type="button"
+                onClick={handleResetTextColor}
+                aria-pressed={textColorReset}
+                title="지정한 글씨 색을 지우고 다크/라이트 모드에 맞춰 바뀌는 기본 색으로"
+                className={`shrink-0 px-2 py-2 text-[11px] font-bold rounded-none border ${
+                  textColorReset
+                    ? 'border-orange-500 text-orange-600 bg-orange-50 dark:border-orange-500 dark:text-orange-400 dark:bg-orange-500/10'
+                    : 'border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-zinc-900'
+                }`}
+              >
+                기본색
+              </button>
+            )}
+            {alphaEnabled && active.a < 1 && !(activeKey === 'text' && textColorReset) && (
               <span className="shrink-0 text-[11px] font-bold tabular-nums text-zinc-500 dark:text-zinc-400">
                 불투명도 {Math.round(active.a * 100)}%
               </span>
@@ -700,6 +745,12 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
               <Star className="w-4 h-4" fill={isFavorite ? 'currentColor' : 'none'} />
             </button>
           </div>
+
+          {showColorReset && textColorIsDefault && (
+            <p className="-mt-1 text-[11px] leading-snug text-zinc-600 dark:text-zinc-400">
+              기본색: 지정한 색 없이 다크 모드에서는 밝게, 라이트 모드에서는 어둡게 자동으로 바뀝니다.
+            </p>
+          )}
 
           {/* 즐겨찾기 목록 */}
           <div className="space-y-2">
@@ -827,10 +878,10 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
           <button
             type="button"
             onClick={handleClear}
-            title={isText ? '글씨 색·테두리·글로우 지우기' : '형광펜 지우기'}
+            title={isText ? '글씨 색·테두리·글로우 모두 지우기' : '형광펜 지우기'}
             className="px-1 py-2 text-xs font-bold rounded-none text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
           >
-            초기화
+            {isText ? '전체 초기화' : '초기화'}
           </button>
           <div className="flex items-center gap-2">
             <button

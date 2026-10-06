@@ -1,6 +1,7 @@
 'use client'
 
 import { useEditor, EditorContent, Extension, Mark, Node, mergeAttributes } from '@tiptap/react'
+import type { EditorState, Transaction } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
@@ -265,6 +266,34 @@ const CustomHighlight = Mark.create({
     return ['mark', mergeAttributes(HTMLAttributes), 0]
   },
 })
+
+// 선택 구간의 글자마다 기존 글씨 색/테두리/글로우에 '바꾼 항목만' 합쳐서 적용 (한 번의 되돌리기 단위)
+// → 여러 색이 섞인 글자에 테두리만 켜도 각 글자의 색이 그대로 유지됨
+// 선택이 없으면 커서에서 이어서 쓸 글자 서식(저장된 서식)에 적용
+const textPatchCommand =
+  (patch: TextStylePatch) =>
+  ({ tr, state }: { tr: Transaction; state: EditorState }): boolean => {
+    const type = state.schema.marks.customColor
+    if (!type) return false
+    const { from, to, empty } = state.selection
+    if (empty) {
+      const current = type.isInSet(state.storedMarks ?? state.selection.$from.marks())
+      const next = applyTextStylePatch(current?.attrs, patch)
+      tr.removeStoredMark(type)
+      if (next.color || next.stroke || next.glow) tr.addStoredMark(type.create(next))
+      return true
+    }
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isText) return
+      const start = Math.max(from, pos)
+      const end = Math.min(to, pos + node.nodeSize)
+      if (start >= end) return
+      const next = applyTextStylePatch(type.isInSet(node.marks)?.attrs, patch)
+      if (!next.color && !next.stroke && !next.glow) tr.removeMark(start, end, type)
+      else tr.addMark(start, end, type.create(next))
+    })
+    return true
+  }
 
 interface EditorProps {
   content: string
@@ -591,6 +620,12 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     setInputLinkText('')
   }
 
+  // 글씨 색 초기화: 지정한 색만 지우고(테두리·글로우는 유지) 다크/라이트 모드에 따라 바뀌는 기본 글자색으로 되돌림
+  // 선택이 없으면 커서 위치에서 이어서 쓰는 글자의 색만 기본으로
+  const handleResetTextColor = () => {
+    editor.chain().focus().command(textPatchCommand({ color: null })).run()
+  }
+
   // 즐겨찾기 글씨 색 바로 적용
   const handleSetColor = (color: string) => {
     if (editor.state.selection.empty) {
@@ -701,23 +736,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   // 선택 구간의 글자마다 기존 글씨 색/테두리/글로우에 '바꾼 항목만' 합쳐서 적용 (한 번의 되돌리기 단위)
   // → 여러 색이 섞인 글자에 테두리만 켜도 각 글자의 색이 그대로 유지됨
   const applyTextPatchAtStudioSelection = (patch: TextStylePatch) => {
-    chainAtStudioSelection()
-      .command(({ tr, state }) => {
-        const type = state.schema.marks.customColor
-        if (!type) return false
-        const { from, to } = state.selection
-        state.doc.nodesBetween(from, to, (node, pos) => {
-          if (!node.isText) return
-          const start = Math.max(from, pos)
-          const end = Math.min(to, pos + node.nodeSize)
-          if (start >= end) return
-          const next = applyTextStylePatch(type.isInSet(node.marks)?.attrs, patch)
-          if (!next.color && !next.stroke && !next.glow) tr.removeMark(start, end, type)
-          else tr.addMark(start, end, type.create(next))
-        })
-        return true
-      })
-      .run()
+    chainAtStudioSelection().command(textPatchCommand(patch)).run()
   }
 
   const handleColorStudioApply = (value: { text?: TextStyleValue; textPatch?: TextStylePatch; highlight?: string }) => {
@@ -1239,6 +1258,14 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
                 aria-label={`즐겨찾기 글씨 색 ${color}`}
               />
             ))}
+            <button
+              type="button"
+              onClick={handleResetTextColor}
+              className="px-1 text-[10px] border border-zinc-400"
+              title="글씨 색 초기화 (지정한 색을 지우고 다크/라이트 모드에 맞춰 바뀌는 기본 색으로)"
+            >
+              기본색
+            </button>
           </div>
 
           <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700" />

@@ -20,10 +20,12 @@ import {
   ArrowLeftRight,
   Siren,
   Video as VideoIcon,
+  Eye,
 } from 'lucide-react';
 import NoticeBanner from '@/components/NoticeBanner';
 import FeedMedia from '@/components/FeedMedia';
 import VideoThumb from '@/components/VideoThumb';
+import { formatViewCount } from '@/lib/postViews';
 import AdminReportModal from '@/components/AdminReportModal';
 import CustomPopup from '@/components/CustomPopup';
 import Avatar from '@/components/Avatar';
@@ -56,6 +58,8 @@ interface Post {
   created_at: string;
   author_id: string;
   likes_count?: number;
+  /** 조회수 – SQL 미적용 시 없음 */
+  view_count?: number | null;
   author_nickname?: string;
   author_role?: RoleType;
   author_avatar?: string | null;
@@ -724,6 +728,13 @@ function ClanFeedContent() {
                             <span>{post.likes_count ?? 0}</span>
                           </span>
 
+                          {typeof post.view_count === 'number' && (
+                            <span className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400 font-medium" title="조회수">
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{formatViewCount(post.view_count)}</span>
+                            </span>
+                          )}
+
                           {imageCount > 1 && (
                             <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50">
                               <ImageIcon className="w-3.5 h-3.5" />
@@ -867,6 +878,12 @@ function ClanFeedContent() {
                         <Heart className="w-4 h-4 fill-rose-500/20" />
                         <span>좋아요 {post.likes_count ?? 0}</span>
                       </div>
+                      {typeof post.view_count === 'number' && (
+                        <span className="flex items-center gap-1.5 font-bold text-zinc-500 dark:text-zinc-400" title="조회수">
+                          <Eye className="w-4 h-4" />
+                          <span>조회 {formatViewCount(post.view_count)}</span>
+                        </span>
+                      )}
                     </div>
                   </article>
                 );
@@ -923,6 +940,13 @@ function ClanFeedContent() {
                               {videoCount}
                             </span>
                           )}
+                        </span>
+                      )}
+
+                      {typeof post.view_count === 'number' && (
+                        <span className="absolute bottom-2 left-2 flex items-center gap-0.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm" title="조회수">
+                          <Eye className="w-3 h-3" />
+                          {formatViewCount(post.view_count)}
                         </span>
                       )}
                     </div>
