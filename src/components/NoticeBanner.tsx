@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Megaphone, Pencil, X } from 'lucide-react'
-import CustomPopup from './CustomPopup'
 import { RoleType } from './CrownIcon'
 
 interface SiteNotice {
@@ -45,6 +44,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
   const [editNoticeContent, setEditNoticeContent] = useState('')
   const [savingNotice, setSavingNotice] = useState(false)
   const [dontShowAgainChecked, setDontShowAgainChecked] = useState(false)
+  const backdropPressRef = useRef(false)
 
   const [toastState, setToastState] = useState<{
     visible: boolean
@@ -206,12 +206,20 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
 
       {/* 공지 상세 모달 */}
       {isNoticeDetailOpen && (
+        // 게시글 상세 창처럼 공지 전체를 펼쳐 보여 주고, 내용이 길면 창 전체(배경)를 스크롤
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm"
-          onClick={handleCloseNoticePopup}
+          className="fixed inset-0 z-[70] overflow-y-auto overscroll-contain flex justify-center items-start p-3 sm:p-4 sm:py-8 bg-black/75 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            backdropPressRef.current = e.target === e.currentTarget
+          }}
+          onClick={(e) => {
+            // 스크롤바를 끌다가 배경에서 손을 떼도 닫히지 않게, 배경에서 누르고 뗀 경우만 닫음
+            if (e.target === e.currentTarget && backdropPressRef.current) handleCloseNoticePopup()
+            backdropPressRef.current = false
+          }}
         >
           <div
-            className="w-full max-w-lg bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-lg my-auto bg-white dark:bg-zinc-900 border-2 border-blue-600 rounded-none p-5 sm:p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-blue-100 dark:border-blue-900/60 pb-3">
@@ -239,7 +247,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
               <p className="text-[11px] text-zinc-400">
                 최종 갱신일: {new Date(notice.updated_at).toLocaleString()}
               </p>
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto rounded-none break-words">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed rounded-none break-words">
                 {notice.content}
               </div>
             </div>

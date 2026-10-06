@@ -11,6 +11,10 @@ html {
   width: 100%;
   min-height: 100%;
   transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), color 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* 스크롤바 색 (사이트 zinc 계열, 테마에 따라 바뀜) */
+  --sb-thumb: #d4d4d8;
+  --sb-thumb-hover: #a1a1aa;
+  --sb-track: transparent;
 }
 
 body {
@@ -26,6 +30,8 @@ body {
 html.dark {
   background-color: #09090b;
   color: #f4f4f5;
+  --sb-thumb: #3f3f46;
+  --sb-thumb-hover: #52525b;
 }
 
 html:not(.dark) {
@@ -44,13 +50,82 @@ html:not(.dark) {
   }
 }
 
-/* 다크/라이트 전환 순간(약 0.4초)에만 모든 요소가 같은 속도로 함께 색이 바뀌도록 */
+/* =========================================================
+   다크/라이트 전환
+   1) 기본: View Transition(화면 전체를 한 장으로 교차 전환) → 모든 요소가 정확히 같은 속도,
+      요소 수천 개를 하나씩 애니메이션하지 않아 프레임 드랍 없음 (AppShell 의 toggleTheme)
+   2) 지원하지 않는 브라우저: 전환 순간에만 모든 요소(html 포함)에 같은 색 전환 효과
+   ========================================================= */
+html.theme-vt,
+html.theme-vt *,
+html.theme-vt *::before,
+html.theme-vt *::after {
+  /* 교차 전환 중에는 요소별 전환을 꺼서 새 화면이 바로 최종 색으로 그려지게 함 (이중 애니메이션 방지) */
+  transition: none !important;
+}
+
+html.theme-vt .theme-toggle-knob {
+  /* 스위치 손잡이만 따로 떼어 내 미끄러지듯 이동 */
+  view-transition-name: sfa-theme-knob;
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root),
+::view-transition-group(sfa-theme-knob),
+::view-transition-old(sfa-theme-knob),
+::view-transition-new(sfa-theme-knob) {
+  animation-duration: 350ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html.theme-switching,
 html.theme-switching *,
 html.theme-switching *::before,
 html.theme-switching *::after {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, box-shadow, opacity, transform, translate, rotate, scale !important;
+  /* 그림자·투명도·이동까지 전부 애니메이션하면 무거워서 색 관련 속성 + 손잡이 이동만 */
+  transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, transform, translate, rotate, scale, opacity !important;
   transition-duration: 350ms !important;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* =========================================================
+   스크롤바: 사이트 디자인(zinc 계열, 둥근 손잡이)에 맞춤, 다크/라이트 자동 대응
+   - 마우스 기기에서만 적용 (휴대폰은 기본 얇은 오버레이 스크롤바 그대로)
+   ========================================================= */
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: var(--sb-track);
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--sb-thumb);
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+    min-height: 32px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--sb-thumb-hover);
+    border-width: 2px;
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  /* -webkit- 스크롤바를 지원하지 않는 브라우저(Firefox)는 표준 속성으로 */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--sb-thumb) var(--sb-track);
+    }
+  }
 }
 
 /* 한글이 단어 중간(음절 단위)에서 잘려 줄바꿈되던 문제 → 띄어쓰기 단위로 줄바꿈

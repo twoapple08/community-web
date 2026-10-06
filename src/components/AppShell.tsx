@@ -28,8 +28,19 @@ import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert, Bell } from 'l
 const NOTIFICATION_POLL_MS = 60 * 1000
 
 // 테마 전환 중에만 모든 요소에 같은 전환 효과를 걸어 색이 한꺼번에 바뀌도록 (globals.css 의 html.theme-switching)
+// View Transition 을 지원하는 브라우저는 화면 전체를 한 번에 교차 전환 (globals.css 의 html.theme-vt)
 const THEME_SWITCHING_CLASS = 'theme-switching'
+const THEME_VT_CLASS = 'theme-vt'
 const THEME_SWITCHING_MS = 400
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => { finished: Promise<void> }
+}
+
+const applyThemeClass = (root: HTMLElement, nextTheme: 'dark' | 'light') => {
+  if (nextTheme === 'dark') root.classList.add('dark')
+  else root.classList.remove('dark')
+}
 
 // 사이트 공통 화면 (헤더 / 알림 토스트 / 전역 모달 / 하단 안내). 루트 레이아웃(서버 컴포넌트)이 감쌉니다.
 export default function AppShell({
@@ -69,6 +80,7 @@ export default function AppShell({
 
   const loadedUserIdRef = useRef<string | null>(null);
   const themeSwitchTimerRef = useRef<number | null>(null);
+  const themeTransitionIdRef = useRef(0);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
@@ -86,24 +98,47 @@ export default function AppShell({
   }, []);
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'dark' ? 'light' : 'dark';
     const root = document.documentElement;
+    // 실제 화면 상태 기준으로 다음 테마 결정 (빠르게 연속으로 눌러도 어긋나지 않게)
+    const nextTheme: 'dark' | 'light' = root.classList.contains('dark') ? 'light' : 'dark';
 
-    // 색 전환 효과를 먼저 걸어 둔 뒤 테마를 바꿔야 모든 요소가 같은 속도로 함께 바뀜
+    setTheme(nextTheme);
+    try {
+      localStorage.setItem('theme', nextTheme);
+    } catch {}
+
+    if (themeSwitchTimerRef.current) {
+      window.clearTimeout(themeSwitchTimerRef.current);
+      themeSwitchTimerRef.current = null;
+    }
+    root.classList.remove(THEME_SWITCHING_CLASS);
+
+    // 1) View Transition: 바뀌기 전/후 화면을 한 장씩 찍어 교차 전환 → 모든 요소가 같은 속도, 프레임 드랍 없음
+    const doc = document as ViewTransitionDocument;
+    if (typeof doc.startViewTransition === 'function') {
+      const transitionId = ++themeTransitionIdRef.current;
+      root.classList.add(THEME_VT_CLASS);
+      try {
+        const transition = doc.startViewTransition(() => applyThemeClass(root, nextTheme));
+        transition.finished
+          .catch(() => {})
+          .finally(() => {
+            // 전환 도중 또 눌렀다면 새 전환이 끝날 때 정리
+            if (themeTransitionIdRef.current === transitionId) root.classList.remove(THEME_VT_CLASS);
+          });
+        return;
+      } catch {
+        root.classList.remove(THEME_VT_CLASS);
+      }
+    }
+
+    // 2) 미지원 브라우저: 색 전환 효과를 먼저 걸어 둔 뒤 테마를 바꿔야 모든 요소가 같은 속도로 함께 바뀜
     root.classList.add(THEME_SWITCHING_CLASS);
-    if (themeSwitchTimerRef.current) window.clearTimeout(themeSwitchTimerRef.current);
     themeSwitchTimerRef.current = window.setTimeout(() => {
       root.classList.remove(THEME_SWITCHING_CLASS);
       themeSwitchTimerRef.current = null;
     }, THEME_SWITCHING_MS);
-
-    setTheme(nextTheme);
-    localStorage.setItem('theme', nextTheme);
-    if (nextTheme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    applyThemeClass(root, nextTheme);
   };
 
   const checkProfileAlerts = useCallback(async (role: string | null, email?: string) => {
@@ -379,7 +414,7 @@ export default function AppShell({
             >
               {/* 스위치 모양은 dark: 클래스로만 결정 → 라이트 모드 사용자도 첫 화면부터 올바른 위치, 손잡이는 부드럽게 이동 */}
               <span
-                className={withCompact('inline-grid place-items-center h-4.5 w-4.5 sm:h-5 sm:w-5 rounded-full shadow-md transition-transform duration-300 ease-in-out bg-white translate-x-0 dark:bg-zinc-950 dark:translate-x-5 sm:dark:translate-x-6', 'max-[460px]:h-4 max-[460px]:w-4 max-[460px]:dark:translate-x-4.5')}
+                className={withCompact('theme-toggle-knob inline-grid place-items-center h-4.5 w-4.5 sm:h-5 sm:w-5 rounded-full shadow-md transition-transform duration-300 ease-in-out bg-white translate-x-0 dark:bg-zinc-950 dark:translate-x-5 sm:dark:translate-x-6', 'max-[460px]:h-4 max-[460px]:w-4 max-[460px]:dark:translate-x-4.5')}
               >
                 {/* 해/달 아이콘을 겹쳐 두고 회전·크기·투명도로 교차 전환 (아이콘이 잠깐 사라지던 문제 해결) */}
                 <Sun className="[grid-area:1/1] w-2.5 h-2.5 sm:w-3 sm:h-3 text-zinc-950 stroke-[2.5] transition-[opacity,rotate,scale] duration-300 ease-in-out opacity-100 rotate-0 scale-100 dark:opacity-0 dark:-rotate-90 dark:scale-50" />

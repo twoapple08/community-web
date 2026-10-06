@@ -7,7 +7,7 @@
 # =====================================================================
 set -euo pipefail
 
-BRANCH="${1:-ccr-70abf057-unrbxz}"
+BRANCH="${1:-claude/charming-ptolemy-oe6qxa}"
 
 cd "$(git rev-parse --show-toplevel)"
 

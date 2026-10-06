@@ -826,11 +826,11 @@ export default function UserHubModal({
             )}
 
             {/* 메뉴 맨 아래: 크레딧 / 개인정보처리방침 */}
-            <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+            <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400">
               <button
                 type="button"
                 onClick={() => setCreditsOpen(true)}
-                className="inline-flex items-center gap-1 px-2 py-1.5 hover:text-zinc-700 dark:hover:text-zinc-300 transition"
+                className="inline-flex items-center gap-1 px-2 py-1.5 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
               >
                 <Info className="w-3.5 h-3.5" />
                 <span>크레딧</span>
@@ -839,7 +839,7 @@ export default function UserHubModal({
               <Link
                 href="/privacy"
                 onClick={onClose}
-                className="px-2 py-1.5 hover:text-zinc-700 dark:hover:text-zinc-300 transition"
+                className="px-2 py-1.5 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
               >
                 개인정보처리방침
               </Link>

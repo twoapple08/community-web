@@ -3,7 +3,7 @@
 > 사용법: 이 파일 전체를 새 AI 세션의 첫 메시지로 붙여넣거나, "저장소의 HANDOVER.md 를 먼저 읽어줘" 라고 요청.
 
 코드 저장소: twoapple08/community-web (GitHub) / 실서버: https://www.sfaclan.com
-현재 main 최신 커밋: b1c1ae6 이후 (작업 브랜치 ccr-70abf057-unrbxz 를 main 에 합쳐 배포한 상태)
+현재 main 최신 커밋: b1c1ae6 이후 (작업 브랜치 claude/charming-ptolemy-oe6qxa 를 main 에 합쳐 배포한 상태)
 
 ## 0. AI 작업 규칙 (반드시 지킬 것)
 - 바꾸라고 한 것 외에는 화면·동작이 눈으로 보기에 완전히 똑같아야 한다. 코드는 바뀌어도 되지만 디자인/배치/문구/동작은 그대로 둔다.
@@ -61,6 +61,7 @@ src/components/
   editor/EditorHelpPopup.tsx             ? 도구 설명
   UserHubModal.tsx      마이 프로필 (+ userhub/SettingsView, MyCommentsView, CreditsPopup)
   AdminReportModal.tsx + ReportReviewModal.tsx  신고 기록·심사
+  VideoThumb.tsx        목록용 동영상 첫 장면 미리보기 (재생 없음, 화면 근처에서만 로드)
   AdminModal, BlacklistModal, AdminReplyPopup, NoticeBanner, TermsModal, CustomPopup, CrownIcon, FreezeModal, ReportModal, FeedMedia
 src/lib/
   userProfile.ts   프로필 열기/닫기(pushState), 공개프로필·통계·아바타맵, 닉네임 변경, 사진 업로드, 설정 저장, 토스트 설정
@@ -70,7 +71,9 @@ src/lib/
   roles.ts, authUrl.ts, sanitizeHtml.ts, postRoute.ts, feedStore.ts, htmlText.ts, imageCompress.ts, clipboard.ts, koreanUtils.ts, videoUtils.ts
 supabase/
   sfaclan_update_2026-10-05.sql  지난 업데이트 (적용 완료)
-  sfaclan_update_2026-10-06.sql  이번 업데이트 (적용 완료, 여러 번 실행해도 안전)
+  sfaclan_update_2026-10-06.sql  지난 업데이트 (적용 완료, 여러 번 실행해도 안전)
+  sfaclan_update_2026-10-07_avatar.sql  새 가입자는 항상 기본 프로필 사진 (여러 번 실행해도 안전)
+  sfaclan_reset_avatars_once.sql        (1회용) 모든 유저 프로필 사진을 기본으로 되돌림
 deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 ```
 루트의 수많은 fix_*.sh, update_*.sh, project_codebase.txt 는 과거 기록이며 현재 동작에 쓰이지 않는다.
@@ -78,6 +81,8 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 ## 4. 주요 기능
 - 피드 2종: 클랜 피드(/clan, 댓글 없음, 공식/비공식·태그 필터, 공식글 삭제신청 → 관리자 심사)와 커뮤니티 피드(/community, 게시판 9종, 댓글).
 - 보기 모드 3종: 목록형·피드형·앨범형. localStorage 키 sfa_global_view_mode 로 두 피드가 같이 쓴다.
+  - 사진이 2장 이상이면 파란 +N, 동영상이 있으면 주황 배지(영상 아이콘 + 개수)를 목록형·앨범형에 표시한다.
+  - 대표 사진·포스터가 없는 동영상 글은 VideoThumb 로 첫 장면을 보여 준다 (재생 안 됨).
   - 본문 미리보기는 피드형에서만 보인다 (2줄, 내용이 없으면 숨김). 목록형·앨범형은 제목과 사진만 보인다.
 - 정렬: 최신순/인기순/오래된순. 한 페이지에 10~50개 표시. 게시글 주소는 피드별 번호(post_no)를 쓴다.
 - 프로필: 닉네임(목록·게시글·댓글)을 누르면 ?profile=ID 창이 뜨고, 뒤로가기로 닫힌다.
@@ -111,7 +116,12 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
   - [형광펜 상세 편집], 툴바 맨 오른쪽 ? 도구 설명, 이미지를 누르면 주황 점 8개로 크기 조절 (width 속성으로 저장).
 - 헤더
   - 관리자 그룹은 460px 미만에서 압축 배치되고, 360px 미만에서는 로고 대신 아이콘이 보인다. 320px 에서도 잘리지 않는다.
-  - 테마 토글은 CSS dark: 방식으로 동작하며 손잡이가 미끄러진다. 전환 중에는 html.theme-switching 이 붙는다.
+  - 테마 토글은 CSS dark: 방식으로 동작하며 손잡이가 미끄러진다.
+  - 전환은 View Transition(document.startViewTransition)으로 화면 전체를 한 번에 교차 전환한다 (전환 중 html.theme-vt, 손잡이는 view-transition-name 으로 따로 이동).
+    지원하지 않는 브라우저는 예전처럼 html.theme-switching 으로 요소별 색 전환을 한다.
+- 스크롤바: globals.css 에서 마우스 기기에만 둥근 zinc 색 스크롤바 적용 (--sb-thumb 등 변수, 다크/라이트 자동). 휴대폰은 기본 오버레이 스크롤바.
+- 공지 상세 창: 게시글 상세 창처럼 내용 전체를 펼치고 창(배경) 전체를 스크롤한다.
+- 프로필 사진: 새 가입자는 항상 기본 사진(사진 없음)으로 시작한다 (DB 트리거).
 - 기타
   - 알림: 프로필 빨간점 + 파란 토스트 + 마이 프로필 [알림]. Supabase Realtime 을 쓰고, 실패하면 60초마다 확인한다.
   - 건의사항, 이의제기, 사이트 얼리기, 공지(서명 기반 다시 보지 않기), 이용약관 첫 동의, 동영상 50MB, 임시보관.

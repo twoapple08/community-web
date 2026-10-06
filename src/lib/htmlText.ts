@@ -44,5 +44,18 @@ export const countImages = (html: string): number => {
   return matches ? matches.length : 0
 }
 
+export const countVideos = (html: string): number => {
+  if (!html) return 0
+  const matches = html.match(/<video[^>]+src=['"]([^'"]+)['"]/gi)
+  return matches ? matches.length : 0
+}
+
+/** 첫 번째 동영상 주소 (사진·포스터가 하나도 없는 글의 목록 미리보기용 → 첫 프레임만 보여 줌) */
+export const extractFirstVideo = (html: string): string | null => {
+  if (!html) return null
+  const match = html.match(/<video[^>]+src=['"]([^'"]+)['"]/i)
+  return match ? decodeEntities(match[1]) : null
+}
+
 /** 검색 비교용 정규화 (공백 제거 + 소문자) */
 export const normalizeForSearch = (text: string): string => (text || '').replace(/\s+/g, '').toLowerCase()

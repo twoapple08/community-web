@@ -40,7 +40,7 @@ export default function CreditsPopup({ isOpen, onClose }: CreditsPopupProps) {
         <div className="space-y-3.5">
           {CREDITS.map((item) => (
             <div key={item.label} className="space-y-0.5">
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-500">{item.label}</p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{item.label}</p>
               {item.values.map((value) => (
                 <p key={value} className="text-xs font-bold text-zinc-900 dark:text-white leading-relaxed">
                   {value}

@@ -19,14 +19,16 @@ import {
   ArrowLeftRight,
   Menu,
   Siren,
-  Check
+  Check,
+  Video as VideoIcon,
 } from 'lucide-react';
 import NoticeBanner from '@/components/NoticeBanner';
 import FeedMedia from '@/components/FeedMedia';
+import VideoThumb from '@/components/VideoThumb';
 import AdminReportModal from '@/components/AdminReportModal';
 import Avatar from '@/components/Avatar';
 import Link from 'next/link';
-import { extractFirstImage, extractPlainText, countImages, normalizeForSearch } from '@/lib/htmlText';
+import { extractFirstImage, extractPlainText, countImages, countVideos, extractFirstVideo, normalizeForSearch } from '@/lib/htmlText';
 import { fetchMyRole, fetchRoleMap } from '@/lib/roles';
 import { getPostPath } from '@/lib/postRoute';
 import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile';
@@ -65,6 +67,8 @@ interface Post {
   _plain: string;
   _thumb: string | null;
   _imageCount: number;
+  _videoCount: number;
+  _videoSrc: string | null;
   _searchTitle: string;
   _searchAuthor: string;
   _searchContent: string;
@@ -255,6 +259,8 @@ function CommunityFeedContent() {
           _plain: plain,
           _thumb: post.thumbnail_url || extractFirstImage(post.content),
           _imageCount: countImages(post.content),
+          _videoCount: countVideos(post.content),
+          _videoSrc: extractFirstVideo(post.content),
           _searchTitle: normalizeForSearch(post.title || ''),
           _searchAuthor: normalizeForSearch(nickname),
           _searchContent: normalizeForSearch(plain),
@@ -608,6 +614,7 @@ function CommunityFeedContent() {
               {paginatedPosts.map((post) => {
                 const thumbnail = post._thumb;
                 const imageCount = post._imageCount;
+                const videoCount = post._videoCount;
 
                 return (
                   <article
@@ -650,6 +657,13 @@ function CommunityFeedContent() {
                               <span>+{imageCount}</span>
                             </span>
                           )}
+
+                          {videoCount > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] font-medium text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 px-1.5 py-0.5 rounded border border-orange-200 dark:border-orange-900/50">
+                              <VideoIcon className="w-3.5 h-3.5" />
+                              <span>{videoCount}</span>
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -661,6 +675,10 @@ function CommunityFeedContent() {
                       ) : thumbnail ? (
                         <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800">
                           <img src={thumbnail} alt={post.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                        </div>
+                      ) : post._videoSrc ? (
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square shrink-0 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800">
+                          <VideoThumb src={post._videoSrc} />
                         </div>
                       ) : null}
                     </div>
@@ -720,9 +738,14 @@ function CommunityFeedContent() {
                     </div>
 
                     {/* 세로 1.7배 이상 사진 3:4 자동 크롭 FeedMedia */}
-                    {thumbnail && !post.is_preview_hidden && (
+                    {!post.is_preview_hidden && (thumbnail ? (
                       <FeedMedia src={thumbnail} alt={post.title} />
-                    )}
+                    ) : post._videoSrc ? (
+                      // 사진이 없는 동영상 글: 재생 없이 첫 장면만 미리보기
+                      <div className="w-full aspect-video overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl">
+                        <VideoThumb src={post._videoSrc} />
+                      </div>
+                    ) : null)}
 
                     {/* 하단 액션 바 (좋아요 + 댓글 수) */}
                     <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs text-zinc-500">
@@ -749,6 +772,7 @@ function CommunityFeedContent() {
               {paginatedPosts.map((post) => {
                 const thumbnail = post.is_preview_hidden ? null : post._thumb;
                 const imageCount = post._imageCount;
+                const videoCount = post._videoCount;
 
                 return (
                   <div
@@ -764,15 +788,27 @@ function CommunityFeedContent() {
                         </div>
                       ) : thumbnail ? (
                         <img src={thumbnail} alt={post.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      ) : post._videoSrc ? (
+                        <VideoThumb src={post._videoSrc} className="group-hover:scale-105 transition duration-300" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs">
                           <ImageIcon className="w-8 h-8 stroke-1 text-zinc-400" />
                         </div>
                       )}
 
-                      {imageCount > 1 && !post.is_preview_hidden && (
-                        <span className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
-                          +{imageCount}
+                      {!post.is_preview_hidden && (imageCount > 1 || videoCount > 0) && (
+                        <span className="absolute top-2 right-2 flex items-center gap-1">
+                          {imageCount > 1 && (
+                            <span className="bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
+                              +{imageCount}
+                            </span>
+                          )}
+                          {videoCount > 0 && (
+                            <span className="flex items-center gap-0.5 bg-orange-500/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded backdrop-blur-sm">
+                              <VideoIcon className="w-3 h-3" />
+                              {videoCount}
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
