@@ -707,11 +707,16 @@ function CommunityFeedContent() {
                       )}
                     </div>
 
-                    {/* 제목 (본문 미리보기 글자는 표시하지 않음) */}
+                    {/* 제목 + 본문 앞부분 살짝 미리보기 (피드형에서만, 내용이 있을 때만) */}
                     <div className="space-y-1">
                       <h2 className="text-lg sm:text-xl md:text-2xl font-black text-zinc-900 dark:text-white tracking-tight">
                         {post.title}
                       </h2>
+                      {post._plain && (
+                        <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed">
+                          {post._plain}
+                        </p>
+                      )}
                     </div>
 
                     {/* 세로 1.7배 이상 사진 3:4 자동 크롭 FeedMedia */}
