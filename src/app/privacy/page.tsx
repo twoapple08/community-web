@@ -65,7 +65,7 @@ export default function PrivacyPolicyPage() {
     <div className="w-full max-w-3xl mx-auto px-4 py-8">
       <Link
         href="/community"
-        className="inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-700 dark:hover:text-white transition"
+        className="inline-flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white transition"
       >
         <ArrowLeft className="w-4 h-4 shrink-0" />
         <span>피드로 돌아가기</span>

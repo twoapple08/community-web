@@ -49,7 +49,7 @@ const loadEditor = () => import('./Editor');
 const Editor = dynamic(loadEditor, {
   ssr: false,
   loading: () => (
-    <div className="min-h-[260px] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 flex items-center justify-center text-xs text-zinc-400">
+    <div className="min-h-[260px] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 flex items-center justify-center text-xs text-zinc-500 dark:text-zinc-400">
       에디터를 불러오는 중...
     </div>
   ),
@@ -282,9 +282,9 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
         if (loadedViews !== null) {
           const viewedId = postData.id;
           recordPostView(viewedId).then((count) => {
-            if (cancelled || count === null) return;
-            setViewCount(count);
-            emitPostsChanged({ kind: 'patch', id: viewedId, patch: { view_count: count } });
+            if (count !== null && !cancelled) setViewCount(count);
+            // 창을 먼저 닫았어도 목록의 숫자는 맞춰 줌 (목록은 창보다 오래 살아 있음)
+            emitPostsChanged({ kind: 'patch', id: viewedId, patch: { view_count: count ?? loadedViews } });
           });
         }
 
@@ -716,16 +716,16 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
             )}
           </div>
 
-          <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-full shrink-0">
+          <button onClick={onClose} className="p-1.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-full shrink-0">
             <X className="w-6 h-6" />
           </button>
         </div>
 
         <div className="px-4 py-5 sm:px-8 space-y-5">
           {loading ? (
-            <div className="py-20 text-center text-zinc-400 font-medium text-sm">게시글 데이터를 불러오는 중...</div>
+            <div className="py-20 text-center text-zinc-500 dark:text-zinc-400 font-medium text-sm">게시글 데이터를 불러오는 중...</div>
           ) : !visiblePost ? (
-            <div className="py-20 text-center text-zinc-400 font-medium text-sm">
+            <div className="py-20 text-center text-zinc-500 dark:text-zinc-400 font-medium text-sm">
               {post?.report_review_status === 'pending' && !isAdmin
                 ? '신고가 누적되어 관리자가 검토 중인 게시글입니다.'
                 : '삭제되었거나 존재하지 않는 게시글입니다.'}
@@ -762,7 +762,7 @@ export default function PostModal({ postId, feedType, onClose, onDeleted }: Post
                   )}
                   {visiblePost.title}
                 </h2>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-zinc-400">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
                   <button
                     type="button"
                     onClick={() => openUserProfile(visiblePost.author_id)}

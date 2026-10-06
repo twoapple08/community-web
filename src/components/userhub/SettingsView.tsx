@@ -284,7 +284,7 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
   return (
     <div className="p-5 max-h-[70vh] overflow-y-auto overscroll-contain">
       {loading || !settings ? (
-        <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+        <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400">
           <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
           <span className="text-xs">설정을 불러오는 중...</span>
         </div>
@@ -400,7 +400,7 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
             </div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 min-w-0">{bioMessage}</p>
-              <span className="text-[10px] text-zinc-400 dark:text-zinc-500 shrink-0 tabular-nums">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-500 shrink-0 tabular-nums">
                 {bio.length}/{BIO_MAX_LENGTH}
               </span>
             </div>

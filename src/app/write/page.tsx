@@ -349,7 +349,7 @@ function WriteContent() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <Link
           href={feedType === 'community' ? '/community' : '/clan'}
-          className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-700 dark:hover:text-white transition"
+          className="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white transition"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>피드로 돌아가기</span>
@@ -359,14 +359,14 @@ function WriteContent() {
           <button
             type="button"
             onClick={() => setFeedType('community')}
-            className={`px-3 py-1.5 rounded-none transition ${feedType === 'community' ? 'bg-blue-600 text-white' : 'text-zinc-400'}`}
+            className={`px-3 py-1.5 rounded-none transition ${feedType === 'community' ? 'bg-blue-600 text-white' : 'text-zinc-500 dark:text-zinc-400'}`}
           >
             커뮤니티 피드
           </button>
           <button
             type="button"
             onClick={() => setFeedType('clan')}
-            className={`px-3 py-1.5 rounded-none transition ${feedType === 'clan' ? 'bg-emerald-600 text-white' : 'text-zinc-400'}`}
+            className={`px-3 py-1.5 rounded-none transition ${feedType === 'clan' ? 'bg-emerald-600 text-white' : 'text-zinc-500 dark:text-zinc-400'}`}
           >
             클랜 피드
           </button>
@@ -390,7 +390,7 @@ function WriteContent() {
             <button
               type="button"
               onClick={handleDeleteDraft}
-              className="p-1 text-zinc-400 hover:text-red-400 transition"
+              className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-red-400 transition"
               title="임시보관 삭제"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -661,7 +661,7 @@ function WriteContent() {
 
 export default function WritePage() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-zinc-400">작성 에디터를 불러오는 중...</div>}>
+    <Suspense fallback={<div className="py-20 text-center text-zinc-500 dark:text-zinc-400">작성 에디터를 불러오는 중...</div>}>
       <WriteContent />
     </Suspense>
   )

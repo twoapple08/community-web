@@ -517,14 +517,14 @@ export default function ReportReviewModal({ target, onClose, onChanged, showAler
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-none shrink-0"
+            className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-none shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {!details ? (
-          <div className="py-12 flex items-center justify-center gap-2 text-xs text-zinc-400">
+          <div className="py-12 flex items-center justify-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span>신고 내용을 불러오는 중...</span>
           </div>
@@ -577,7 +577,7 @@ export default function ReportReviewModal({ target, onClose, onChanged, showAler
                       {comment.content}
                     </p>
                   ) : (
-                    <p className="text-xs text-zinc-400">(글 내용 없음)</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">(글 내용 없음)</p>
                   )}
                   {comment.image_url && (
                     <img
@@ -610,7 +610,7 @@ export default function ReportReviewModal({ target, onClose, onChanged, showAler
                       <div className="flex items-start justify-between gap-2">
                         <span className="font-bold text-zinc-900 dark:text-white break-words min-w-0">{r.reporter_nickname}</span>
                         {r.created_at && (
-                          <span className="text-[10px] text-zinc-400 shrink-0">{formatDate(r.created_at)}</span>
+                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">{formatDate(r.created_at)}</span>
                         )}
                       </div>
                       <p className="text-zinc-700 dark:text-zinc-300 break-words">

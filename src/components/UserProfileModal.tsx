@@ -97,9 +97,9 @@ function StatTile({ label, value, loading }: { label: string; value: number | nu
     <div className="min-w-0 flex flex-col items-center justify-center gap-1 px-1.5 py-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-800 text-center">
       <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 leading-tight">{label}</span>
       {loading ? (
-        <Loader2 className="w-4 h-4 my-0.5 animate-spin text-zinc-400 dark:text-zinc-500" />
+        <Loader2 className="w-4 h-4 my-0.5 animate-spin text-zinc-500 dark:text-zinc-500" />
       ) : value === null || value === undefined ? (
-        <span className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 dark:text-zinc-500 py-0.5">
+        <span className="flex items-center gap-1 text-[11px] font-bold text-zinc-500 dark:text-zinc-500 py-0.5">
           <Lock className="w-3 h-3 shrink-0" />
           <span>비공개</span>
         </span>
@@ -249,14 +249,14 @@ export default function UserProfileModal({ userId, onClose }: UserProfileModalPr
             type="button"
             onClick={onClose}
             aria-label="닫기"
-            className="p-1.5 -mr-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition"
+            className="p-1.5 -mr-1.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {status === 'loading' && (
-          <div className="py-16 flex flex-col items-center justify-center gap-2 text-zinc-400 dark:text-zinc-500">
+          <div className="py-16 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-500">
             <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
             <span className="text-xs">프로필을 불러오는 중...</span>
           </div>
@@ -322,7 +322,7 @@ export default function UserProfileModal({ userId, onClose }: UserProfileModalPr
               </div>
 
               {postsLoading ? (
-                <div className="py-10 flex flex-col items-center justify-center gap-2 text-zinc-400 dark:text-zinc-500">
+                <div className="py-10 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-500">
                   <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
                   <span className="text-xs">게시글 목록을 불러오는 중...</span>
                 </div>
@@ -354,7 +354,7 @@ export default function UserProfileModal({ userId, onClose }: UserProfileModalPr
                               {post.title || '제목 없음'}
                             </span>
                           </span>
-                          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
+                          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-zinc-500 dark:text-zinc-500 mt-1">
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3.5 h-3.5 shrink-0" />
                               {new Date(post.created_at).toLocaleDateString()}

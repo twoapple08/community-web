@@ -22,7 +22,7 @@ export default function LinkConfirmPopup({ url, onClose }: LinkConfirmPopupProps
     >
       <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border rounded-none p-6 text-center space-y-4" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-base font-bold">외부 링크 접속 확인</h3>
-        <p className="text-xs text-zinc-400">이 링크로 이동하시겠습니까?</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">이 링크로 이동하시겠습니까?</p>
         <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-none text-xs font-mono break-all text-left max-h-24 overflow-y-auto">
           {url}
         </div>

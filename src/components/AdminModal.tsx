@@ -170,7 +170,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full transition duration-300"
+            className="p-1.5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-full transition duration-300"
           >
             <X className="w-5 h-5" />
           </button>
@@ -183,7 +183,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                 유저 닉네임 검색 및 선택
               </label>
               <div className="relative mb-2">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-400" />
                 <input
                   type="text"
                   value={searchNickname}
@@ -195,7 +195,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
 
               <div className="max-h-32 overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 divide-y divide-zinc-100 dark:divide-zinc-800">
                 {filteredProfiles.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-zinc-400">일치하는 유저가 없습니다.</div>
+                  <div className="p-3 text-center text-xs text-zinc-500 dark:text-zinc-400">일치하는 유저가 없습니다.</div>
                 ) : (
                   filteredProfiles.map((p) => {
                     const isSelected = selectedUserId === p.id
@@ -231,7 +231,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                   <span className="truncate">
                     {targetRole === 'super_admin' ? '최고관리자' : '일반관리자'}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0 ml-1" />
+                  <ChevronDown className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0 ml-1" />
                 </button>
 
                 {isRoleDropdownOpen && (
@@ -289,7 +289,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
               현재 관리자 명단 ({admins.length}명)
             </h3>
             {fetching ? (
-              <div className="py-6 text-center text-xs text-zinc-400">명단을 불러오는 중...</div>
+              <div className="py-6 text-center text-xs text-zinc-500 dark:text-zinc-400">명단을 불러오는 중...</div>
             ) : (
               <div className="space-y-2">
                 {admins.map((admin) => {
@@ -310,7 +310,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                           <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">
                             {admin.nickname || admin.email}
                           </p>
-                          <p className="text-[10px] text-zinc-400 truncate">
+                          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate">
                             {admin.role === 'creator'
                               ? '사이트 제작자'
                               : admin.role === 'super_admin'
@@ -324,7 +324,7 @@ export default function AdminModal({ isOpen, onClose, currentUserRole }: AdminMo
                         <button
                           type="button"
                           onClick={() => setDeletingAdmin(admin)}
-                          className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition duration-300 shrink-0"
+                          className="p-1.5 text-zinc-500 dark:text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition duration-300 shrink-0"
                           title="권한 해제"
                         >
                           <UserX className="w-4 h-4" />

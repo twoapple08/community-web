@@ -236,7 +236,7 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1 min-w-0">{renderBadges(item)}</div>
-          <span className="text-[10px] text-zinc-400 shrink-0">{new Date(item.createdAt).toLocaleString()}</span>
+          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">{new Date(item.createdAt).toLocaleString()}</span>
         </div>
 
         <p className="font-semibold text-zinc-900 dark:text-zinc-100 leading-relaxed break-words">{item.text}</p>
@@ -310,7 +310,7 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
             <button
               type="button"
               onClick={handleClose}
-              className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-none"
+              className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-none"
             >
               <X className="w-5 h-5" />
             </button>
@@ -319,7 +319,7 @@ export default function AdminReportModal({ isOpen, onClose, onPostRestored }: Ad
 
         <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
           {loading ? (
-            <div className="py-12 text-center text-xs text-zinc-400">알림 기록을 불러오는 중...</div>
+            <div className="py-12 text-center text-xs text-zinc-500 dark:text-zinc-400">알림 기록을 불러오는 중...</div>
           ) : notifications.length === 0 ? (
             <div className="py-12 text-center text-xs text-zinc-500 font-semibold">
               접수된 신고 및 삭제 알림이 없습니다.

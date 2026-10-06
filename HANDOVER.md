@@ -62,6 +62,7 @@ src/components/
   UserHubModal.tsx      마이 프로필 (+ userhub/SettingsView, MyCommentsView, CreditsPopup)
   AdminReportModal.tsx + ReportReviewModal.tsx  신고 기록·심사
   VideoThumb.tsx        목록용 동영상 첫 장면 미리보기 (재생 없음, 화면 근처에서만 로드)
+  (lib) postViews.ts    조회 기록(recordPostView) + 조회수 짧게 표시(formatViewCount)
   AdminModal, BlacklistModal, AdminReplyPopup, NoticeBanner, TermsModal, CustomPopup, CrownIcon, FreezeModal, ReportModal, FeedMedia
 src/lib/
   userProfile.ts   프로필 열기/닫기(pushState), 공개프로필·통계·아바타맵, 닉네임 변경, 사진 업로드, 설정 저장, 토스트 설정
@@ -74,6 +75,7 @@ supabase/
   sfaclan_update_2026-10-06.sql  지난 업데이트 (적용 완료, 여러 번 실행해도 안전)
   sfaclan_update_2026-10-07_avatar.sql  새 가입자는 항상 기본 프로필 사진 (여러 번 실행해도 안전)
   sfaclan_reset_avatars_once.sql        (1회용) 모든 유저 프로필 사진을 기본으로 되돌림
+  sfaclan_update_2026-10-08_views.sql   게시글 조회수 (여러 번 실행해도 안전)
 deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 ```
 루트의 수많은 fix_*.sh, update_*.sh, project_codebase.txt 는 과거 기록이며 현재 동작에 쓰이지 않는다.
@@ -84,6 +86,10 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
   - 사진이 2장 이상이면 파란 +N, 동영상이 있으면 주황 배지(영상 아이콘 + 개수)를 목록형·앨범형에 표시한다.
   - 대표 사진·포스터가 없는 동영상 글은 VideoThumb 로 첫 장면을 보여 준다 (재생 안 됨).
   - 본문 미리보기는 피드형에서만 보인다 (2줄, 내용이 없으면 숨김). 목록형·앨범형은 제목과 사진만 보인다.
+- 조회수: posts.view_count. 같은 사람(회원은 계정, 비회원은 브라우저 임의 식별값)·같은 글은 하루(KST) 1번만 셈.
+  - sfa_record_post_view RPC 로만 올라가고(직접 수정은 트리거가 막음), 삭제·삭제 신청 글은 세지 않음, 비회원은 글당 하루 300회 상한.
+  - 조회 기록(post_views)은 이틀 뒤 삭제 (pg_cron 매일 00:10 KST, 없으면 RPC 안에서 가끔 정리). 인기순 정렬에는 영향 없음.
+  - 표시: 게시글 창 머리(조회 N), 목록형 메타 줄, 피드형 하단 오른쪽, 앨범형 사진 왼쪽 아래. SQL 미적용이면 표시 안 함.
 - 정렬: 최신순/인기순/오래된순. 한 페이지에 10~50개 표시. 게시글 주소는 피드별 번호(post_no)를 쓴다.
 - 프로필: 닉네임(목록·게시글·댓글)을 누르면 ?profile=ID 창이 뜨고, 뒤로가기로 닫힌다.
   - 닉네임, 왕관, 한 줄 소개, 통계(쓴 글 / 누른 좋아요 / 댓글 수, 비공개 설정 시 "비공개"), 작성한 게시글 목록을 보여준다.
@@ -113,12 +119,15 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
     - 주황 세로 슬라이더(불투명도, 두께, 범위, 강도)로 수치를 조절한다.
     - HEX 입력, 즐겨찾기(툴바의 기본 색 자리에 표시), 다크/라이트 배경 미리보기, 초기화·취소·적용 버튼이 있다.
   - 테두리나 글로우만 넣고 글씨 색을 건드리지 않으면 글씨 색은 그대로다.
+  - 글씨 색 초기화: 툴바와 색 편집창의 [기본색] → 지정한 글씨 색만 지움(테두리·글로우 유지) → 다크/라이트에 따라 바뀌는 기본 글자색.
+    색 편집창 아래 [전체 초기화]는 글씨 색·테두리·글로우를 모두 지움. 표에서 여러 칸을 선택해도 모든 칸에 적용됨.
   - 색 편집창은 '직접 바꾼 항목만' 적용한다 (colorUtils 의 TextStylePatch / applyTextStylePatch). 여러 색·효과가 섞인 선택은 글자마다 원래 값을 유지하고,
     탭 점이 무지개로 표시되며 안내 문구가 뜬다. 미리보기도 글자마다 실제 적용 결과를 보여 준다. 형광펜도 색을 바꿨을 때만 섞인 형광펜을 덮어쓴다.
   - 서식 읽기: 한 span 에 여러 스타일(색+크기+글꼴+배경색)이 있어도 모두 읽음 (parse 규칙 consuming: false). 형광펜은 priority 200 으로 바깥에 그려 조각나지 않음.
   - 밑줄은 CustomUnderline 하나만 쓴다 (StarterKit underline 끔, Ctrl+U 도 같은 밑줄). 들여쓰기/내어쓰기는 문단 indent 속성(24px 단위, 최대 8단계).
   - [형광펜 상세 편집], 툴바 맨 오른쪽 ? 도구 설명, 이미지를 누르면 주황 점 8개로 크기 조절 (width 속성으로 저장).
 - 헤더
+  - 왼쪽 위 로고는 public/logo-community.webp(.png) 이미지 (배경 투명, 높이 h-11 / sm:h-13). 360px 미만 관리자 압축 배치에서는 사이트 아이콘.
   - 관리자 그룹은 460px 미만에서 압축 배치되고, 360px 미만에서는 로고 대신 아이콘이 보인다. 320px 에서도 잘리지 않는다.
   - 테마 토글은 CSS dark: 방식으로 동작하며 손잡이가 미끄러진다.
   - 전환은 View Transition(document.startViewTransition)으로 화면 전체를 한 번에 교차 전환한다 (전환 중 html.theme-vt, 손잡이는 view-transition-name 으로 따로 이동).
@@ -129,6 +138,8 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 - 기타
   - 알림: 프로필 빨간점 + 파란 토스트 + 마이 프로필 [알림]. Supabase Realtime 을 쓰고, 실패하면 60초마다 확인한다.
   - 건의사항, 이의제기, 사이트 얼리기, 공지(서명 기반 다시 보지 않기), 이용약관 첫 동의, 동영상 50MB, 임시보관.
+- 회색 보조 글씨(날짜·메타 정보 등): 라이트 모드는 text-zinc-500, 다크 모드는 dark:text-zinc-400 (라이트에서 흐리던 문제로 한 단계 진하게).
+  새 UI 에 회색 글씨를 쓸 때도 "text-zinc-500 dark:text-zinc-400" 조합을 쓴다. 큰 장식용 빈 아이콘·기본 프로필 아이콘만 zinc-400 유지.
 - 블랙리스트 관련 UI: 라이트 모드에서는 흰 배경과 검은 테두리, 다크 모드에서는 검정으로 표시된다.
 
 ## 5. 데이터베이스 (Supabase) – 2026-10-06 SQL 로 추가된 것

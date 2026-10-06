@@ -559,7 +559,7 @@ export default function UserHubModal({
               <button
                 type="button"
                 onClick={() => setCurrentView('menu')}
-                className="p-1 -ml-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg transition"
+                className="p-1 -ml-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg transition"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -576,7 +576,7 @@ export default function UserHubModal({
               {currentView === 'suggestion_inbox' && '제작자 건의함'}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
+          <button onClick={onClose} className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -608,9 +608,9 @@ export default function UserHubModal({
                     {userRole === 'creator' ? '제작자' : userRole === 'super_admin' ? '최고관리자' : userRole === 'admin' ? '일반관리자' : '일반회원'}
                   </span>
                 </div>
-                <span className="block text-xs text-zinc-400 truncate mt-0.5">{userEmail}</span>
+                <span className="block text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">{userEmail}</span>
               </div>
-              <span className="shrink-0 flex items-center gap-0.5 text-[10px] font-semibold text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition">
+              <span className="shrink-0 flex items-center gap-0.5 text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition">
                 {/* 아주 좁은 화면(360px 미만)에서는 닉네임 공간을 위해 화살표만 표시 */}
                 <span className="hidden min-[360px]:inline whitespace-nowrap">프로필 보기</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -639,10 +639,10 @@ export default function UserHubModal({
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-zinc-400">내 게시글·댓글에 달린 좋아요와 댓글 소식을 확인합니다.</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">내 게시글·댓글에 달린 좋아요와 댓글 소식을 확인합니다.</p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
               </button>
 
               <button
@@ -656,10 +656,10 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">개인 설정</h3>
-                    <p className="text-[11px] text-zinc-400">프로필 사진, 닉네임, 공개 범위, 알림을 설정합니다.</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">프로필 사진, 닉네임, 공개 범위, 알림을 설정합니다.</p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
               </button>
 
               {!isCreator && (
@@ -725,10 +725,10 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">내가 쓴 게시글</h3>
-                    <p className="text-[11px] text-zinc-400">내가 작성한 모든 글을 모아봅니다.</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">내가 작성한 모든 글을 모아봅니다.</p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
               </button>
 
               <button
@@ -742,10 +742,10 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">내가 좋아요 누른 게시글</h3>
-                    <p className="text-[11px] text-zinc-400">좋아요를 누른 관심 게시글을 확인합니다.</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">좋아요를 누른 관심 게시글을 확인합니다.</p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
               </button>
 
               <button
@@ -759,10 +759,10 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">내가 쓴 댓글</h3>
-                    <p className="text-[11px] text-zinc-400">내가 단 댓글과 답글을 모아봅니다.</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">내가 단 댓글과 답글을 모아봅니다.</p>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-400" />
+                <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
               </button>
 
               {isCreatorOrSuperAdmin && (
@@ -787,10 +787,10 @@ export default function UserHubModal({
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-zinc-400">블랙리스트 유저의 이의제기 및 문의를 처리합니다.</p>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">블랙리스트 유저의 이의제기 및 문의를 처리합니다.</p>
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-zinc-400" />
+                  <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                 </button>
               )}
             </div>
@@ -866,7 +866,7 @@ export default function UserHubModal({
                     className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition ${
                       suggestionCategory === cat
                         ? 'bg-yellow-400 text-black border-yellow-400'
-                        : 'border-zinc-300 dark:border-zinc-700 text-zinc-400'
+                        : 'border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
                     }`}
                   >
                     {cat}
@@ -876,7 +876,7 @@ export default function UserHubModal({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1">제목</label>
+              <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">제목</label>
               <input
                 type="text"
                 value={suggestionTitle}
@@ -887,7 +887,7 @@ export default function UserHubModal({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1">건의 내용</label>
+              <label className="block text-xs font-bold text-zinc-500 dark:text-zinc-400 mb-1">건의 내용</label>
               <textarea
                 value={suggestionContent}
                 onChange={(e) => setSuggestionContent(e.target.value)}
@@ -920,7 +920,7 @@ export default function UserHubModal({
         {currentView === 'suggestion_inbox' && (
           <div className="p-5 space-y-3">
             <div className="flex items-center justify-between pb-1">
-              <span className="text-xs font-bold text-zinc-400">
+              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
                 수신된 건의 ({suggestions.length}건)
               </span>
               <button
@@ -961,7 +961,7 @@ export default function UserHubModal({
                         <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-0.5">
+                    <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400 pt-0.5">
                       <span>작성자: {item.user_nickname}</span>
                       <span>{new Date(item.created_at).toLocaleDateString()}</span>
                     </div>
@@ -975,7 +975,7 @@ export default function UserHubModal({
         {currentView === 'notifications' && (
           <div className="p-5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
-              <span className="text-xs font-bold text-zinc-400">
+              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
                 받은 알림 ({notifications.length}건)
               </span>
               <div className="flex items-center gap-1.5">
@@ -1002,7 +1002,7 @@ export default function UserHubModal({
 
             <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
               {loadingNotifications ? (
-                <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400">
                   <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
                   <span className="text-xs">알림을 불러오는 중...</span>
                 </div>
@@ -1036,7 +1036,7 @@ export default function UserHubModal({
                       </div>
                       {!item.is_read && <span className="w-2 h-2 mt-1 rounded-full bg-red-600 shrink-0" />}
                     </div>
-                    <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-400 pt-0.5 pl-5">
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-zinc-500 dark:text-zinc-400 pt-0.5 pl-5">
                       <span className="truncate min-w-0">{item.post_title || '게시글'}</span>
                       <span className="shrink-0">{new Date(item.created_at).toLocaleString()}</span>
                     </div>
@@ -1050,12 +1050,12 @@ export default function UserHubModal({
         {(currentView === 'my_posts' || currentView === 'liked_posts') && (
           <div className="p-5">
             {loadingPosts ? (
-              <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+              <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400">
                 <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
                 <span className="text-xs">게시글 목록을 불러오는 중...</span>
               </div>
             ) : posts.length === 0 ? (
-              <div className="py-12 text-center text-xs text-zinc-400 space-y-1">
+              <div className="py-12 text-center text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
                 <p className="font-semibold text-zinc-500 dark:text-zinc-400">
                   {currentView === 'my_posts' ? '작성한 게시글이 없습니다.' : '좋아요를 누른 게시글이 없습니다.'}
                 </p>
@@ -1080,7 +1080,7 @@ export default function UserHubModal({
                           {post.title}
                         </h4>
                       </div>
-                      <div className="flex items-center gap-3 text-[10px] text-zinc-400 mt-1">
+                      <div className="flex items-center gap-3 text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5" />
                           {new Date(post.created_at).toLocaleDateString()}
@@ -1101,7 +1101,7 @@ export default function UserHubModal({
         {currentView === 'appeals' && (
           <div className="p-5 space-y-3">
             <div className="flex items-center justify-between pb-1">
-              <span className="text-xs font-bold text-zinc-400">
+              <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
                 수신된 메시지 ({appeals.length}건)
               </span>
               <button
@@ -1218,7 +1218,7 @@ export default function UserHubModal({
               <h3 className="text-sm font-black text-zinc-900 dark:text-white">
                 {selectedSuggestion.title}
               </h3>
-              <p className="text-[11px] text-zinc-400">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                 보낸이: {selectedSuggestion.user_nickname} ({selectedSuggestion.user_email || '이메일 없음'})
               </p>
             </div>

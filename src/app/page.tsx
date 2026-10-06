@@ -25,7 +25,7 @@ export default function RootPage() {
   }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black text-zinc-400 text-xs font-medium">
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black text-zinc-500 dark:text-zinc-400 text-xs font-medium">
       커뮤니티 피드로 이동 중...
     </div>
   )

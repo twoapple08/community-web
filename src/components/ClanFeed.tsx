@@ -475,7 +475,7 @@ function ClanFeedContent() {
 
       <div className="flex items-center gap-2 mb-3.5 min-w-0">
         <div className="relative flex-1 min-w-0">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-400" />
           <input
             type="text"
             value={searchQuery}
@@ -508,19 +508,19 @@ function ClanFeedContent() {
         <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-semibold">
           <button
             onClick={() => setOfficialFilter('all')}
-            className={`px-3 py-1 rounded-lg transition ${officialFilter === 'all' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+            className={`px-3 py-1 rounded-lg transition ${officialFilter === 'all' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
           >
             통합
           </button>
           <button
             onClick={() => setOfficialFilter('official')}
-            className={`px-3 py-1 rounded-lg transition ${officialFilter === 'official' ? 'bg-white dark:bg-zinc-900 text-emerald-500 shadow-sm' : 'text-zinc-400'}`}
+            className={`px-3 py-1 rounded-lg transition ${officialFilter === 'official' ? 'bg-white dark:bg-zinc-900 text-emerald-500 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
           >
             공식
           </button>
           <button
             onClick={() => setOfficialFilter('unofficial')}
-            className={`px-3 py-1 rounded-lg transition ${officialFilter === 'unofficial' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+            className={`px-3 py-1 rounded-lg transition ${officialFilter === 'unofficial' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
           >
             비공식
           </button>
@@ -564,7 +564,7 @@ function ClanFeedContent() {
                 </svg>
               )}
               <span>{viewMode === 'list' ? '목록형' : viewMode === 'album' ? '앨범형' : '피드형'}</span>
-              <ChevronDown className="w-3 h-3 text-zinc-400" />
+              <ChevronDown className="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
             </button>
 
             {isViewModeDropdownOpen && (
@@ -630,19 +630,19 @@ function ClanFeedContent() {
           <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-semibold">
             <button
               onClick={() => setSortType('latest')}
-              className={`px-3 py-1 rounded-lg transition ${sortType === 'latest' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+              className={`px-3 py-1 rounded-lg transition ${sortType === 'latest' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
             >
               최신순
             </button>
             <button
               onClick={() => setSortType('popular')}
-              className={`px-3 py-1 rounded-lg transition ${sortType === 'popular' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+              className={`px-3 py-1 rounded-lg transition ${sortType === 'popular' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
             >
               인기순
             </button>
             <button
               onClick={() => setSortType('oldest')}
-              className={`px-3 py-1 rounded-lg transition ${sortType === 'oldest' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-400'}`}
+              className={`px-3 py-1 rounded-lg transition ${sortType === 'oldest' ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
             >
               오래된순
             </button>
@@ -651,7 +651,7 @@ function ClanFeedContent() {
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-zinc-400">클랜 피드를 불러오는 중...</div>
+        <div className="py-20 text-center text-zinc-500 dark:text-zinc-400">클랜 피드를 불러오는 중...</div>
       ) : filteredPosts.length === 0 ? (
         <div className="py-20 text-center border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl">
           <p className="text-zinc-500">조건에 일치하는 클랜 게시글이 없습니다.</p>
@@ -719,7 +719,7 @@ function ClanFeedContent() {
                             <CrownIcon role={post.author_role} className="w-3.5 h-3.5 shrink-0" />
                             <span className="truncate group-hover/author:underline">{post.author_nickname}</span>
                           </button>
-                          <span className="flex items-center gap-1 text-zinc-400">
+                          <span className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                             <Calendar className="w-3.5 h-3.5" />
                             <span>{new Date(post.created_at).toLocaleDateString()}</span>
                           </span>
@@ -752,7 +752,7 @@ function ClanFeedContent() {
                       </div>
 
                       {post.is_preview_hidden ? (
-                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square shrink-0 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-400">
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 aspect-square shrink-0 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-zinc-500 dark:text-zinc-400">
                           <EyeOff className="w-5 h-5" />
                           <span className="text-[9px]">가림</span>
                         </div>
@@ -823,7 +823,7 @@ function ClanFeedContent() {
                           <span className="text-xs font-bold text-zinc-900 dark:text-white block truncate group-hover/author:underline">
                             {post.author_nickname}
                           </span>
-                          <span className="text-[10px] text-zinc-400">
+                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
                             {new Date(post.created_at).toLocaleDateString()}
                           </span>
                         </span>
@@ -907,7 +907,7 @@ function ClanFeedContent() {
                   >
                     <div className="aspect-square w-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden relative">
                       {post.is_preview_hidden ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400">
+                        <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 dark:text-zinc-400">
                           <EyeOff className="w-6 h-6" />
                           <span className="text-[10px]">가림</span>
                         </div>
@@ -955,7 +955,7 @@ function ClanFeedContent() {
                       <h3 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white line-clamp-1 group-hover:text-emerald-500 transition">
                         {post.title}
                       </h3>
-                      <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                      <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-500 dark:text-zinc-400 pt-1 border-t border-zinc-100 dark:border-zinc-800">
                         <button
                           type="button"
                           onClick={(e) => openAuthorProfile(e, post.author_id)}
@@ -979,7 +979,7 @@ function ClanFeedContent() {
       {/* 페이지네이션 */}
       {filteredPosts.length > 0 && (
         <div className="mt-8 pt-6 border-t border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 w-full">
-          <div className="text-xs text-zinc-400">전체 {filteredPosts.length}개</div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">전체 {filteredPosts.length}개</div>
 
           <div className="flex items-center gap-1">
             <button
@@ -1052,7 +1052,7 @@ function ClanFeedContent() {
                       }
                     }}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-xl border ${
-                      isSelected ? 'bg-emerald-600 text-white border-emerald-600' : 'border-zinc-200 dark:border-zinc-700 text-zinc-400'
+                      isSelected ? 'bg-emerald-600 text-white border-emerald-600' : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
                     }`}
                   >
                     #{tag}
@@ -1120,7 +1120,7 @@ function ClanFeedContent() {
 
 export default function ClanFeed() {
   return (
-    <Suspense fallback={<div className="py-20 text-center text-zinc-400">클랜 피드를 로드하는 중...</div>}>
+    <Suspense fallback={<div className="py-20 text-center text-zinc-500 dark:text-zinc-400">클랜 피드를 로드하는 중...</div>}>
       <ClanFeedContent />
     </Suspense>
   );

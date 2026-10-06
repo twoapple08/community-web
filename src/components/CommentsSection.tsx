@@ -600,7 +600,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
             type="button"
             onClick={() => setSortType('latest')}
             className={`px-1.5 py-0.5 rounded-none transition ${
-              sortType === 'latest' ? 'bg-white dark:bg-zinc-950 font-bold shadow-sm' : 'text-zinc-400'
+              sortType === 'latest' ? 'bg-white dark:bg-zinc-950 font-bold shadow-sm' : 'text-zinc-500 dark:text-zinc-400'
             }`}
           >
             최신순
@@ -609,7 +609,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
             type="button"
             onClick={() => setSortType('popular')}
             className={`px-1.5 py-0.5 rounded-none transition ${
-              sortType === 'popular' ? 'bg-white dark:bg-zinc-950 font-bold shadow-sm' : 'text-zinc-400'
+              sortType === 'popular' ? 'bg-white dark:bg-zinc-950 font-bold shadow-sm' : 'text-zinc-500 dark:text-zinc-400'
             }`}
           >
             인기순
@@ -672,9 +672,9 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
       {/* 댓글 및 대댓글 목록 */}
       <div className="space-y-2 pt-1">
         {loading ? (
-          <div className="py-4 text-center text-xs text-zinc-400">댓글을 불러오는 중...</div>
+          <div className="py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">댓글을 불러오는 중...</div>
         ) : rootComments.length === 0 ? (
-          <div className="py-4 text-center text-xs text-zinc-400">첫 댓글을 남겨보세요!</div>
+          <div className="py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">첫 댓글을 남겨보세요!</div>
         ) : (
           rootComments.map((comment) => {
             const isCommentAuthor = currentUserId && currentUserId === comment.author_id
@@ -719,11 +719,11 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                         <CrownIcon role={comment.author_role} className="w-3 h-3 shrink-0" />
                         <span className="text-[11px] sm:text-xs">{comment.author_nickname}</span>
                       </button>
-                      <span className="text-[10px] text-zinc-400 font-normal">
+                      <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-normal">
                         {new Date(comment.created_at).toLocaleDateString()}
                       </span>
                       {comment.edited_at && !showPlaceholder && (
-                        <span className="text-[10px] text-zinc-400 dark:text-zinc-400 font-normal">(수정됨)</span>
+                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-normal">(수정됨)</span>
                       )}
                       {isAdmin && renderReviewBadge(reviewStatus)}
                     </div>
@@ -739,7 +739,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                           }
                           setReportingCommentId(comment.id);
                         }}
-                          className="text-zinc-400 hover:text-rose-500 transition p-0.5"
+                          className="text-zinc-500 dark:text-zinc-400 hover:text-rose-500 transition p-0.5"
                           title="댓글 신고"
                         >
                           <Siren className="w-3 h-3" />
@@ -749,7 +749,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                         <button
                           type="button"
                           onClick={() => (isEditingThis ? cancelEdit() : startEdit(comment))}
-                          className={`transition p-0.5 ${isEditingThis ? 'text-blue-500' : 'text-zinc-400 hover:text-blue-500'}`}
+                          className={`transition p-0.5 ${isEditingThis ? 'text-blue-500' : 'text-zinc-500 dark:text-zinc-400 hover:text-blue-500'}`}
                           title="댓글 수정"
                         >
                           <Pencil className="w-3 h-3" />
@@ -759,7 +759,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                         <button
                           type="button"
                           onClick={() => setDeleteTarget({ id: comment.id, isReply: false })}
-                          className="text-zinc-400 hover:text-red-500 transition p-0.5"
+                          className="text-zinc-500 dark:text-zinc-400 hover:text-red-500 transition p-0.5"
                           title="댓글 삭제"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -769,7 +769,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                   </div>
 
                   {showPlaceholder ? (
-                    <p className="italic text-zinc-400 dark:text-zinc-400 leading-snug text-[11px] sm:text-xs">
+                    <p className="italic text-zinc-500 dark:text-zinc-400 leading-snug text-[11px] sm:text-xs">
                       {REVIEW_PLACEHOLDER[reviewStatus as string]}
                     </p>
                   ) : isEditingThis ? (
@@ -961,11 +961,11 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                                 <CrownIcon role={reply.author_role} className="w-2.5 h-2.5 shrink-0" />
                                 <span className="text-[11px]">{reply.author_nickname}</span>
                               </button>
-                              <span className="text-[9px] text-zinc-400 font-normal">
+                              <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-normal">
                                 {new Date(reply.created_at).toLocaleDateString()}
                               </span>
                               {reply.edited_at && !showReplyPlaceholder && (
-                                <span className="text-[9px] text-zinc-400 dark:text-zinc-400 font-normal">(수정됨)</span>
+                                <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-normal">(수정됨)</span>
                               )}
                               {isAdmin && renderReviewBadge(replyReviewStatus)}
                             </div>
@@ -981,7 +981,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                                   }
                                   setReportingCommentId(reply.id);
                                 }}
-                                  className="text-zinc-400 hover:text-rose-500 transition p-0.5"
+                                  className="text-zinc-500 dark:text-zinc-400 hover:text-rose-500 transition p-0.5"
                                   title="답글 신고"
                                 >
                                   <Siren className="w-2.5 h-2.5" />
@@ -991,7 +991,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                                 <button
                                   type="button"
                                   onClick={() => (isEditingReply ? cancelEdit() : startEdit(reply))}
-                                  className={`transition p-0.5 ${isEditingReply ? 'text-blue-500' : 'text-zinc-400 hover:text-blue-500'}`}
+                                  className={`transition p-0.5 ${isEditingReply ? 'text-blue-500' : 'text-zinc-500 dark:text-zinc-400 hover:text-blue-500'}`}
                                   title="답글 수정"
                                 >
                                   <Pencil className="w-2.5 h-2.5" />
@@ -1001,7 +1001,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                                 <button
                                   type="button"
                                   onClick={() => setDeleteTarget({ id: reply.id, isReply: true })}
-                                  className="text-zinc-400 hover:text-red-500 transition p-0.5"
+                                  className="text-zinc-500 dark:text-zinc-400 hover:text-red-500 transition p-0.5"
                                   title="답글 삭제"
                                 >
                                   <Trash2 className="w-2.5 h-2.5" />
@@ -1011,7 +1011,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                           </div>
 
                           {showReplyPlaceholder ? (
-                            <p className="italic text-zinc-400 dark:text-zinc-400 leading-snug pl-3 text-[11px]">
+                            <p className="italic text-zinc-500 dark:text-zinc-400 leading-snug pl-3 text-[11px]">
                               {REVIEW_PLACEHOLDER[replyReviewStatus as string]}
                             </p>
                           ) : isEditingReply ? (
@@ -1085,7 +1085,7 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
                 <Siren className="w-4 h-4" />
                 <h3 className="text-sm font-bold text-zinc-900 dark:text-white">댓글 / 답글 신고</h3>
               </div>
-              <button onClick={() => setReportingCommentId(null)} className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-white">
+              <button onClick={() => setReportingCommentId(null)} className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             </div>

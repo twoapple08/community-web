@@ -328,14 +328,24 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
   // ---------------------------------------------------------------
   // 글씨 색을 '기본색'으로 되돌린 상태면 HEX 칸은 비워 둠
   const hexValue = hexDraft ?? (activeKey === 'text' && textColorReset ? '' : currentHex)
-  const hexValid = hexDraft === null || HEX_RE.test(hexDraft.trim())
+  // '기본색' 상태(글씨 색 탭)는 HEX 칸이 비어 있는 것이 정상
+  const showsDefaultText = activeKey === 'text' && textColorReset
+  const hexValid = hexDraft === null || (showsDefaultText && hexDraft.trim() === '') || HEX_RE.test(hexDraft.trim())
 
-  /** 입력 중인 HEX 값 → 색 (잘못된 값이면 null) */
+  /**
+   * 입력 중인 HEX 값 → 색
+   * - 잘못된 값이면 null
+   * - 칸에 원래 보이던 값 그대로면 null (칸을 눌렀다 떼기만 해도 '색을 바꾼 것'으로 처리돼
+   *   여러 색이 섞인 글자가 한 색으로 덮어써지던 문제)
+   */
   const parseHexDraft = (): Pick<RGBA, 'r' | 'g' | 'b'> | null => {
     if (hexDraft === null) return null
     const raw = hexDraft.trim()
     if (!HEX_RE.test(raw)) return null
-    return hexToRgba(raw.startsWith('#') ? raw : `#${raw}`)
+    const rgb = hexToRgba(raw.startsWith('#') ? raw : `#${raw}`)
+    if (!rgb) return null
+    if (!showsDefaultText && rgbToHex(rgb).toUpperCase() === currentHex) return null
+    return rgb
   }
 
   const commitHex = () => {
@@ -357,12 +367,18 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
   // ---------------------------------------------------------------
   // 즐겨찾기
   // ---------------------------------------------------------------
-  const isFavorite = favorites.some((c) => isSameColor(c, activeCss))
+  // '기본색' 상태에는 고른 색이 없으므로 즐겨찾기 표시도 하지 않음
+  const isFavorite = !showsDefaultText && favorites.some((c) => isSameColor(c, activeCss))
   const showFavEditing = favEditing && favorites.length > 0
 
   const handleToggleFavorite = () => {
     // 입력 중인 HEX 값이 있으면 그 색을 기준으로 (모바일에서 입력칸 포커스가 남아 있는 경우)
     const draft = parseHexDraft()
+    if (!draft && showsDefaultText) {
+      // 기본색 상태에서는 즐겨찾기에 넣을 색이 없음 (숨어 있는 예전 색이 추가되던 문제)
+      commitHex()
+      return
+    }
     const color = draft ? toCss({ ...active, hsv: keepHue(draft, active.hsv) }) : activeCss
     commitHex()
     toggleFavoriteColor(favoriteKind, color)
@@ -746,9 +762,12 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
             </button>
           </div>
 
-          {showColorReset && textColorIsDefault && (
-            <p className="-mt-1 text-[11px] leading-snug text-zinc-600 dark:text-zinc-400">
-              기본색: 지정한 색 없이 다크 모드에서는 밝게, 라이트 모드에서는 어둡게 자동으로 바뀝니다.
+          {/* 안내 문구는 항상 같은 높이로 표시 (문구가 생겼다 사라지면 버튼이 밀려 '적용' 클릭이 빗나가던 문제) */}
+          {showColorReset && (
+            <p className="-mt-1 min-h-[2.75em] text-[11px] leading-snug text-zinc-600 dark:text-zinc-400">
+              {textColorIsDefault
+                ? '지금은 기본색입니다. 다크 모드에서는 밝게, 라이트 모드에서는 어둡게 자동으로 바뀝니다.'
+                : '기본색 버튼: 지정한 글씨 색을 지우고 다크/라이트 모드에 맞춰 바뀌는 색으로 되돌립니다.'}
             </p>
           )}
 
@@ -776,7 +795,7 @@ function ColorStudioPanel({ mode, mixed = {}, initialText, initialHighlight, pre
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {favorites.map((c, i) => {
-                  const selected = !showFavEditing && isSameColor(c, activeCss)
+                  const selected = !showFavEditing && !showsDefaultText && isSameColor(c, activeCss)
                   return (
                     <button
                       key={`${i}-${c}`}

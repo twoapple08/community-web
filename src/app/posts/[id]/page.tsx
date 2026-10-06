@@ -35,7 +35,7 @@ export default function LegacyPostRedirectPage() {
 
   if (!notFound) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-20 text-center text-zinc-400 dark:text-zinc-500">
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center text-zinc-500 dark:text-zinc-500">
         게시글 데이터를 로드 중입니다...
       </div>
     )

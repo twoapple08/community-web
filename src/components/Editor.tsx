@@ -1,7 +1,8 @@
 'use client'
 
 import { useEditor, EditorContent, Extension, Mark, Node, mergeAttributes } from '@tiptap/react'
-import type { EditorState, Transaction } from '@tiptap/pm/state'
+import { Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import StarterKit from '@tiptap/starter-kit'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { Table } from '@tiptap/extension-table'
@@ -267,6 +268,24 @@ const CustomHighlight = Mark.create({
   },
 })
 
+// 선택한 모든 구간의 글자 조각을 차례로 방문 (표에서 여러 칸을 선택하면 칸마다 구간이 따로 있음)
+const forEachSelectedText = (
+  doc: PMNode,
+  selection: Selection,
+  visit: (node: PMNode, start: number, end: number, pos: number) => void
+) => {
+  selection.ranges.forEach(({ $from, $to }) => {
+    const from = $from.pos
+    const to = $to.pos
+    doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isText) return
+      const start = Math.max(from, pos)
+      const end = Math.min(to, pos + node.nodeSize)
+      if (start < end) visit(node, start, end, pos)
+    })
+  })
+}
+
 // 선택 구간의 글자마다 기존 글씨 색/테두리/글로우에 '바꾼 항목만' 합쳐서 적용 (한 번의 되돌리기 단위)
 // → 여러 색이 섞인 글자에 테두리만 켜도 각 글자의 색이 그대로 유지됨
 // 선택이 없으면 커서에서 이어서 쓸 글자 서식(저장된 서식)에 적용
@@ -275,19 +294,14 @@ const textPatchCommand =
   ({ tr, state }: { tr: Transaction; state: EditorState }): boolean => {
     const type = state.schema.marks.customColor
     if (!type) return false
-    const { from, to, empty } = state.selection
-    if (empty) {
+    if (state.selection.empty) {
       const current = type.isInSet(state.storedMarks ?? state.selection.$from.marks())
       const next = applyTextStylePatch(current?.attrs, patch)
       tr.removeStoredMark(type)
       if (next.color || next.stroke || next.glow) tr.addStoredMark(type.create(next))
       return true
     }
-    state.doc.nodesBetween(from, to, (node, pos) => {
-      if (!node.isText) return
-      const start = Math.max(from, pos)
-      const end = Math.min(to, pos + node.nodeSize)
-      if (start >= end) return
+    forEachSelectedText(state.doc, state.selection, (node, start, end) => {
       const next = applyTextStylePatch(type.isInSet(node.marks)?.attrs, patch)
       if (!next.color && !next.stroke && !next.glow) tr.removeMark(start, end, type)
       else tr.addMark(start, end, type.create(next))
@@ -375,7 +389,8 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
   // 글자 색/형광펜 상세 편집 팝업 + 열 때의 선택 범위 (팝업으로 포커스가 옮겨가도 원래 선택에 적용)
   const [colorStudio, setColorStudio] = useState<ColorStudioState | null>(null)
-  const studioSelectionRef = useRef<{ from: number; to: number } | null>(null)
+  // 색 편집창을 열 때의 선택 (표의 여러 칸 선택도 그대로 되돌릴 수 있게 Selection 형태로 보관)
+  const studioSelectionRef = useRef<{ json: ReturnType<Selection['toJSON']>; from: number; to: number; empty: boolean } | null>(null)
   const favoriteTextColors = useFavoriteColors('text')
   const favoriteHighlightColors = useFavoriteColors('highlight')
 
@@ -639,14 +654,17 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
   // 선택한 글자들의 글씨 색/테두리/글로우/형광펜을 모아, 처음 값과 '여러 값이 섞였는지'를 알아냄
   // (editor.getAttributes 는 여러 값 중 하나만 돌려줘서, 섞인 선택에서 그 값 하나로 전부 덮어쓰던 원인)
-  const inspectSelectionStyles = (from: number, to: number) => {
-    const { doc, schema } = editor.state
+  const inspectSelectionStyles = (selection: Selection) => {
+    const { doc, schema, storedMarks } = editor.state
     const colorType = schema.marks.customColor
     const highlightType = schema.marks.customHighlight
-    if (from === to || !colorType || !highlightType) {
+    if (selection.empty || !colorType || !highlightType) {
+      // 커서만 있을 때: 이어서 쓸 글자 서식 기준 (툴바 '기본색'으로 지운 색이 다시 보이지 않게
+      // editor.getAttributes 대신 저장된 서식 → 커서 위치 서식 순으로 확인)
+      const cursorMarks = storedMarks ?? selection.$from.marks()
       return {
-        initialText: markAttrsToTextStyle(editor.getAttributes('customColor')),
-        initialHighlight: (editor.getAttributes('customHighlight').color as string | null) ?? null,
+        initialText: markAttrsToTextStyle(colorType?.isInSet(cursorMarks)?.attrs),
+        initialHighlight: (highlightType?.isInSet(cursorMarks)?.attrs.color as string | null) ?? null,
         mixed: {},
         segments: [] as ColorStudioPreviewSegment[],
       }
@@ -657,11 +675,10 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     // 미리보기용: 선택 앞부분 글자를 원래 색/효과와 함께 (적용 결과를 글자마다 정확히 보여 줌)
     const segments: ColorStudioPreviewSegment[] = []
     let segmentChars = 0
-    doc.nodesBetween(from, to, (node, pos) => {
-      if (!node.isText) return
+    forEachSelectedText(doc, selection, (node, start, end, pos) => {
       const rawAttrs = colorType.isInSet(node.marks)?.attrs
       if (segmentChars < STUDIO_PREVIEW_MAX_CHARS) {
-        const text = (node.text ?? '').slice(Math.max(0, from - pos), Math.max(0, to - pos))
+        const text = (node.text ?? '').slice(start - pos, end - pos)
         const chars = Array.from(text).slice(0, STUDIO_PREVIEW_MAX_CHARS - segmentChars)
         if (chars.length > 0) {
           segmentChars += chars.length
@@ -700,10 +717,14 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
   // 글자 색 / 형광펜 상세 편집 팝업 열기
   const openColorStudio = (mode: ColorStudioMode) => {
-    const { from, to } = editor.state.selection
-    studioSelectionRef.current = { from, to }
-    const selectedText = editor.state.doc.textBetween(from, to, ' ').trim()
-    const { segments, ...styles } = inspectSelectionStyles(from, to)
+    const { selection, doc } = editor.state
+    const { from, to, empty } = selection
+    studioSelectionRef.current = { json: selection.toJSON(), from, to, empty }
+    const selectedText = selection.ranges
+      .map(({ $from, $to }) => doc.textBetween($from.pos, $to.pos, ' '))
+      .join(' ')
+      .trim()
+    const { segments, ...styles } = inspectSelectionStyles(selection)
     setColorStudio({
       mode,
       ...styles,
@@ -729,8 +750,18 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
     const saved = studioSelectionRef.current
     const chain = editor.chain().focus()
     if (!saved) return chain
-    const max = editor.state.doc.content.size
-    return chain.setTextSelection({ from: Math.min(saved.from, max), to: Math.min(saved.to, max) })
+    return chain.command(({ tr }) => {
+      let target: Selection
+      try {
+        target = Selection.fromJSON(tr.doc, saved.json)
+      } catch {
+        const max = tr.doc.content.size
+        target = TextSelection.create(tr.doc, Math.min(saved.from, max), Math.min(saved.to, max))
+      }
+      // 이미 같은 선택이면 그대로 둠 (커서의 '이어서 쓸 글자 서식'이 지워지지 않게)
+      if (!tr.selection.eq(target)) tr.setSelection(target)
+      return true
+    })
   }
 
   // 선택 구간의 글자마다 기존 글씨 색/테두리/글로우에 '바꾼 항목만' 합쳐서 적용 (한 번의 되돌리기 단위)
@@ -742,7 +773,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
   const handleColorStudioApply = (value: { text?: TextStyleValue; textPatch?: TextStylePatch; highlight?: string }) => {
     if (!colorStudio) return
     const saved = studioSelectionRef.current
-    const wasEmpty = !saved || saved.from === saved.to
+    const wasEmpty = !saved || saved.empty
 
     if (colorStudio.mode === 'text' && value.text) {
       const style = value.text
@@ -989,7 +1020,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
             className={`inline-flex items-center gap-1 px-2 py-1 rounded-none text-xs font-semibold border transition ${
               showMoreTools
                 ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 text-emerald-500'
-                : 'border-zinc-200 dark:border-zinc-700 text-zinc-400'
+                : 'border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
             }`}
           >
             <span>글꼴/서식</span>
@@ -1163,9 +1194,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
               }}
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium"
             >
-              <Type className="w-3.5 h-3.5 text-zinc-400" />
+              <Type className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
               <span>글꼴선택</span>
-              <ChevronDown className="w-3 h-3 text-zinc-400" />
+              <ChevronDown className="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
             </button>
 
             {isFontDropdownOpen && (
@@ -1196,7 +1227,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-none text-xs font-medium"
             >
               <span>글꼴크기</span>
-              <ChevronDown className="w-3 h-3 text-zinc-400" />
+              <ChevronDown className="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
             </button>
 
             {isSizeDropdownOpen && (
@@ -1238,7 +1269,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
           {/* 글자 색상: 상세 편집(글씨 색/테두리/글로우) + 즐겨찾기 색 */}
           {/* 즐겨찾기가 많아도 좁은 화면에서 넘치지 않도록 줄바꿈 허용 */}
           <div className="flex flex-wrap items-center gap-1">
-            <Palette className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
+            <Palette className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 mr-0.5" />
             <button
               type="button"
               onClick={() => openColorStudio('text')}
@@ -1272,7 +1303,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
           {/* 배경색상 / 하이라이트: 상세 편집 + 즐겨찾기 색 + 지움 */}
           <div className="flex flex-wrap items-center gap-1">
-            <Highlighter className="w-3.5 h-3.5 text-zinc-400 mr-0.5" />
+            <Highlighter className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 mr-0.5" />
             <button
               type="button"
               onClick={() => openColorStudio('highlight')}
@@ -1374,7 +1405,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
             <form onSubmit={handleApplyLink} className="space-y-3">
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 mb-1">링크 URL</label>
+                <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 mb-1">링크 URL</label>
                 <input
                   type="text"
                   value={inputLinkUrl}
@@ -1405,7 +1436,7 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
               )}
 
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 mb-1">
+                <label className="block text-[11px] font-bold text-zinc-500 dark:text-zinc-400 mb-1">
                   {detectedEmbedType === 'discord' ? '서버 이름 (자동 또는 직접 입력)' : detectedEmbedType === 'kakaotalk' ? '오픈채팅방 이름 (자동 또는 직접 입력)' : '표시할 텍스트 (선택)'}
                   {fetchingTitle && <span className="ml-2 text-blue-500 animate-pulse text-[10px]">정보 가져오는 중...</span>}
                 </label>

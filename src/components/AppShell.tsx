@@ -384,21 +384,31 @@ export default function AppShell({
           {/* 로고는 공간이 부족하면 먼저 줄어듦 (오른쪽 버튼이 화면 밖으로 밀리지 않도록) */}
           <Link
             href="/community"
-            className="min-w-0 truncate text-sm sm:text-lg font-black tracking-tight text-zinc-900 dark:text-white hover:opacity-80 transition"
+            aria-label="커뮤니티 홈"
+            className="min-w-0 flex items-center hover:opacity-80 transition"
           >
-            {compact ? (
-              <>
-                {/* 360px 미만 압축 배치에서는 글자 대신 사이트 아이콘 */}
-                <img
-                  src="/icon.png?v=3"
-                  alt="COMMUNITY"
-                  className="hidden max-[360px]:block w-7 h-7 rounded shrink-0"
-                />
-                <span className="max-[360px]:hidden">COMMUNITY</span>
-              </>
-            ) : (
-              'COMMUNITY'
+            {compact && (
+              // 360px 미만 압축 배치에서는 로고 대신 사이트 아이콘
+              <img
+                src="/icon.png?v=3"
+                alt="커뮤니티"
+                className="hidden max-[360px]:block w-7 h-7 rounded shrink-0"
+              />
             )}
+            {/* 커뮤니티 로고 (배경 투명, 헤더 높이에 맞춤). 공간이 부족하면 비율을 유지한 채 줄어듦 */}
+            <picture className={`min-w-0 ${compact ? 'max-[360px]:hidden' : ''}`}>
+              <source srcSet="/logo-community.webp" type="image/webp" />
+              <img
+                src="/logo-community.png"
+                alt="커뮤니티"
+                width={214}
+                height={144}
+                decoding="async"
+                fetchPriority="high"
+                draggable={false}
+                className="block h-11 sm:h-13 w-auto max-w-full object-contain object-left select-none"
+              />
+            </picture>
           </Link>
 
           {/* 오른쪽 버튼 묶음은 줄어들지 않음. 시스템 글꼴이 아주 큰 기기에서는 마지막 수단으로 가로 스크롤 (py 는 빨간점이 잘리지 않게) */}
@@ -496,7 +506,7 @@ export default function AppShell({
       <main className="w-full flex-1 flex flex-col items-stretch">{children}</main>
 
       {/* 하단 안내 (눈에 띄지 않게 한 줄) */}
-      <footer className="w-full py-6 text-center text-[11px] text-zinc-400 dark:text-zinc-500">
+      <footer className="w-full py-6 text-center text-[11px] text-zinc-500 dark:text-zinc-500">
         <Link href="/privacy" className="hover:underline">
           개인정보처리방침
         </Link>

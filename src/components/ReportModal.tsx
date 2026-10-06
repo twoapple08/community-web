@@ -101,7 +101,7 @@ export default function ReportModal({ isOpen, onClose, postId, currentUserId }: 
             <Siren className="w-5 h-5 text-rose-600" />
             <h3 className="text-base font-bold text-zinc-900 dark:text-white">게시글 신고</h3>
           </div>
-          <button type="button" onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none">
+          <button type="button" onClick={onClose} className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none">
             <X className="w-5 h-5" />
           </button>
         </div>

@@ -234,7 +234,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
               <button
                 type="button"
                 onClick={handleCloseNoticePopup}
-                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition"
+                className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -244,7 +244,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
               <h4 className="text-sm font-extrabold text-blue-700 dark:text-blue-400 break-words">
                 {notice.title}
               </h4>
-              <p className="text-[11px] text-zinc-400">
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                 최종 갱신일: {new Date(notice.updated_at).toLocaleString()}
               </p>
               <div className="p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed rounded-none break-words">
@@ -295,7 +295,7 @@ export default function NoticeBanner({ currentUserRole }: NoticeBannerProps) {
               <button
                 type="button"
                 onClick={() => setIsNoticeEditOpen(false)}
-                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition"
+                className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-none transition"
               >
                 <X className="w-5 h-5" />
               </button>

@@ -88,12 +88,12 @@ export default function MyCommentsView({ userId, onNavigate }: MyCommentsViewPro
   return (
     <div className="p-5">
       {loading ? (
-        <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-400">
+        <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400">
           <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
           <span className="text-xs">댓글 목록을 불러오는 중...</span>
         </div>
       ) : items.length === 0 ? (
-        <div className="py-12 text-center text-xs text-zinc-400 space-y-1">
+        <div className="py-12 text-center text-xs text-zinc-500 dark:text-zinc-400 space-y-1">
           <p className="font-semibold text-zinc-500 dark:text-zinc-400">작성한 댓글이 없습니다.</p>
         </div>
       ) : (
@@ -125,7 +125,7 @@ export default function MyCommentsView({ userId, onNavigate }: MyCommentsViewPro
                     {text || (comment.image_url ? '(사진)' : '')}
                   </p>
                 </div>
-                <span className="flex items-center gap-1 text-[10px] text-zinc-400">
+                <span className="flex items-center gap-1 text-[10px] text-zinc-500 dark:text-zinc-400">
                   <Calendar className="w-3.5 h-3.5 shrink-0" />
                   {new Date(comment.created_at).toLocaleString()}
                 </span>
