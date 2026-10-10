@@ -229,10 +229,35 @@ export const startAppLogin = async (): Promise<{ error: string | null }> => {
       },
     })
     if (error || !data?.url) return { error: LOGIN_START_FAILED }
+    markLoginPending()
     await openExternal(data.url)
     return { error: null }
   } catch {
     return { error: LOGIN_START_FAILED }
+  }
+}
+
+// 이 앱이 직접 시작한 로그인인지 기록 (밖에서 만든 sfaclan://auth-callback 링크로 엉뚱한 실패 창이 뜨지 않게)
+// localStorage 에 두어, 로그인 중 앱이 종료됐다가 딥링크로 다시 실행돼도 이어서 처리됨
+const LOGIN_PENDING_KEY = 'sfa_app_login_pending'
+const LOGIN_PENDING_MAX_MS = 30 * 60 * 1000
+
+const markLoginPending = () => {
+  try {
+    localStorage.setItem(LOGIN_PENDING_KEY, String(Date.now()))
+  } catch {
+    // 저장 불가 → 콜백은 그대로 처리되지만 실패 창은 띄우지 않음
+  }
+}
+
+/** 최근 30분 안에 이 앱에서 로그인을 시작했는지 (확인 후 기록은 지움) */
+const takeLoginPending = (): boolean => {
+  try {
+    const startedAt = Number(localStorage.getItem(LOGIN_PENDING_KEY) || 0)
+    localStorage.removeItem(LOGIN_PENDING_KEY)
+    return startedAt > 0 && Date.now() - startedAt < LOGIN_PENDING_MAX_MS
+  } catch {
+    return false
   }
 }
 
@@ -298,14 +323,20 @@ export const completeAppLogin = async (url: string): Promise<{ handled: boolean;
   }
 
   const params = readCallbackParams(url)
-  const errorText = params.get('error_description') || params.get('error')
-  if (errorText) {
-    return { handled: true, error: `구글 로그인을 완료하지 못했습니다.\n(${errorText.replace(/\+/g, ' ')})` }
+  const code = params.get('code')
+  if (code && isCodeHandled(code)) return { handled: true, error: null }
+
+  // 이 앱이 시작한 로그인이 아니면(밖에서 만든 링크 등) 아무것도 하지 않음
+  // 오류 문구는 링크에 담긴 글을 그대로 보여 주지 않고 정해진 문구만 사용
+  if (!takeLoginPending()) return { handled: true, error: null }
+
+  const errorCode = params.get('error')
+  if (errorCode || params.get('error_description')) {
+    if (errorCode === 'access_denied') return { handled: true, error: '로그인이 취소되었습니다.' }
+    return { handled: true, error: '구글 로그인을 완료하지 못했습니다. 로그인 버튼을 눌러 다시 시도해 주세요.' }
   }
 
-  const code = params.get('code')
   if (!code) return { handled: true, error: '로그인 정보가 전달되지 않았습니다. 다시 시도해 주세요.' }
-  if (isCodeHandled(code)) return { handled: true, error: null }
   markCodeHandled(code)
 
   try {
