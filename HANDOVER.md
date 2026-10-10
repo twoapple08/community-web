@@ -1,9 +1,10 @@
-# SFAClan 인수인계 프롬프트 (2026-10-06 기준)
+# SFAClan 인수인계 프롬프트 (2026-10-10 기준)
 
 > 사용법: 이 파일 전체를 새 AI 세션의 첫 메시지로 붙여넣거나, "저장소의 HANDOVER.md 를 먼저 읽어줘" 라고 요청.
 
 코드 저장소: twoapple08/community-web (GitHub) / 실서버: https://www.sfaclan.com
-현재 main 최신 커밋: b1c1ae6 이후 (작업 브랜치 claude/charming-ptolemy-oe6qxa 를 main 에 합쳐 배포한 상태)
+최근 작업은 모두 작업 브랜치 claude/charming-ptolemy-oe6qxa 에 있음 (main 반영 여부는 `git log origin/main --oneline -5` 로 확인)
+다음 작업(앱 APK/EXE 제작)은 HANDOVER_APP.md 참고.
 
 ## 0. AI 작업 규칙 (반드시 지킬 것)
 - 바꾸라고 한 것 외에는 화면·동작이 눈으로 보기에 완전히 똑같아야 한다. 코드는 바뀌어도 되지만 디자인/배치/문구/동작은 그대로 둔다.
@@ -174,6 +175,7 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 - 실기기에서 아직 확인할 것: 색상 고리 터치 드래그, 이미지 크기조절 점 터치, 프로필 사진(GIF) 업로드, 신고 심사 흐름.
 
 ## 7. 남은 일 / 아이디어
+- 앱(APK/EXE) 제작: HANDOVER_APP.md 에 요구사항·설계·확인할 질문 정리됨.
 - 사용자 실기기 점검 결과 반영.
 - 계정 탈퇴 기능은 지금 건의사항이나 이메일로 요청받는 방식이다 (개인정보처리방침에 명시).
 - 모달 등장 애니메이션(animate-in 계열)은 플러그인이 없어 동작하지 않는다. 필요하면 키프레임을 직접 추가한다.
