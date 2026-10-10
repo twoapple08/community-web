@@ -27,7 +27,7 @@ import {
 } from '@/lib/notifications'
 import { PROFILE_QUERY_PARAM, onProfileChanged } from '@/lib/userProfile'
 import { completeAppLogin, initAppRuntime, isApp, setAppStatusBarTheme, startAppLogin } from '@/lib/appBridge'
-import { releaseAppNotifications, setupAppNotifications, startLocalNotifier, type NotifierRole } from '@/lib/appNotify'
+import { handleAppSessionEnded, releaseAppNotifications, setupAppNotifications, startLocalNotifier, type NotifierRole } from '@/lib/appNotify'
 import { requestReportsOpen } from '@/lib/appIntents'
 import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
 
@@ -98,8 +98,10 @@ export default function AppShell({
   const pathname = usePathname();
   const [hubPathname, setHubPathname] = useState(pathname);
   if (hubPathname !== pathname) {
+    // 첫 화면(/)은 곧바로 /community 로 넘어가는 자리라서, 거기서 연 창(앱 알림을 눌러 앱이 처음 켜진 경우 등)은 유지
+    const leavingRootRedirect = hubPathname === '/';
     setHubPathname(pathname);
-    if (isUserHubOpen) setIsUserHubOpen(false);
+    if (isUserHubOpen && !leavingRootRedirect) setIsUserHubOpen(false);
   }
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
@@ -234,6 +236,8 @@ export default function AppShell({
         }
       } else {
         loadedUserIdRef.current = null;
+        // [앱] 로그아웃 버튼 없이 세션이 끝났으면(다른 기기에서 로그아웃 등) 이 기기 푸시 토큰 폐기
+        if (isApp()) void handleAppSessionEnded().catch(() => {});
         clearRoleCaches();
         setNickname('');
         setUserRole(null);

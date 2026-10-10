@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -23,6 +24,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Logger;
+import com.getcapacitor.WebViewListener;
 import java.util.Locale;
 
 /**
@@ -60,6 +62,11 @@ public class MainActivity extends BridgeActivity {
     /** 막대 배경이 어두운지 (true 면 막대 아이콘을 밝게) */
     private boolean barDark = true;
 
+    /** 연결 실패 화면(offline.html)이 떠 있는 동안 뒤로가기 = 앱을 뒤로 보내기 (켜져 있을 때만 동작) */
+    private OnBackPressedCallback offlineBackCallback;
+    /** 연결 실패 화면을 보여 준 적이 있는지 (사이트로 돌아오면 남은 실패 기록을 지우기 위해) */
+    private boolean shownOffline = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // @capacitor/status-bar 대신 사이트 테마 색을 막대 영역에도 칠하는 확장판을 등록
@@ -73,6 +80,49 @@ public class MainActivity extends BridgeActivity {
         // SystemBars 플러그인이 시작하면서(메인 스레드에 예약된 작업) 창 배경·막대 아이콘 색을 기기 테마로 바꾸므로 그 뒤에 한 번 더 칠함
         new Handler(Looper.getMainLooper()).post(this::applyBarTheme);
         createNotificationChannel();
+        setupOfflineBackHandling();
+    }
+
+    // ---------------------------------------------------------------------
+    // 연결 실패 화면에서의 뒤로가기
+    // ---------------------------------------------------------------------
+
+    /**
+     * 연결 실패 화면(offline.html)에서 뒤로가기를 누르면 실패한 주소를 다시 불러와 같은 화면만 반복되던 문제,
+     * 다시 연결된 뒤 첫 뒤로가기가 앱을 내리지 않고 사이트를 새로 불러오던 문제를 막는다.
+     * - 실패 화면이 떠 있는 동안: 뒤로가기 = 앱을 뒤로 보내기 (홈 화면으로)
+     * - 사이트로 돌아오면: 실패 화면 방문 기록을 지워, 첫 화면에서 뒤로가기 = 사이트 기본 동작(앱 내리기)
+     * (App 플러그인의 뒤로가기 처리보다 나중에 등록하므로, 켜져 있을 때는 이쪽이 먼저 받음)
+     */
+    private void setupOfflineBackHandling() {
+        offlineBackCallback = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                moveTaskToBack(true);
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, offlineBackCallback);
+        if (bridge == null) return;
+        bridge.addWebViewListener(new WebViewListener() {
+            @Override
+            public void onPageStarted(WebView webView) {
+                offlineBackCallback.setEnabled(false);
+            }
+
+            @Override
+            public void onPageLoaded(WebView webView) {
+                String url = webView.getUrl();
+                String errorUrl = bridge.getErrorUrl();
+                boolean offline = url != null && errorUrl != null && url.startsWith(errorUrl);
+                offlineBackCallback.setEnabled(offline);
+                if (offline) {
+                    shownOffline = true;
+                } else if (shownOffline) {
+                    webView.clearHistory();
+                    shownOffline = false;
+                }
+            }
+        });
     }
 
     @Override

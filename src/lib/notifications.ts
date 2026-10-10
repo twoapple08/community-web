@@ -65,10 +65,19 @@ export const deleteReadNotifications = async (userId: string) => {
   return supabase.from('user_notifications').delete().eq('recipient_id', userId).eq('is_read', true)
 }
 
+// 이모지 같은 2칸짜리 글자를 반으로 자르지 않음 (반쪽 글자는 윈도우 앱 알림 전달을 깨뜨리고 서버 푸시 문구와도 달라짐)
 const quote = (text: string | null | undefined, max = 40) => {
   const clean = (text || '').replace(/\s+/g, ' ').trim()
   if (!clean) return ''
-  return clean.length > max ? `${clean.slice(0, max)}…` : clean
+  if (clean.length <= max) return clean
+  let units = 0
+  let result = ''
+  for (const ch of clean) {
+    if (units + ch.length > max) break
+    units += ch.length
+    result += ch
+  }
+  return `${result}…`
 }
 
 /** 알림 문구 */

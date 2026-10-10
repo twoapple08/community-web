@@ -42,6 +42,8 @@ const DEVICE_NOTIFY_KEY = 'sfa_app_notify'
 const PERMISSION_ASKED_KEY = 'sfa_app_notify_asked'
 /** 이 기기의 FCM 토큰 (로그아웃 때 계정에서 떼어 내기 위해 보관) */
 const PUSH_TOKEN_KEY = 'sfa_push_token'
+/** 이 기기 토큰이 서버에 어떤 계정으로 등록돼 있는지 표시 ('1'). 로그아웃 버튼 없이 세션이 끝났을 때 토큰을 폐기하는 기준 */
+const PUSH_OWNER_KEY = 'sfa_push_registered'
 
 /** 안드로이드 알림 채널 (서버 푸시 android.notification.channel_id 와 같아야 함) */
 export const APP_NOTIFICATION_CHANNEL_ID = 'sfa_alerts'
@@ -237,7 +239,8 @@ const savePushToken = async (token: string) => {
   writeStorage(PUSH_TOKEN_KEY, token)
   if (!pushOwnerUserId || !isDeviceNotifyEnabled()) return
   try {
-    await supabase.rpc('sfa_register_push_token', { p_token: token, p_platform: 'android' })
+    const { error } = await supabase.rpc('sfa_register_push_token', { p_token: token, p_platform: 'android' })
+    if (!error) writeStorage(PUSH_OWNER_KEY, '1')
   } catch {
     // SQL 미적용 등 → 앱이 떠 있을 때만 알림 (다음 실행 때 다시 등록 시도)
   }
@@ -245,6 +248,8 @@ const savePushToken = async (token: string) => {
 
 /** 앱이 앞에 떠 있을 때 온 푸시 → 시스템이 띄워 주지 않으므로 같은 내용으로 로컬 알림 */
 const showForegroundPush = (push: { title?: string; body?: string; data?: unknown }) => {
+  // 로그아웃 상태에서 남은 푸시가 오면 띄우지 않음
+  if (!pushOwnerUserId) return
   const data = parseAppNotificationData(push.data)
   if (!data) return
   const title = (push.title || '').trim()
@@ -324,6 +329,8 @@ const unregisterPush = async (revokeDevice: boolean): Promise<void> => {
     }
     writeStorage(PUSH_TOKEN_KEY, null)
   }
+  // 서버에서 지웠거나 기기 토큰 자체를 폐기했으면 더 이상 이 기기에 등록된 계정 없음
+  writeStorage(PUSH_OWNER_KEY, null)
 }
 
 // ---------------------------------------------------------------------
@@ -379,6 +386,27 @@ export const releaseAppNotifications = async (): Promise<void> => {
   pushOwnerUserId = null
   if (!hasNativePush()) return
   await unregisterPush(false)
+}
+
+/**
+ * 로그아웃 버튼을 거치지 않고 세션이 끝났을 때 (다른 기기에서 전체 로그아웃, 앱이 꺼져 있는 동안 세션 만료 등).
+ * 이미 로그인 정보가 없어 서버에서 토큰을 지울 수 없으므로 기기의 FCM 토큰 자체를 폐기한다.
+ * (서버는 다음 푸시 때 '등록되지 않은 토큰' 응답을 받고 그 기록을 지움)
+ * 정상 로그아웃 뒤나 한 번도 등록한 적 없는 기기에서는 아무 일도 하지 않음
+ */
+export const handleAppSessionEnded = async (): Promise<void> => {
+  const hadOwner = pushOwnerUserId !== null || readStorage(PUSH_OWNER_KEY) === '1'
+  pushOwnerUserId = null
+  pushRegisteredFor = null
+  if (!hasNativePush() || !hadOwner) return
+  try {
+    const { PushNotifications } = await loadCapacitorPush()
+    await PushNotifications.unregister()
+  } catch {
+    // 무시
+  }
+  writeStorage(PUSH_TOKEN_KEY, null)
+  writeStorage(PUSH_OWNER_KEY, null)
 }
 
 // ---------------------------------------------------------------------

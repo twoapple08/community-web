@@ -19,6 +19,9 @@ on:
         type: boolean
         default: true
   push:
+    # 모든 브랜치 (태그 push 는 제외)
+    branches:
+      - '**'
     paths:
       - 'apps/windows/**'
       - '.github/workflows/app-windows.yml'

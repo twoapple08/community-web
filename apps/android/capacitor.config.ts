@@ -60,7 +60,9 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 800,
       launchAutoHide: true,
-      launchFadeOutDuration: 200,
+      // 0: 안드로이드 12/12L 에서 시작 화면이 사라질 때 상태바·내비게이션바 아이콘 색이 기본값으로 되돌아가던 문제 방지
+      //    (페이드 애니메이션을 쓰면 androidx 가 막대 모양을 테마 기본값으로 다시 칠함)
+      launchFadeOutDuration: 0,
       backgroundColor: '#ffffff',
       androidSplashResourceName: 'splash',
       androidScaleType: 'CENTER_CROP',
