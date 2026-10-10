@@ -3,8 +3,8 @@
 > 사용법: 이 파일 전체를 새 AI 세션의 첫 메시지로 붙여넣거나, "저장소의 HANDOVER.md 를 먼저 읽어줘" 라고 요청.
 
 코드 저장소: twoapple08/community-web (GitHub) / 실서버: https://www.sfaclan.com
-최근 작업은 모두 작업 브랜치 claude/charming-ptolemy-oe6qxa 에 있음 (main 반영 여부는 `git log origin/main --oneline -5` 로 확인)
-다음 작업(앱 APK/EXE 제작)은 HANDOVER_APP.md 참고.
+최근 작업은 모두 작업 브랜치 ccr-d081b1c2-9mjot4 에 있음 (그 전 작업은 claude/charming-ptolemy-oe6qxa. main 반영 여부는 `git log origin/main --oneline -5` 로 확인)
+앱(APK/EXE)·앱 알림 작업의 현재 상태와 사용자가 할 일은 HANDOVER_APP.md 참고.
 
 ## 0. AI 작업 규칙 (반드시 지킬 것)
 - 바꾸라고 한 것 외에는 화면·동작이 눈으로 보기에 완전히 똑같아야 한다. 코드는 바뀌어도 되지만 디자인/배치/문구/동작은 그대로 둔다.
@@ -49,7 +49,8 @@ src/app/
   posts/[id]/page.tsx   옛 주소 호환
   api/link-preview/     링크 제목 조회 (SSRF 차단, 엣지 캐시)
 src/components/
-  AppShell.tsx          헤더(테마 토글, 글쓰기, 프로필, 관리자, 블랙, 로그아웃), 알림 토스트·실시간, 전역 모달, 하단 푸터
+  AppShell.tsx          헤더(테마 토글, 글쓰기, 프로필, 관리자, 블랙, 로그아웃), 알림 빨간점·실시간, 앱 연동(로그인·OS 알림·딥링크·뒤로가기), 전역 모달, 하단 푸터
+  AppClosePopup.tsx     [윈도우 앱] 창 닫기(X) 때 '완전히 닫기 / 트레이로 내리기' 직각 팝업
   UserProfileHost/UserProfileModal  ?profile=유저ID 로 뜨는 공개 프로필 창
   Avatar.tsx            원형 프로필 사진 (없으면 fallback)
   CommunityFeed / ClanFeed  피드 목록 (목록형·피드형·앨범형)
@@ -60,7 +61,7 @@ src/components/
   editor/ColorStudio.tsx, ColorWheel.tsx, VerticalSlider.tsx  색 편집창
   editor/ResizableImage.ts, editor.css   이미지 8점 크기조절
   editor/EditorHelpPopup.tsx             ? 도구 설명
-  UserHubModal.tsx      마이 프로필 (+ userhub/SettingsView, MyCommentsView, CreditsPopup)
+  UserHubModal.tsx      마이 프로필 (+ userhub/SettingsView, NotificationSettingsView, AppDownloadView, SettingsParts, MyCommentsView, CreditsPopup)
   AdminReportModal.tsx + ReportReviewModal.tsx  신고 기록·심사
   VideoThumb.tsx        목록용 동영상 첫 장면 미리보기 (재생 없음, 화면 근처에서만 로드)
   (lib) postViews.ts    조회 기록(recordPostView) + 조회수 짧게 표시(formatViewCount)
@@ -69,7 +70,10 @@ src/lib/
   userProfile.ts   프로필 열기/닫기(pushState), 공개프로필·통계·아바타맵, 닉네임 변경, 사진 업로드, 설정 저장, 토스트 설정
   embeds.ts        카톡/디코/유튜브 판별·캐시·임베드 HTML (채움형 디자인)
   colorUtils.ts    색 변환, 글씨색·테두리·글로우 CSS, 즐겨찾기 색(localStorage)
-  notifications.ts 알림 조회·문구·이동 경로(resolveNotificationPath, commentAnchor)
+  notifications.ts 알림 조회·문구·이동 경로(resolveNotificationPath, commentAnchor) + 앱 OS 알림 문구(build*OsNotification, SQL sfa_push_build 와 같은 문구)
+  appBridge.ts     앱 안인지 판별(getAppPlatform), 기본 브라우저 열기, 앱 로그인(sfaclan://auth-callback), 창 닫기 설정, 상태바, 앱 이벤트 연결
+  appNotify.ts     앱 OS 알림: 권한, 안드로이드 채널, FCM 토큰 등록/해제, 앱이 떠 있는 동안 직접 감시(윈도우), 이 기기 알림 켜기/끄기
+  appIntents.ts    알림을 눌렀을 때 피드의 [신고 기록] 창 열기 요청
   roles.ts, authUrl.ts, sanitizeHtml.ts, postRoute.ts, feedStore.ts, htmlText.ts, imageCompress.ts, clipboard.ts, koreanUtils.ts, videoUtils.ts
 supabase/
   sfaclan_update_2026-10-05.sql  지난 업데이트 (적용 완료)
@@ -77,6 +81,13 @@ supabase/
   sfaclan_update_2026-10-07_avatar.sql  새 가입자는 항상 기본 프로필 사진 (여러 번 실행해도 안전)
   sfaclan_reset_avatars_once.sql        (1회용) 모든 유저 프로필 사진을 기본으로 되돌림
   sfaclan_update_2026-10-08_views.sql   게시글 조회수 (여러 번 실행해도 안전)
+  sfaclan_update_2026-10-10_app.sql     앱 알림·푸시·앱 다운로드 버킷 (여러 번 실행해도 안전, HANDOVER_APP.md 참고)
+  functions/send-push/index.ts          FCM 푸시 발송 Edge Function (import 없는 한 파일, 대시보드에 붙여넣어 배포)
+apps/                            앱 껍데기 (사이트 빌드·타입검사·린트와 분리됨, tsconfig/eslint 에서 제외)
+  assets/          앱 아이콘 원본 (make_base_icons.py 로 public/logo-community.png 에서 생성)
+  android/         Capacitor 8 안드로이드 앱 (README.md 참고)
+  windows/         Tauri 2 윈도우 앱, NSIS 설치 프로그램 (README.md 참고)
+.github/workflows/app-android.yml, app-windows.yml   앱 빌드 (push = 확인용 빌드, 수동 실행 = 서명·업로드)
 deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 ```
 루트의 수많은 fix_*.sh, update_*.sh, project_codebase.txt 는 과거 기록이며 현재 동작에 쓰이지 않는다.
@@ -97,13 +108,16 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
   - 피드형 원형 칸, 게시글 머리, 댓글에는 프로필 사진이 있을 때만 표시한다.
 - 마이 프로필(구 마이 메뉴)
   - 상단 카드를 누르면 내 프로필이 열린다.
-  - 메뉴: 알림, 개인 설정(톱니바퀴), 건의사항/건의함, 내가 쓴 게시글, 좋아요 누른 게시글, 내가 쓴 댓글, 관리자 전용 메시지, 제작자 콘솔.
+  - 메뉴: 알림, 개인 설정(톱니바퀴), 건의사항/건의함, 내가 쓴 게시글, 좋아요 누른 게시글, 내가 쓴 댓글, 관리자 전용 메시지, 앱 다운로드(제작자·최고관리자), 제작자 콘솔.
+  - [알림] 창 머리(닫기 버튼 옆) 톱니바퀴 → 알림 설정: 내 활동 알림(좋아요/댓글/답글), 관리자 알림(신고·이의제기는 제작자·최고관리자, 건의함은 제작자),
+    앱 안에서만 '이 기기'(이 기기에서 알림 받기, 알림 권한), 윈도우 앱에서만 '창 닫기'(매번 묻기/완전히 닫기/트레이로 내리기).
+    알림 설정은 앱의 OS 알림을 띄울지만 정한다. 꺼도 알림 목록·빨간 점은 그대로 쌓인다.
   - 맨 아래에 ⓘ 크레딧과 개인정보처리방침 링크가 있다.
 - 개인 설정
   - 프로필 사진: 호버/탭 시 카메라 아이콘, GIF 가능, 5MB 이하, avatars 버킷, "기본 이미지로" 버튼.
   - 닉네임: 중복 불가, 실시간 중복 확인, 최대 15자.
   - 한 줄 소개(60자), 누른 좋아요 수·쓴 댓글 수 공개 토글.
-  - 알림 토글(좋아요/댓글/답글)과 새 알림 팝업 표시(기기별 localStorage sfa_notify_toast).
+  - (알림 스위치는 2026-10-10 에 [알림] → 톱니바퀴 '알림 설정'으로 옮김)
 - 댓글: 답글, 이미지/GIF, 좋아요, 신고.
   - 삭제 시 확인창이 뜬다. 작성자는 댓글 자리에서 바로 수정할 수 있고, 수정되면 "(수정됨)"이 붙는다.
   - 링크는 클릭되며, 카톡/디코는 카드, 유튜브는 플레이어로 표시하고 누르면 접속 확인 팝업이 뜬다.
@@ -137,7 +151,8 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 - 공지 상세 창: 게시글 상세 창처럼 내용 전체를 펼치고 창(배경) 전체를 스크롤한다.
 - 프로필 사진: 새 가입자는 항상 기본 사진(사진 없음)으로 시작한다 (DB 트리거).
 - 기타
-  - 알림: 프로필 빨간점 + 파란 토스트 + 마이 프로필 [알림]. Supabase Realtime 을 쓰고, 실패하면 60초마다 확인한다.
+  - 알림: 일반 브라우저는 프로필 빨간점 + 마이 프로필 [알림]만 (파란 토스트는 2026-10-10 에 없앰). Supabase Realtime 을 쓰고, 실패하면 60초마다 확인한다.
+    앱(안드로이드/윈도우)은 모든 알림(좋아요·댓글·답글·신고·건의·이의제기)을 OS 알림으로 띄운다 (HANDOVER_APP.md).
   - 건의사항, 이의제기, 사이트 얼리기, 공지(서명 기반 다시 보지 않기), 이용약관 첫 동의, 동영상 50MB, 임시보관.
 - 회색 보조 글씨(날짜·메타 정보 등): 라이트 모드는 text-zinc-500, 다크 모드는 dark:text-zinc-400 (라이트에서 흐리던 문제로 한 단계 진하게).
   새 UI 에 회색 글씨를 쓸 때도 "text-zinc-500 dark:text-zinc-400" 조합을 쓴다. 큰 장식용 빈 아이콘·기본 프로필 아이콘만 zinc-400 유지.
@@ -158,10 +173,14 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
   - 신고마다 알림을 남긴다.
   - 같은 사유로 3명이 신고하면 숨기고 review_required 알림을 만든다. 무고 처리한 시점 이후의 신고만 센다.
 - RPC 함수: sfa_check_nickname, sfa_set_nickname, sfa_get_profile_stats, sfa_review_report(delete/dismiss), sfa_get_report_details, sfa_is_senior_admin, sfa_is_any_admin
-- 알림 트리거: 받는 사람의 notify_* 설정이 꺼져 있으면 알림을 만들지 않는다.
+- 알림 트리거: (2026-10-10 SQL 부터) notify_* 설정과 관계없이 알림을 항상 만든다. notify_* 는 앱 OS 알림(푸시)을 띄울지만 정한다.
 - Storage avatars 버킷: 누구나 읽을 수 있고, 각 유저는 자기 uid/ 폴더에만 쓸 수 있다.
 - 확인 결과 (적용 완료): 닉네임 중복 0, 새 함수 6개 정상. posts 트리거는 trg_sfa_assign_post_no 와 trg_sfa_posts_report_guard 2개뿐이다.
 - 예전부터 있던 것들: post_no 자동 번호와 reindex_post_ids(), user_notifications (60일 뒤 자동 정리, Realtime), 댓글 좋아요 수 트리거, profiles.email 외부 조회 차단 등.
+
+- 2026-10-10 SQL: profiles.notify_admin_report/suggestion/appeal, push_tokens(+ sfa_register_push_token/sfa_unregister_push_token),
+  푸시 발송 트리거 zz_sfa_push_dispatch(pg_net → Edge Function send-push), sfa_push_build(받는 사람·문구), 비공개 버킷 app-releases(제작자·최고관리자만 읽기),
+  admin_notifications·site_suggestions Realtime 등록(RLS 켜진 테이블만). 자세한 내용은 HANDOVER_APP.md.
 
 ## 6. 주의할 점
 - globals.css 의 전역 * transition 규칙은 @layer base 안에 있다. 레이어 밖으로 빼면 Tailwind 의 transition·duration 유틸리티가 전부 무시된다.
@@ -172,10 +191,13 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 - 프로필 사진·닉네임을 바꾼 뒤 피드 목록에는 최대 1분 정도 예전 값이 보일 수 있다 (아바타 캐시 60초, 피드는 프로필 변경 이벤트를 받지 않음).
 - 프로필 창 목록에서 삭제 신청 중인 글은 작성자 본인만 본다. 클랜 피드에서는 관리자에게도 보인다.
 - 예전부터 있던 ESLint 경고(effect 안 setState, any 타입, 안 쓰는 import 등)는 남아 있다. 빌드에는 영향이 없다.
-- 실기기에서 아직 확인할 것: 색상 고리 터치 드래그, 이미지 크기조절 점 터치, 프로필 사진(GIF) 업로드, 신고 심사 흐름.
+- 실기기에서 아직 확인할 것: 색상 고리 터치 드래그, 이미지 크기조절 점 터치, 프로필 사진(GIF) 업로드, 신고 심사 흐름, 앱 전체(HANDOVER_APP.md 의 실기기 점검 목록).
+- 앱 판별(getAppPlatform)은 서버 렌더링 때 항상 null 이다. 앱에서만 다른 화면을 그릴 때는 마운트 후 값(useSyncExternalStore/effect)으로 그려야 hydration 오류가 안 난다.
+- 앱 화면은 실서버를 그대로 띄우므로, 사이트 배포만으로 앱 화면이 바뀐다. 앱 껍데기(apps/)는 아이콘·딥링크·플러그인·알림 채널을 바꿀 때만 다시 빌드한다.
 
 ## 7. 남은 일 / 아이디어
-- 앱(APK/EXE) 제작: HANDOVER_APP.md 에 요구사항·설계·확인할 질문 정리됨.
+- 앱(APK/EXE): 코드·CI 완료. 사용자 설정(SQL, Secrets, Firebase, Edge Function) 후 실기기 점검 필요 → HANDOVER_APP.md.
+- (나중에) 일반 브라우저 웹 푸시: 같은 서버 구조(push_tokens platform 'web', sfa_push_build) 재사용 가능. 지금은 하지 않기로 함.
 - 사용자 실기기 점검 결과 반영.
 - 계정 탈퇴 기능은 지금 건의사항이나 이메일로 요청받는 방식이다 (개인정보처리방침에 명시).
 - 모달 등장 애니메이션(animate-in 계열)은 플러그인이 없어 동작하지 않는다. 필요하면 키프레임을 직접 추가한다.
