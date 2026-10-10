@@ -1,0 +1,276 @@
+# 안드로이드 앱(APK) 빌드
+# - push (apps/android/** 또는 이 파일이 바뀌었을 때): 확인용 빌드만 함. 서명·업로드·Actions 산출물 없음
+# - 수동 실행(Actions → 앱 빌드 (안드로이드) → Run workflow): 서명된 APK 를 만들어
+#   Supabase 비공개 버킷 app-releases 의 android/sfaclan.apk, android/latest.json 으로 올림
+#   (사이트의 마이 프로필 → [앱 다운로드] 에서 제작자·최고관리자만 받을 수 있음)
+#
+# 필요한 GitHub Secrets (Settings → Secrets and variables → Actions)
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#     → apps/android/scripts/make-keystore.mjs 로 만든 값 (수동 실행 때 필수)
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY → 업로드용 (수동 실행 + upload 체크 때 필수)
+#   GOOGLE_SERVICES_JSON → Firebase 설정 파일 내용 (선택. 있으면 앱이 꺼져 있어도 푸시 알림)
+#
+# 공개 저장소이므로: 빌드 결과를 Actions 산출물(artifact)로 남기지 않고, 로그에 비밀 값·주소를 출력하지 않는다.
+name: 앱 빌드 (안드로이드)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: '서명된 APK 를 Supabase 비공개 버킷(app-releases)에 올리기'
+        type: boolean
+        default: true
+  push:
+    # 모든 브랜치 (태그 push 는 제외)
+    branches:
+      - '**'
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/app-android.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  # push 확인용 빌드는 새 push 가 오면 취소. 수동(출시) 빌드는 그룹이 달라서 push 때문에 취소되지 않고 끝까지 진행
+  group: app-android-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  build:
+    name: APK 빌드
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # 수동 실행 = 출시용 빌드 (서명 필수)
+      IS_RELEASE: ${{ github.event_name == 'workflow_dispatch' }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/android
+
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Node.js 22 준비
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/android/package-lock.json
+
+      - name: Java 21 준비
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            apps/android/android/*.gradle
+            apps/android/android/app/*.gradle
+            apps/android/android/gradle/wrapper/gradle-wrapper.properties
+            apps/android/package-lock.json
+
+      - name: 안드로이드 SDK 확인
+        run: |
+          if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME" ]; then
+            echo "::error title=안드로이드 SDK 없음::러너에 ANDROID_HOME 이 없습니다."
+            exit 1
+          fi
+          # 컴파일 대상(android-36)이 없으면 설치 (이미 있으면 바로 끝남. 실패해도 Gradle 이 다시 받으려고 시도함)
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$sdkmanager" ]; then
+            # yes 는 sdkmanager 가 끝나면 강제로 멈추므로(SIGPIPE) 그 실패는 무시
+            if { yes 2>/dev/null || true; } | "$sdkmanager" --install "platforms;android-36" > /dev/null 2>&1; then
+              echo "android-36 플랫폼 준비 완료"
+            else
+              echo "::warning::sdkmanager 로 android-36 설치를 확인하지 못했습니다. (Gradle 이 자동으로 받습니다)"
+            fi
+          fi
+
+      - name: 패키지 설치
+        run: npm ci --no-audit --no-fund
+
+      - name: Firebase 설정 파일 만들기 (있을 때만)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          target="android/app/google-services.json"
+          if [ -z "${GOOGLE_SERVICES_JSON:-}" ]; then
+            rm -f "$target"
+            echo "Firebase 설정 없음 → 푸시 없는 빌드 (앱이 켜져 있을 때만 알림)"
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > "$target"
+          # 내용은 출력하지 않고 형식·패키지 이름만 확인
+          node -e '
+            const fs = require("fs");
+            let json;
+            try { json = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); }
+            catch { console.log("::error title=GOOGLE_SERVICES_JSON 오류::올바른 JSON 이 아닙니다. Firebase 에서 받은 google-services.json 파일 내용 전체를 그대로 넣어 주세요."); process.exit(1); }
+            const ok = (json.client || []).some((c) => c?.client_info?.android_client_info?.package_name === "com.sfaclan.community");
+            if (!ok) { console.log("::error title=GOOGLE_SERVICES_JSON 오류::패키지 이름 com.sfaclan.community 로 등록된 안드로이드 앱이 없습니다. Firebase 에서 이 패키지 이름으로 앱을 추가한 뒤 파일을 다시 받아 주세요."); process.exit(1); }
+          ' "$target"
+          echo "Firebase 설정 있음 → FCM 푸시 포함 빌드"
+
+      - name: Capacitor 동기화
+        run: |
+          npx cap sync android
+          # 사이트가 앱을 알아보는 User-Agent 표시 확인 (비밀 값 아님)
+          node -e 'const c = require("./android/app/src/main/assets/capacitor.config.json"); console.log("User-Agent 추가 문자열:", c.appendUserAgent); if (!/^SFAClanApp\/[\d.]+ \(android\)/.test(c.appendUserAgent || "")) process.exit(1);'
+
+      - name: 서명 키 준비 (수동 실행 때만)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=서명 키 시크릿 없음::GitHub Secrets 에 다음 값이 없습니다:$missing — apps/android/README.md 의 '서명 키 만들기' 를 따라 등록한 뒤 다시 실행하세요."
+            exit 1
+          fi
+          keystore="$RUNNER_TEMP/sfaclan-release.p12"
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$keystore" 2>/dev/null || [ ! -s "$keystore" ]; then
+            echo "::error title=서명 키 오류::ANDROID_KEYSTORE_BASE64 값을 풀 수 없습니다. github-secrets.txt 의 값을 한 줄 전체 그대로 넣어 주세요."
+            exit 1
+          fi
+          chmod 600 "$keystore"
+          # 비밀번호·별칭이 맞는지 미리 확인 (출력은 하지 않음)
+          if ! keytool -list -keystore "$keystore" -storetype pkcs12 -storepass:env ANDROID_KEYSTORE_PASSWORD -alias "$ANDROID_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "::error title=서명 키 오류::키 파일을 열 수 없습니다. ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS 값을 확인해 주세요."
+            exit 1
+          fi
+          if [ "$ANDROID_KEY_PASSWORD" != "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            # PKCS12 키는 저장소 비밀번호와 키 비밀번호가 같음 (make-keystore.mjs 도 같은 값으로 만듦)
+            echo "::warning title=서명 키 비밀번호::ANDROID_KEY_PASSWORD 가 ANDROID_KEYSTORE_PASSWORD 와 다릅니다. 서명에 실패하면 두 값을 같게 등록하세요."
+          fi
+          echo "ANDROID_KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
+          echo "서명 키 준비 완료"
+
+      - name: APK 빌드 (Gradle)
+        working-directory: apps/android/android
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          # 수동 실행일 때만 서명 값 전달 (push 확인용 빌드는 서명 없이)
+          ANDROID_KEYSTORE_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ github.event_name == 'workflow_dispatch' && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && secrets.ANDROID_KEY_PASSWORD || '' }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+
+      - name: 서명 확인 (수동 실행 때만)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: apps/android/android/app/build/outputs/apk/release
+        run: |
+          apk="app-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "::error title=서명된 APK 없음::app-release.apk 가 만들어지지 않았습니다. (서명 설정을 확인해 주세요)"
+            ls -la
+            exit 1
+          fi
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          if ! "$build_tools/apksigner" verify --verbose "$apk" > "$RUNNER_TEMP/apksigner.txt" 2>&1; then
+            echo "::error title=서명 확인 실패::APK 서명이 올바르지 않습니다."
+            cat "$RUNNER_TEMP/apksigner.txt"
+            exit 1
+          fi
+          grep -E '^Verified using|^Number of signers' "$RUNNER_TEMP/apksigner.txt" || true
+          # 인증서 이름·지문 (공개 정보)
+          "$build_tools/apksigner" verify --print-certs "$apk" | grep -E 'certificate DN|certificate SHA-256 digest' || true
+
+      - name: Supabase 에 올리기
+        if: github.event_name == 'workflow_dispatch' && inputs.upload
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set +x
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error title=업로드 시크릿 없음::GitHub Secrets 에 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 를 등록하세요. (업로드 없이 빌드만 하려면 실행할 때 upload 체크를 끄세요)"
+            exit 1
+          fi
+          # 프로젝트 주소가 로그에 보이지 않게 가림
+          host="${SUPABASE_URL#*://}"
+          host="${host%%/*}"
+          echo "::add-mask::$host"
+          echo "::add-mask::${host%%.*}"
+          base="${SUPABASE_URL%/}/storage/v1/object/app-releases"
+
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          version="$(node -p 'require("./package.json").version')"
+          size="$(stat -c %s "$apk")"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          latest="$RUNNER_TEMP/latest.json"
+          node -e '
+            const [file, version, build, builtAt, size] = process.argv.slice(1);
+            const data = { version, build: Number(build), built_at: builtAt, size: Number(size), file: "sfaclan.apk" };
+            require("fs").writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+          ' "$latest" "$version" "$BUILD_NUMBER" "$built_at" "$size"
+
+          # $1 = 올릴 파일, $2 = 버킷 안 경로, $3 = Content-Type. 응답 내용·주소는 출력하지 않고 상태 코드만 확인
+          upload() {
+            local status code=0
+            status="$(curl -s -o /dev/null -w '%{http_code}' --retry 2 --retry-delay 5 --max-time 900 \
+              -X POST "$base/$2" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "x-upsert: true" \
+              -H "Cache-Control: max-age=60" \
+              -H "Content-Type: $3" \
+              --data-binary "@$1")" || code=$?
+            if [ "$code" -ne 0 ] || [ "${status:0:1}" != "2" ]; then
+              echo "::error title=업로드 실패::$2 업로드 실패 (HTTP ${status:-000}, curl $code). 버킷 app-releases 가 있는지, SQL 을 실행했는지, 키가 맞는지 확인해 주세요."
+              return 1
+            fi
+            echo "업로드 완료: $2 (HTTP $status)"
+          }
+
+          # APK 를 먼저 올리고 latest.json 은 나중에 (latest.json 이 없는 파일을 가리키지 않게)
+          upload "$apk" "android/sfaclan.apk" "application/vnd.android.package-archive"
+          upload "$latest" "android/latest.json" "application/json"
+
+          {
+            echo "### 안드로이드 앱 업로드 완료"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 버전 | $version |"
+            echo "| 빌드 번호 | $BUILD_NUMBER |"
+            echo "| 크기 | $size bytes |"
+            echo "| 만든 시각 (UTC) | $built_at |"
+            echo ""
+            echo "사이트 → 마이 프로필 → [앱 다운로드] 에서 받을 수 있습니다. (제작자·최고관리자만)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 빌드 결과 요약 (업로드 안 함)
+        if: github.event_name != 'workflow_dispatch' || !inputs.upload
+        run: |
+          ls -la android/app/build/outputs/apk/release/
+          {
+            echo "### 안드로이드 앱 빌드 완료 (업로드 안 함)"
+            echo ""
+            if [ "$IS_RELEASE" = "true" ]; then
+              echo "서명된 APK 를 만들었지만 upload 를 끄고 실행해서 올리지 않았습니다."
+            else
+              echo "push 확인용 빌드입니다. 출시하려면 Actions → 앱 빌드 (안드로이드) → Run workflow 로 실행하세요."
+            fi
+            echo "공개 저장소라서 APK 는 Actions 산출물로 남기지 않습니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 비밀 파일 지우기
+        if: always()
+        working-directory: .
+        run: |
+          rm -f "$RUNNER_TEMP/sfaclan-release.p12" "$RUNNER_TEMP/latest.json" "$RUNNER_TEMP/apksigner.txt"
+          rm -f apps/android/android/app/google-services.json

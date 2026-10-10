@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>스틱파이터 커뮤니티</title>
+  <!--
+    앱은 capacitor.config.ts 의 server.url(https://www.sfaclan.com) 을 바로 불러오므로 이 페이지는 평소에 쓰이지 않는다.
+    (Capacitor 가 webDir 에 index.html 을 요구해서 둔 자리표시 페이지. 혹시 열리면 실서버로 이동)
+  -->
+  <meta http-equiv="refresh" content="0; url=https://www.sfaclan.com" />
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; background: #ffffff; }
+    @media (prefers-color-scheme: dark) { html, body { background: #000000; } }
+  </style>
+</head>
+<body>
+  <script>location.replace('https://www.sfaclan.com');</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>스틱파이터 커뮤니티</title>
+  <!--
+    인터넷이 끊겼거나 사이트를 불러오지 못했을 때 앱이 보여 주는 페이지 (capacitor.config.ts 의 server.errorPath)
+    기기 다크 모드를 따라 흰 바탕 / 검은 바탕. 사이트의 직각 버튼 디자인과 같게
+  -->
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #18181b;
+      --sub: #71717a;
+      --line: #18181b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --fg: #f4f4f5;
+        --sub: #a1a1aa;
+        --line: #ffffff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    main {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 24px 16px;
+      text-align: center;
+    }
+    h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; word-break: keep-all; }
+    p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--sub); word-break: keep-all; }
+    button {
+      margin-top: 12px;
+      min-width: 160px;
+      padding: 12px 20px;
+      border: 2px solid var(--line);
+      border-radius: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:active { opacity: 0.6; }
+    button:disabled { opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>페이지를 불러오지 못했습니다</h1>
+    <p>인터넷 연결을 확인해 주세요</p>
+    <button type="button" id="retry">다시 시도</button>
+  </main>
+  <script>
+    (function () {
+      var SITE_URL = 'https://www.sfaclan.com';
+      var button = document.getElementById('retry');
+      var retrying = false;
+
+      function retry() {
+        if (retrying) return;
+        retrying = true;
+        button.disabled = true;
+        button.textContent = '연결 중...';
+        // 아직 연결이 안 되면 앱이 이 페이지를 다시 띄움. 혹시 그대로 멈춰 있으면 버튼을 되살림
+        setTimeout(function () {
+          retrying = false;
+          button.disabled = false;
+          button.textContent = '다시 시도';
+        }, 8000);
+        location.replace(SITE_URL);
+      }
+
+      button.addEventListener('click', retry);
+      // 인터넷이 다시 연결되면 자동으로 다시 시도
+      window.addEventListener('online', retry);
+    })();
+  </script>
+</body>
+</html>

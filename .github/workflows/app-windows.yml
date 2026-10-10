@@ -1,0 +1,185 @@
+# 윈도우 앱(설치 프로그램 setup.exe) 빌드
+# - push (apps/windows/** 또는 이 파일이 바뀌었을 때): 확인용 빌드만 함. 업로드·Actions 산출물 없음
+# - 수동 실행(Actions → 앱 빌드 (윈도우) → Run workflow): NSIS 설치 프로그램을 만들어
+#   Supabase 비공개 버킷 app-releases 의 windows/sfaclan-setup.exe, windows/latest.json 으로 올림
+#   (사이트의 마이 프로필 → [앱 다운로드] 에서 제작자·최고관리자만 받을 수 있음)
+#
+# 필요한 GitHub Secrets (Settings → Secrets and variables → Actions)
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY → 업로드용 (수동 실행 + upload 체크 때 필수)
+#   (코드 서명은 하지 않음 → 설치할 때 SmartScreen 경고: "추가 정보 → 실행")
+#
+# 공개 저장소이므로: 빌드 결과를 Actions 산출물(artifact)로 남기지 않고, 로그에 비밀 값·주소를 출력하지 않는다.
+name: 앱 빌드 (윈도우)
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: '설치 파일을 Supabase 비공개 버킷(app-releases)에 올리기'
+        type: boolean
+        default: true
+  push:
+    paths:
+      - 'apps/windows/**'
+      - '.github/workflows/app-windows.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  # push 확인용 빌드는 새 push 가 오면 취소. 수동(출시) 빌드는 그룹이 달라서 push 때문에 취소되지 않고 끝까지 진행
+  group: app-windows-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  build:
+    name: 설치 프로그램 빌드 (NSIS)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/windows
+
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Node.js 22 준비
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/windows/package-lock.json
+
+      - name: Rust 준비
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust 빌드 캐시
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/windows/src-tauri -> target
+
+      - name: 패키지 설치
+        run: npm ci --no-audit --no-fund
+
+      - name: 앱 빌드 (tauri build)
+        run: npx tauri build --ci --bundles nsis
+
+      - name: 설치 파일 찾기
+        id: installer
+        # 설치 파일 이름에 한글(앱 이름)이 들어가므로 PowerShell 로 찾아 영문 이름으로 복사
+        shell: pwsh
+        working-directory: apps/windows/src-tauri/target/release/bundle/nsis
+        run: |
+          $exe = Get-ChildItem -LiteralPath . -Filter '*-setup.exe' -File |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $exe) {
+            Write-Output '::error title=설치 파일 없음::NSIS 설치 파일(*-setup.exe)이 만들어지지 않았습니다.'
+            Get-ChildItem -LiteralPath . | Format-Table Name, Length -AutoSize | Out-String | Write-Output
+            exit 1
+          }
+          $dest = Join-Path $env:RUNNER_TEMP 'sfaclan-setup.exe'
+          Copy-Item -LiteralPath $exe.FullName -Destination $dest -Force
+          "path=$dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "size=$($exe.Length)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output "설치 파일: $($exe.Name) ($($exe.Length) bytes)"
+
+      - name: Supabase 에 올리기
+        if: github.event_name == 'workflow_dispatch' && inputs.upload
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          INSTALLER_PATH: ${{ steps.installer.outputs.path }}
+          INSTALLER_SIZE: ${{ steps.installer.outputs.size }}
+        run: |
+          set +x
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error title=업로드 시크릿 없음::GitHub Secrets 에 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 를 등록하세요. (업로드 없이 빌드만 하려면 실행할 때 upload 체크를 끄세요)"
+            exit 1
+          fi
+          # 프로젝트 주소가 로그에 보이지 않게 가림
+          host="${SUPABASE_URL#*://}"
+          host="${host%%/*}"
+          echo "::add-mask::$host"
+          echo "::add-mask::${host%%.*}"
+          base="${SUPABASE_URL%/}/storage/v1/object/app-releases"
+
+          # INSTALLER_PATH 는 윈도우 경로(D:\a\_temp\...). 확인만 bash 경로로 바꿔서 하고 curl 에는 그대로 넘김
+          if [ -z "${INSTALLER_PATH:-}" ] || [ ! -f "$(cygpath -u "$INSTALLER_PATH")" ]; then
+            echo "::error title=설치 파일 없음::올릴 설치 파일을 찾지 못했습니다."
+            exit 1
+          fi
+
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          size="$INSTALLER_SIZE"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          latest="$RUNNER_TEMP/windows-latest.json"
+          node -e '
+            const [file, version, build, builtAt, size] = process.argv.slice(1);
+            const data = { version, build: Number(build), built_at: builtAt, size: Number(size), file: "sfaclan-setup.exe" };
+            require("fs").writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+          ' "$latest" "$version" "$BUILD_NUMBER" "$built_at" "$size"
+
+          # $1 = 올릴 파일, $2 = 버킷 안 경로, $3 = Content-Type. 응답 내용·주소는 출력하지 않고 상태 코드만 확인
+          upload() {
+            local status code=0
+            status="$(curl -s -o /dev/null -w '%{http_code}' --retry 2 --retry-delay 5 --max-time 900 \
+              -X POST "$base/$2" \
+              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              -H "x-upsert: true" \
+              -H "Cache-Control: max-age=60" \
+              -H "Content-Type: $3" \
+              --data-binary "@$1")" || code=$?
+            if [ "$code" -ne 0 ] || [ "${status:0:1}" != "2" ]; then
+              echo "::error title=업로드 실패::$2 업로드 실패 (HTTP ${status:-000}, curl $code). 버킷 app-releases 가 있는지, SQL 을 실행했는지, 키가 맞는지 확인해 주세요."
+              return 1
+            fi
+            echo "업로드 완료: $2 (HTTP $status)"
+          }
+
+          # 설치 파일을 먼저 올리고 latest.json 은 나중에 (latest.json 이 없는 파일을 가리키지 않게)
+          upload "$INSTALLER_PATH" "windows/sfaclan-setup.exe" "application/vnd.microsoft.portable-executable"
+          upload "$latest" "windows/latest.json" "application/json"
+
+          {
+            echo "### 윈도우 앱 업로드 완료"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 버전 | $version |"
+            echo "| 빌드 번호 | $BUILD_NUMBER |"
+            echo "| 크기 | $size bytes |"
+            echo "| 만든 시각 (UTC) | $built_at |"
+            echo ""
+            echo "사이트 → 마이 프로필 → [앱 다운로드] 에서 받을 수 있습니다. (제작자·최고관리자만)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 빌드 결과 요약 (업로드 안 함)
+        if: github.event_name != 'workflow_dispatch' || !inputs.upload
+        env:
+          INSTALLER_SIZE: ${{ steps.installer.outputs.size }}
+        run: |
+          {
+            echo "### 윈도우 앱 빌드 완료 (업로드 안 함)"
+            echo ""
+            echo "설치 파일 크기: ${INSTALLER_SIZE:-?} bytes"
+            echo ""
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "설치 파일을 만들었지만 upload 를 끄고 실행해서 올리지 않았습니다."
+            else
+              echo "push 확인용 빌드입니다. 출시하려면 Actions → 앱 빌드 (윈도우) → Run workflow 로 실행하세요."
+            fi
+            echo "공개 저장소라서 설치 파일은 Actions 산출물로 남기지 않습니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 임시 파일 지우기
+        if: always()
+        working-directory: .
+        run: |
+          rm -f "$RUNNER_TEMP/sfaclan-setup.exe" "$RUNNER_TEMP/windows-latest.json"

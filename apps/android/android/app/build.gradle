@@ -1,0 +1,100 @@
+apply plugin: 'com.android.application'
+
+// ---------------------------------------------------------------------------
+// 버전
+// - versionName: apps/android/package.json 의 version (환경 변수 ANDROID_VERSION_NAME 이 있으면 그 값)
+// - versionCode: 환경 변수 ANDROID_VERSION_CODE (CI 는 GitHub 실행 번호, 내 PC 빌드는 1)
+//   안드로이드는 versionCode 가 더 큰 APK 만 업데이트로 설치하므로 CI 빌드 번호를 그대로 씀
+// ---------------------------------------------------------------------------
+def sfaPackageJson = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def sfaVersionName = (System.getenv('ANDROID_VERSION_NAME') ?: '').trim() ?: sfaPackageJson.version.toString()
+def sfaVersionCodeText = (System.getenv('ANDROID_VERSION_CODE') ?: '').trim()
+def sfaVersionCode = sfaVersionCodeText.isInteger() ? sfaVersionCodeText.toInteger() : 1
+
+// ---------------------------------------------------------------------------
+// 릴리스 서명 (GitHub Actions 에서 시크릿으로 넘겨줌. 키 파일은 저장소에 절대 커밋하지 않음)
+// - ANDROID_KEYSTORE_FILE: PKCS12(.p12) 키 파일 경로 (scripts/make-keystore.mjs 로 만든 것)
+// - ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+// 네 값이 모두 있을 때만 서명함. 없으면 서명 안 된 APK 가 만들어짐 (push 때의 확인용 빌드)
+// ---------------------------------------------------------------------------
+def sfaKeystoreFile = (System.getenv('ANDROID_KEYSTORE_FILE') ?: '').trim()
+def sfaKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: ''
+def sfaKeyAlias = (System.getenv('ANDROID_KEY_ALIAS') ?: '').trim()
+def sfaKeyPassword = System.getenv('ANDROID_KEY_PASSWORD') ?: ''
+def sfaHasReleaseSigning = !sfaKeystoreFile.isEmpty() && !sfaKeystorePassword.isEmpty() && !sfaKeyAlias.isEmpty() && !sfaKeyPassword.isEmpty()
+if (sfaHasReleaseSigning && !file(sfaKeystoreFile).isFile()) {
+    throw new GradleException("ANDROID_KEYSTORE_FILE 경로에 서명 키 파일이 없습니다.")
+}
+
+android {
+    namespace = "com.sfaclan.community"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.sfaclan.community"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode sfaVersionCode
+        versionName sfaVersionName
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (sfaHasReleaseSigning) {
+            release {
+                storeFile = file(sfaKeystoreFile)
+                // make-keystore.mjs 는 PKCS12 로 만듦 (키 비밀번호 = 저장소 비밀번호)
+                storeType = 'pkcs12'
+                storePassword = sfaKeystorePassword
+                keyAlias = sfaKeyAlias
+                keyPassword = sfaKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            // 웹뷰 앱이라 코드 축소의 이득이 작고, 플러그인 리플렉션이 깨질 위험이 있어 끔
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (sfaHasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    // MainActivity 의 막대 여백·색 처리(WindowCompat / ViewCompat / WindowInsetsCompat)에 씀. Capacitor 와 같은 버전
+    implementation "androidx.core:core:$androidxCoreVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+// google-services.json(Firebase 설정)이 있을 때만 FCM 푸시용 플러그인 적용 (CI 가 GOOGLE_SERVICES_JSON 시크릿으로 만듦)
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

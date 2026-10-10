@@ -1,0 +1,44 @@
+[package]
+name = "sfaclan"
+version = "1.0.0"
+description = "스틱파이터 커뮤니티 윈도우 앱"
+authors = ["SFAClan"]
+edition = "2021"
+# tauri 2.12 계열이 요구하는 최소 Rust 버전
+rust-version = "1.90"
+publish = false
+
+[lib]
+name = "sfaclan_lib"
+# 데스크톱(윈도우) 전용이라 모바일용 staticlib/cdylib 는 만들지 않음
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.12.2", features = ["tray-icon"] }
+tauri-plugin-deep-link = "2.6.1"
+# 플러그인으로 등록하지 않고 기본 브라우저 열기 함수(open_url)만 씀 (원격 사이트에 opener 명령·스크립트를 열어 주지 않기 위해)
+tauri-plugin-opener = "2.7.0"
+tauri-plugin-single-instance = { version = "2.5.2", features = ["deep-link"] }
+tauri-plugin-window-state = "2.5.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+# 윈도우 알림(토스트)·작업 표시줄 앱 ID
+windows = { version = "0.62", features = [
+  "Foundation",
+  "Data_Xml_Dom",
+  "UI_Notifications",
+  "Win32_UI_Shell",
+] }
+# 사이트를 불러오지 못했을 때(인터넷 끊김 등) 오프라인 화면으로 보내기 위한 WebView2 이벤트
+webview2-com = "0.39"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

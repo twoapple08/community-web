@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- allowBackup=false: 로그인 정보(웹뷰 저장소)가 기기 백업으로 다른 기기에 복사되지 않게 -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <!--
+          configChanges: 화면 회전·창 크기 변경(분할 화면/팝업 창/폴더블 펼침)·다크 모드·키보드 연결·언어 등에서
+          화면을 다시 만들지 않음 → 사이트가 다시 로드되지 않고 레이아웃만 맞춰짐
+          resizeableActivity: 분할 화면·팝업 창(자유 크기 창) 허용
+          singleTask: sfaclan:// 딥링크(구글 로그인 복귀)가 새 창이 아니라 지금 열린 앱으로 전달됨
+          adjustResize: 키보드가 뜨면 화면(웹뷰)이 키보드 위까지 줄어듦 (여백은 MainActivity 가 계산)
+        -->
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|smallestScreenSize|screenLayout|uiMode|navigation|density|colorMode|touchscreen|mcc|mnc"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 앱 전용 주소 sfaclan:// (예: 기본 브라우저에서 구글 로그인 후 sfaclan://auth-callback 으로 복귀) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sfaclan" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <!-- FCM 푸시 기본값: 채널(sfa_alerts, 중요도 높음 = 화면 위 알림)·작은 아이콘(흰색 종)·강조색 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="sfa_alerts" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notify" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/sfa_notify_color" />
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 안드로이드 13+ 알림 표시 권한 (사이트가 알림을 켤 때 요청) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

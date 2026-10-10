@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">스틱파이터 커뮤니티</string>
+    <string name="title_activity_main">스틱파이터 커뮤니티</string>
+    <string name="package_name">com.sfaclan.community</string>
+    <string name="custom_url_scheme">sfaclan</string>
+    <!-- 알림 채널 (설정 → 앱 → 알림 에 보이는 이름). 채널 id 는 sfa_alerts -->
+    <string name="notification_channel_name">알림</string>
+    <string name="notification_channel_description">좋아요·댓글·답글·신고·건의사항·이의제기 알림</string>
+</resources>

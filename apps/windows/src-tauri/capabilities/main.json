@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "sfaclan-site",
+  "description": "메인 창에 열린 실서버 사이트(https://www.sfaclan.com, https://sfaclan.com)만 쓰는 최소 권한: 앱 이벤트 듣기(listen/unlisten) + 앱 전용 sfa_* 명령. 앱 안 페이지(dist)·보조 창·다른 주소에는 아무 권한도 없음. 파일·셸 권한 없음.",
+  "windows": ["main"],
+  "local": false,
+  "remote": {
+    "urls": ["https://www.sfaclan.com/*", "https://sfaclan.com/*"]
+  },
+  "permissions": [
+    "core:event:default",
+    "allow-sfa-open-external",
+    "allow-sfa-notify",
+    "allow-sfa-get-close-behavior",
+    "allow-sfa-set-close-behavior",
+    "allow-sfa-close-decision",
+    "allow-sfa-app-ready",
+    "allow-sfa-take-pending"
+  ]
+}

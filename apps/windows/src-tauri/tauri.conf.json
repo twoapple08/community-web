@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "스틱파이터 커뮤니티",
+  "mainBinaryName": "sfaclan",
+  "version": "1.0.0",
+  "identifier": "com.sfaclan.community",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "SFAClan",
+    "homepage": "https://www.sfaclan.com",
+    "copyright": "© SFAClan",
+    "shortDescription": "스틱파이터 커뮤니티",
+    "longDescription": "스틱파이터 커뮤니티(https://www.sfaclan.com) 윈도우 앱",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Korean"],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["sfaclan"]
+      }
+    }
+  }
+}

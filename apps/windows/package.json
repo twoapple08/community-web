@@ -1,0 +1,12 @@
+{
+  "name": "sfaclan-windows",
+  "version": "1.0.0",
+  "private": true,
+  "description": "스틱파이터 커뮤니티 윈도우 앱 (Tauri v2 껍데기, https://www.sfaclan.com 을 불러옴)",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1"
+  }
+}

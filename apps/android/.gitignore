@@ -1,0 +1,18 @@
+# 안드로이드 앱 껍데기 (apps/android) — 커밋하면 안 되는 것
+# (저장소 루트 .gitignore 의 /node_modules 는 루트만 가리키므로 여기서 따로 제외)
+node_modules/
+
+# 서명 키·GitHub Secrets 값 (scripts/make-keystore.mjs 가 만드는 폴더). 절대 커밋 금지
+keystore/
+*.p12
+*.jks
+*.keystore
+github-secrets.txt
+
+# Firebase 설정 (CI 가 GOOGLE_SERVICES_JSON 시크릿으로 빌드 때만 만듦)
+google-services.json
+
+# 빌드 결과물·로컬 설정
+*.apk
+*.aab
+local.properties

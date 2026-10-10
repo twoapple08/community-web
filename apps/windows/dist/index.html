@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>스틱파이터 커뮤니티</title>
+  <!--
+    윈도우 앱(Tauri)이 처음 여는 앱 안 페이지 (tauri.conf.json 의 build.frontendDist).
+    - 평소: 바로 실서버(https://www.sfaclan.com)로 이동한다. (주소 기록에 남지 않게 location.replace)
+    - 인터넷이 끊겼거나 사이트를 불러오지 못했을 때: 앱(Rust)이 이 페이지를 ?offline=1&to=<원래 주소> 로 다시 열어
+      [다시 시도] 버튼을 보여 준다. 인터넷이 다시 연결되면 자동으로 다시 시도한다.
+    이 페이지에서는 앱 명령(IPC)을 쓰지 않는다. (capabilities/main.json 은 원격 사이트에만 권한을 줌)
+  -->
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #18181b;
+      --sub: #71717a;
+      --line: #18181b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --fg: #f4f4f5;
+        --sub: #a1a1aa;
+        --line: #ffffff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, 'Malgun Gothic', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
+      user-select: none;
+    }
+    main {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 24px 16px;
+      text-align: center;
+    }
+    [hidden] { display: none !important; }
+    h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+    p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--sub); }
+    button {
+      margin-top: 12px;
+      min-width: 160px;
+      padding: 12px 20px;
+      border: 2px solid var(--line);
+      border-radius: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.8; }
+    button:active { opacity: 0.6; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    /* 불러오는 중 문구는 잠깐 뒤에 보여 줌 (빨리 열리면 깜빡이지 않게) */
+    #loading { opacity: 0; transition: opacity 0.2s ease; }
+    #loading.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <main id="loading" aria-live="polite">
+    <h1>스틱파이터 커뮤니티</h1>
+    <p>불러오는 중...</p>
+  </main>
+
+  <main id="offline" hidden>
+    <h1>페이지를 불러오지 못했습니다</h1>
+    <p>인터넷 연결을 확인해 주세요</p>
+    <button type="button" id="retry">다시 시도</button>
+  </main>
+
+  <script>
+    (function () {
+      var SITE_URL = 'https://www.sfaclan.com/';
+      var APP_HOSTS = ['www.sfaclan.com', 'sfaclan.com'];
+
+      var params;
+      try {
+        params = new URLSearchParams(location.search);
+      } catch (e) {
+        params = null;
+      }
+
+      // 돌아갈 주소: 사이트 주소(https://www.sfaclan.com, https://sfaclan.com)만 허용, 나머지는 첫 화면
+      var target = SITE_URL;
+      try {
+        var to = params && params.get('to');
+        if (to) {
+          var parsed = new URL(to);
+          if (parsed.protocol === 'https:' && APP_HOSTS.indexOf(parsed.hostname) !== -1) {
+            target = parsed.href;
+          }
+        }
+      } catch (e) {
+        target = SITE_URL;
+      }
+
+      var loadingView = document.getElementById('loading');
+      var offlineView = document.getElementById('offline');
+      var retryButton = document.getElementById('retry');
+      var navigating = false;
+      var restoreTimer = 0;
+
+      var go = function () {
+        if (navigating) return;
+        navigating = true;
+        location.replace(target);
+      };
+
+      var showOffline = function () {
+        loadingView.hidden = true;
+        offlineView.hidden = false;
+      };
+
+      retryButton.addEventListener('click', function () {
+        retryButton.disabled = true;
+        retryButton.textContent = '연결 중...';
+        navigating = false;
+        go();
+        // 연결이 계속 안 되면 앱이 이 페이지를 다시 열지만, 혹시 멈춰 있으면 버튼을 되살림
+        clearTimeout(restoreTimer);
+        restoreTimer = setTimeout(function () {
+          navigating = false;
+          retryButton.disabled = false;
+          retryButton.textContent = '다시 시도';
+        }, 8000);
+      });
+
+      // 오프라인 화면에서 인터넷이 다시 연결되면 자동으로 다시 시도
+      window.addEventListener('online', function () {
+        if (!offlineView.hidden) go();
+      });
+
+      var isOffline = (params && params.get('offline') === '1') || navigator.onLine === false;
+      if (isOffline) {
+        showOffline();
+        return;
+      }
+
+      setTimeout(function () {
+        loadingView.classList.add('show');
+      }, 600);
+      go();
+    })();
+  </script>
+</body>
+</html>

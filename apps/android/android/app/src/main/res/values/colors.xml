@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 시작 화면 배경 (흰색) -->
+    <color name="sfa_splash_background">#FFFFFF</color>
+    <!-- 알림 아이콘 강조색 (사이트의 emerald-500) -->
+    <color name="sfa_notify_color">#10B981</color>
+</resources>
