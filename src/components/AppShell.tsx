@@ -7,7 +7,10 @@ import BlacklistModal from "@/components/BlacklistModal";
 import TermsModal from "@/components/TermsModal";
 import AdminReplyPopup from "@/components/AdminReplyPopup";
 import UserProfileHost from "@/components/UserProfileHost";
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import CustomPopup from "@/components/CustomPopup";
+import AppClosePopup from "@/components/AppClosePopup";
+import { Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
@@ -15,17 +18,32 @@ import { supabase } from '@/lib/supabase'
 import { clearRoleCaches, fetchMyRole, isCreatorEmail } from '@/lib/roles'
 import { scrubAuthParamsFromUrl } from '@/lib/authUrl'
 import {
-  describeNotification,
-  fetchLatestUnreadNotification,
   fetchUnreadNotificationCount,
   markNotificationRead,
+  parseAppNotificationData,
   resolveNotificationPath,
-  type UserNotification,
+  type AppNotificationData,
+  type NotificationType,
 } from '@/lib/notifications'
-import { isNotificationToastEnabled, onProfileChanged } from '@/lib/userProfile'
-import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert, Bell } from 'lucide-react'
+import { onProfileChanged } from '@/lib/userProfile'
+import { completeAppLogin, initAppRuntime, isApp, setAppStatusBarTheme, startAppLogin } from '@/lib/appBridge'
+import { releaseAppNotifications, setupAppNotifications, startLocalNotifier, type NotifierRole } from '@/lib/appNotify'
+import { requestReportsOpen } from '@/lib/appIntents'
+import { Moon, Sun, PenSquare, LogOut, LogIn, Crown, ShieldAlert } from 'lucide-react'
 
 const NOTIFICATION_POLL_MS = 60 * 1000
+// 관리자 실시간 이벤트(이의제기·건의사항)가 몰려 와도 빨간점 확인은 한 번만
+const ADMIN_ALERT_DEBOUNCE_MS = 800
+// [앱] 로그아웃 전에 푸시 토큰을 지우는 작업은 최대 이만큼만 기다림 (네트워크가 느려도 로그아웃은 진행)
+const APP_LOGOUT_RELEASE_TIMEOUT_MS = 3000
+
+// 마이 프로필 창을 특정 화면으로 바로 열 때 (앱 알림을 눌렀을 때 등)
+type UserHubInitialView = 'notifications' | 'suggestion_inbox' | 'appeals' | 'notification_settings'
+
+const USER_NOTIFICATION_TYPES: readonly NotificationType[] = ['post_like', 'post_comment', 'comment_reply']
+
+// 실시간 채널 이름이 겹치지 않도록 (정리 중인 이전 채널과 섞이지 않게)
+let adminAlertChannelSeq = 0
 
 // 테마 전환 중에만 모든 요소에 같은 전환 효과를 걸어 색이 한꺼번에 바뀌도록 (globals.css 의 html.theme-switching)
 // View Transition 을 지원하는 브라우저는 화면 전체를 한 번에 교차 전환 (globals.css 의 html.theme-vt)
@@ -60,13 +78,20 @@ export default function AppShell({
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const hasProfileBadge = hasAdminAlert || unreadNotificationCount > 0;
 
-  // 새 알림 토스트
-  const [toast, setToast] = useState<{ notification: UserNotification; animatingOut: boolean } | null>(null);
-  const toastTimersRef = useRef<number[]>([]);
+  // 권한 조회가 끝난 계정 (앱 알림 감시를 역할에 맞게 한 번만 시작하기 위함)
+  const [roleUserId, setRoleUserId] = useState<string | null>(null);
 
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isBlacklistModalOpen, setIsBlacklistModalOpen] = useState(false);
   const [isUserHubOpen, setIsUserHubOpen] = useState(false);
+  // 마이 프로필을 열 때 처음 보여 줄 화면 (없으면 메뉴)
+  const [userHubInitialView, setUserHubInitialView] = useState<UserHubInitialView | undefined>(undefined);
+  const userHubReopenTimerRef = useRef<number | null>(null);
+
+  // [윈도우 앱] 창 닫기(X) 확인 팝업
+  const [isAppClosePopupOpen, setIsAppClosePopupOpen] = useState(false);
+  // 로그인 실패 등 안내 팝업
+  const [noticePopup, setNoticePopup] = useState<{ title: string; message: string } | null>(null);
 
   // 다른 페이지(게시글 등)로 이동하면 마이 프로필 창을 닫음
   // (마이 프로필 → 내 프로필 → 게시글 순으로 이동했을 때 창이 새 페이지 위에 남아 있던 문제)
@@ -106,6 +131,8 @@ export default function AppShell({
     try {
       localStorage.setItem('theme', nextTheme);
     } catch {}
+    // [안드로이드 앱] 상태바 글씨/배경도 테마에 맞춤 (앱이 아니면 아무 일도 하지 않음)
+    void setAppStatusBarTheme(nextTheme);
 
     if (themeSwitchTimerRef.current) {
       window.clearTimeout(themeSwitchTimerRef.current);
@@ -191,6 +218,7 @@ export default function AppShell({
 
     const resolvedRole = (await fetchMyRole(userId, email)) as "creator" | "super_admin" | "admin" | null;
     setUserRole(resolvedRole ?? null);
+    setRoleUserId(userId);
 
     checkProfileAlerts(resolvedRole ?? null, email);
   }, [checkProfileAlerts]);
@@ -209,6 +237,8 @@ export default function AppShell({
         clearRoleCaches();
         setNickname('');
         setUserRole(null);
+        setRoleUserId(null);
+        setIsUserHubOpen(false);
         setIsTermsModalOpen(false);
         setHasAdminAlert(false);
         setUnreadNotificationCount(0);
@@ -233,26 +263,8 @@ export default function AppShell({
   }, [loadUserProfile]);
 
   // ===== 내 게시글 알림 (좋아요/댓글/답글) =====
-  const clearToastTimers = () => {
-    toastTimersRef.current.forEach((t) => window.clearTimeout(t));
-    toastTimersRef.current = [];
-  };
-
-  const showNotificationToast = useCallback((notification: UserNotification) => {
-    // 개인 설정에서 알림 팝업을 끈 기기는 빨간점/개수만 갱신하고 팝업은 띄우지 않음
-    if (!isNotificationToastEnabled()) return;
-    clearToastTimers();
-    setToast({ notification, animatingOut: false });
-    toastTimersRef.current.push(
-      window.setTimeout(() => {
-        setToast((prev) => (prev ? { ...prev, animatingOut: true } : prev));
-        toastTimersRef.current.push(window.setTimeout(() => setToast(null), 350));
-      }, 3500)
-    );
-  }, []);
-
-  useEffect(() => () => clearToastTimers(), []);
-
+  // 일반 브라우저는 알림 팝업·OS 알림 없이 빨간점(읽지 않은 개수)만 갱신.
+  // 앱(안드로이드/윈도우)은 OS 알림을 appNotify 가 따로 띄움
   const userId = user?.id ?? null;
 
   useEffect(() => {
@@ -260,21 +272,14 @@ export default function AppShell({
 
     let disposed = false;
     let realtimeActive = false;
-    let lastCount = -1;
 
-    const refreshCount = async (announce: boolean) => {
+    const refreshCount = async () => {
       const count = await fetchUnreadNotificationCount(userId);
       if (disposed) return;
-      // 팝업을 끈 경우 최신 알림 본문은 조회하지 않음 (트래픽 절약)
-      if (announce && lastCount >= 0 && count > lastCount && isNotificationToastEnabled()) {
-        const latest = await fetchLatestUnreadNotification(userId);
-        if (latest && !disposed) showNotificationToast(latest);
-      }
-      lastCount = count;
       setUnreadNotificationCount(count);
     };
 
-    refreshCount(false);
+    refreshCount();
 
     // 실시간 수신 (Supabase Realtime). 연결이 안 되면 60초 간격 확인으로 자동 대체
     const channel = supabase
@@ -282,11 +287,8 @@ export default function AppShell({
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'user_notifications', filter: `recipient_id=eq.${userId}` },
-        (payload) => {
-          const notification = payload.new as UserNotification;
-          lastCount = Math.max(0, lastCount) + 1;
+        () => {
           setUnreadNotificationCount((c) => c + 1);
-          showNotificationToast(notification);
         }
       )
       .subscribe((status) => {
@@ -294,12 +296,12 @@ export default function AppShell({
       });
 
     const interval = window.setInterval(() => {
-      if (!realtimeActive && document.visibilityState === 'visible') refreshCount(true);
+      if (!realtimeActive && document.visibilityState === 'visible') refreshCount();
     }, NOTIFICATION_POLL_MS);
 
     // 앱/탭으로 돌아왔을 때 (모바일 백그라운드 동안 놓친 알림 반영)
     const handleVisible = () => {
-      if (document.visibilityState === 'visible') refreshCount(true);
+      if (document.visibilityState === 'visible') refreshCount();
     };
     document.addEventListener('visibilitychange', handleVisible);
 
@@ -309,7 +311,7 @@ export default function AppShell({
       document.removeEventListener('visibilitychange', handleVisible);
       supabase.removeChannel(channel);
     };
-  }, [userId, showNotificationToast]);
+  }, [userId]);
 
   // 프로필 창/개인 설정에서 닉네임을 바꾸면 헤더 닉네임도 즉시 반영
   useEffect(() => {
@@ -324,21 +326,43 @@ export default function AppShell({
     setUnreadNotificationCount(await fetchUnreadNotificationCount(userId));
   }, [userId]);
 
-  const handleToastClick = async () => {
-    if (!toast) return;
-    const target = toast.notification;
-    clearToastTimers();
-    setToast(null);
-    if (!target.is_read) {
-      await markNotificationRead(target.id);
-      setUnreadNotificationCount((c) => Math.max(0, c - 1));
+  // ===== 마이 프로필 창 =====
+  useEffect(() => () => {
+    if (userHubReopenTimerRef.current) window.clearTimeout(userHubReopenTimerRef.current);
+  }, []);
+
+  /** 마이 프로필 열기. view 를 주면 그 화면으로 바로 (이미 열려 있으면 닫았다가 다음 틱에 다시 열어 화면을 바꿈) */
+  const openUserHub = (view?: UserHubInitialView) => {
+    if (userHubReopenTimerRef.current) {
+      window.clearTimeout(userHubReopenTimerRef.current);
+      userHubReopenTimerRef.current = null;
     }
-    // 댓글/답글 알림은 해당 댓글 위치(#comment-번호)까지 이동
-    const path = await resolveNotificationPath(target);
-    if (path) router.push(path);
+    setUserHubInitialView(view);
+    if (view && isUserHubOpen) {
+      flushSync(() => setIsUserHubOpen(false));
+      userHubReopenTimerRef.current = window.setTimeout(() => {
+        userHubReopenTimerRef.current = null;
+        setIsUserHubOpen(true);
+      }, 0);
+      return;
+    }
+    setIsUserHubOpen(true);
+  };
+
+  const closeUserHub = () => {
+    setIsUserHubOpen(false);
+    checkProfileAlerts(userRole, user?.email);
+    refreshNotificationCount();
   };
 
   const handleLogin = async () => {
+    // [앱] 웹뷰 안에서는 구글 로그인이 막혀 있으므로 기기 기본 브라우저에서 로그인 → sfaclan://auth-callback 으로 돌아옴
+    if (isApp()) {
+      const { error } = await startAppLogin();
+      if (error) setNoticePopup({ title: '로그인 실패', message: error });
+      return;
+    }
+
     const redirectUrl = typeof window !== 'undefined'
       ? `${window.location.origin}/community`
       : undefined;
@@ -353,6 +377,13 @@ export default function AppShell({
   };
 
   const handleLogout = async () => {
+    // [앱] 이 기기의 푸시 토큰을 먼저 계정에서 떼어 냄 (로그아웃한 뒤에는 지울 권한이 없음). 오래 걸리면 기다리지 않음
+    if (isApp()) {
+      await Promise.race([
+        releaseAppNotifications().catch(() => {}),
+        new Promise<void>((resolve) => window.setTimeout(resolve, APP_LOGOUT_RELEASE_TIMEOUT_MS)),
+      ]);
+    }
     await supabase.auth.signOut();
     loadedUserIdRef.current = null;
     clearRoleCaches();

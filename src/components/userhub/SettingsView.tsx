@@ -51,6 +51,9 @@ const defaultSettings = (userId: string): MySettings => ({
   notify_post_like: true,
   notify_post_comment: true,
   notify_comment_reply: true,
+  notify_admin_report: true,
+  notify_admin_suggestion: true,
+  notify_admin_appeal: true,
 })
 
 /** 섹션 묶음 (작은 제목 + 둥근 회색 상자) */

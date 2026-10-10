@@ -72,6 +72,12 @@ export interface MySettings extends PublicProfile {
   notify_post_like: boolean
   notify_post_comment: boolean
   notify_comment_reply: boolean
+  /** 관리자 알림 (앱 OS 알림): 신고·신고 검토 – 제작자/최고관리자 */
+  notify_admin_report: boolean
+  /** 관리자 알림 (앱 OS 알림): 건의함 – 제작자 */
+  notify_admin_suggestion: boolean
+  /** 관리자 알림 (앱 OS 알림): 블랙리스트 이의제기 – 제작자/최고관리자 */
+  notify_admin_appeal: boolean
 }
 
 export interface ProfileStats {
@@ -86,6 +92,7 @@ export interface ProfileStats {
 
 const EXTENDED_PUBLIC_COLUMNS = 'id, nickname, avatar_url, bio, show_like_count, show_comment_count'
 const SETTINGS_COLUMNS = `${EXTENDED_PUBLIC_COLUMNS}, notify_post_like, notify_post_comment, notify_comment_reply`
+const ADMIN_NOTIFY_COLUMNS = 'notify_admin_report, notify_admin_suggestion, notify_admin_appeal'
 
 type RawProfile = Partial<MySettings> & { id: string; nickname?: string | null }
 
@@ -167,7 +174,11 @@ export const fetchProfileStats = async (userId: string): Promise<ProfileStats | 
 // 내 설정
 // ---------------------------------------------------------------------
 export const fetchMySettings = async (userId: string): Promise<MySettings | null> => {
-  const extended = await supabase.from('profiles').select(SETTINGS_COLUMNS).eq('id', userId).maybeSingle()
+  // 관리자 알림 컬럼(2026-10-10 SQL)이 아직 없으면 그 컬럼만 빼고 다시 조회 → 나머지 설정은 그대로 보임
+  let extended = await supabase.from('profiles').select(`${SETTINGS_COLUMNS}, ${ADMIN_NOTIFY_COLUMNS}`).eq('id', userId).maybeSingle()
+  if (extended.error) {
+    extended = await supabase.from('profiles').select(SETTINGS_COLUMNS).eq('id', userId).maybeSingle()
+  }
   const row = (extended.error ? null : extended.data) as RawProfile | null
   if (!extended.error) {
     if (!row) return null
@@ -176,6 +187,9 @@ export const fetchMySettings = async (userId: string): Promise<MySettings | null
       notify_post_like: row.notify_post_like !== false,
       notify_post_comment: row.notify_post_comment !== false,
       notify_comment_reply: row.notify_comment_reply !== false,
+      notify_admin_report: row.notify_admin_report !== false,
+      notify_admin_suggestion: row.notify_admin_suggestion !== false,
+      notify_admin_appeal: row.notify_admin_appeal !== false,
     }
   }
   const basic = await supabase.from('profiles').select('id, nickname').eq('id', userId).maybeSingle()
@@ -185,11 +199,26 @@ export const fetchMySettings = async (userId: string): Promise<MySettings | null
     notify_post_like: true,
     notify_post_comment: true,
     notify_comment_reply: true,
+    notify_admin_report: true,
+    notify_admin_suggestion: true,
+    notify_admin_appeal: true,
   }
 }
 
 export type SettingsPatch = Partial<
-  Pick<MySettings, 'bio' | 'avatar_url' | 'show_like_count' | 'show_comment_count' | 'notify_post_like' | 'notify_post_comment' | 'notify_comment_reply'>
+  Pick<
+    MySettings,
+    | 'bio'
+    | 'avatar_url'
+    | 'show_like_count'
+    | 'show_comment_count'
+    | 'notify_post_like'
+    | 'notify_post_comment'
+    | 'notify_comment_reply'
+    | 'notify_admin_report'
+    | 'notify_admin_suggestion'
+    | 'notify_admin_appeal'
+  >
 >
 
 export const updateMySettings = async (userId: string, patch: SettingsPatch): Promise<{ error: string | null }> => {
