@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 앱 껍데기(안드로이드/윈도우)와 Supabase Edge Function 은 각자 도구로 검사 (사이트 빌드와 분리)
+    "apps/**",
+    "supabase/functions/**",
   ]),
 ]);
 
