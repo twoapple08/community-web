@@ -619,9 +619,23 @@ export default function UserHubModal({
               {currentView === 'app_download' && '앱 다운로드'}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* 알림 창 위쪽: 알림 설정 (앱 OS 알림 항목·이 기기·창 닫기) */}
+            {currentView === 'notifications' && (
+              <button
+                type="button"
+                onClick={() => setCurrentView('notification_settings')}
+                aria-label="알림 설정"
+                title="알림 설정"
+                className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {currentView === 'menu' && (
@@ -1069,16 +1083,6 @@ export default function UserHubModal({
                 >
                   <Trash2 className="w-3 h-3" />
                   <span>읽은 알림 삭제</span>
-                </button>
-                {/* 알림 설정 (앱 OS 알림 항목·이 기기·창 닫기). 높이는 옆 버튼에 맞춤 */}
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('notification_settings')}
-                  aria-label="알림 설정"
-                  title="알림 설정"
-                  className="self-stretch inline-flex items-center justify-center px-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-400/60 dark:border-zinc-600 rounded-none transition"
-                >
-                  <Settings className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
