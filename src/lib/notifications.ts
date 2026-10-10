@@ -206,9 +206,21 @@ export const buildSuggestionOsNotification = (row: SuggestionRow): OsNotificatio
   data: { kind: 'suggestion', id: String(row.id) },
 })
 
-/** 공백을 한 칸으로 모으고 앞에서부터 max 글자 (말줄임표 없음, 이모지도 한 글자로 셈 – SQL left() 와 같게) */
-export const collapsePreview = (text: string | null | undefined, max: number): string =>
-  Array.from((text || '').replace(/\s+/g, ' ').trim()).slice(0, max).join('')
+/**
+ * 공백을 한 칸으로 모으고 앞에서부터 max 자 (말줄임표 없음).
+ * 글자 수는 JS 방식(이모지 등은 2자)으로 세되 이모지를 반으로 자르지 않음 – 서버 SQL sfa_push_clip_text 와 같은 규칙
+ */
+export const collapsePreview = (text: string | null | undefined, max: number): string => {
+  const clean = (text || '').replace(/\s+/g, ' ').trim()
+  let units = 0
+  let result = ''
+  for (const ch of clean) {
+    if (units + ch.length > max) break
+    units += ch.length
+    result += ch
+  }
+  return result
+}
 
 export interface AppealRow {
   id: number

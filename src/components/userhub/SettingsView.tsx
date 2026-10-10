@@ -1,15 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Avatar from '../Avatar'
 import CustomPopup from '../CustomPopup'
+import { CLOSED_POPUP, SAVE_ERROR_MESSAGE, Section, ToggleRow, defaultSettings, type PopupState } from './SettingsParts'
 import {
   NICKNAME_MAX_LENGTH,
   checkNicknameAvailable,
   fetchMySettings,
-  isNotificationToastEnabled,
   setMyNickname,
-  setNotificationToastEnabled,
   updateMySettings,
   uploadAvatar,
   type MySettings,
@@ -18,9 +17,9 @@ import {
 import { Camera, Loader2 } from 'lucide-react'
 
 const BIO_MAX_LENGTH = 60
-const SAVE_ERROR_MESSAGE = '설정을 저장하지 못했습니다. (DB 업데이트가 필요할 수 있습니다)'
 
-type ToggleKey = 'show_like_count' | 'show_comment_count' | 'notify_post_like' | 'notify_post_comment' | 'notify_comment_reply'
+// 알림 스위치는 마이 프로필 > 알림 > 톱니바퀴(알림 설정) 화면으로 옮김
+type ToggleKey = 'show_like_count' | 'show_comment_count'
 type NicknameStatus = 'idle' | 'checking' | 'available' | 'duplicate'
 
 interface SettingsViewProps {
@@ -29,78 +28,7 @@ interface SettingsViewProps {
   onNicknameUpdated: (newNick: string) => void
 }
 
-interface PopupState {
-  isOpen: boolean
-  title: string
-  message: string
-  type?: 'alert' | 'confirm'
-  isDanger?: boolean
-  onConfirm: () => void
-}
-
-const CLOSED_POPUP: PopupState = { isOpen: false, title: '', message: '', onConfirm: () => {} }
-
-// 프로필 정보가 없거나 새 컬럼이 없을 때 쓰는 기본값 (DB 기본값과 동일)
-const defaultSettings = (userId: string): MySettings => ({
-  id: userId,
-  nickname: null,
-  avatar_url: null,
-  bio: null,
-  show_like_count: true,
-  show_comment_count: true,
-  notify_post_like: true,
-  notify_post_comment: true,
-  notify_comment_reply: true,
-  notify_admin_report: true,
-  notify_admin_suggestion: true,
-  notify_admin_appeal: true,
-})
-
-/** 섹션 묶음 (작은 제목 + 둥근 회색 상자) */
-function Section({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 space-y-3">
-      <h3 className="text-[11px] font-black text-zinc-500 dark:text-zinc-400 tracking-wider">{label}</h3>
-      {children}
-    </section>
-  )
-}
-
-/** 글쓰기 화면 '미리보기 가리기' 와 같은 모양의 스위치 */
-function ToggleRow({
-  label,
-  description,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string
-  description?: string
-  checked: boolean
-  disabled?: boolean
-  onChange: (next: boolean) => void
-}) {
-  return (
-    <label className={`flex items-center justify-between gap-3 select-none ${disabled ? 'cursor-wait' : 'cursor-pointer'}`}>
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs font-bold text-zinc-900 dark:text-white">{label}</span>
-        {description && (
-          <span className="block text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug mt-0.5">{description}</span>
-        )}
-      </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className="sr-only peer"
-      />
-      <div className="w-9 h-5 shrink-0 bg-zinc-300 dark:bg-zinc-700 rounded-full peer peer-checked:after:translate-x-4 peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/50 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full after:shadow after:transition-transform"></div>
-    </label>
-  )
-}
-
-/** 마이 프로필 > 개인 설정 (프로필 사진 / 닉네임 / 한 줄 소개 / 공개 설정 / 알림 설정) */
+/** 마이 프로필 > 개인 설정 (프로필 사진 / 닉네임 / 한 줄 소개 / 공개 설정) */
 export default function SettingsView({ userId, currentNickname, onNicknameUpdated }: SettingsViewProps) {
   const [settings, setSettings] = useState<MySettings | null>(null)
   const [loading, setLoading] = useState(true)
@@ -126,9 +54,8 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
   const [savingBio, setSavingBio] = useState(false)
   const [bioMessage, setBioMessage] = useState<string | null>(null)
 
-  // 공개/알림 스위치 (저장 중인 항목은 연타 방지)
+  // 공개 스위치 (저장 중인 항목은 연타 방지)
   const [savingKeys, setSavingKeys] = useState<ToggleKey[]>([])
-  const [toastEnabled, setToastEnabled] = useState(() => isNotificationToastEnabled())
 
   // 저장 완료 문구는 잠깐 보여준 뒤 자동으로 지움 (실패 문구는 다시 입력할 때까지 유지)
   useEffect(() => {
@@ -272,11 +199,6 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
       setSettings((prev) => (prev ? { ...prev, [key]: !next } : prev))
       showAlert('저장 실패', SAVE_ERROR_MESSAGE)
     }
-  }
-
-  const handleToggleToast = (next: boolean) => {
-    setToastEnabled(next)
-    setNotificationToastEnabled(next)
   }
 
   const inputClass =
@@ -423,33 +345,6 @@ export default function SettingsView({ userId, currentNickname, onNicknameUpdate
               checked={settings.show_comment_count}
               disabled={savingKeys.includes('show_comment_count')}
               onChange={(next) => handleToggle('show_comment_count', next)}
-            />
-          </Section>
-
-          <Section label="알림 설정">
-            <ToggleRow
-              label="내 게시글 좋아요 알림"
-              checked={settings.notify_post_like}
-              disabled={savingKeys.includes('notify_post_like')}
-              onChange={(next) => handleToggle('notify_post_like', next)}
-            />
-            <ToggleRow
-              label="내 게시글 댓글 알림"
-              checked={settings.notify_post_comment}
-              disabled={savingKeys.includes('notify_post_comment')}
-              onChange={(next) => handleToggle('notify_post_comment', next)}
-            />
-            <ToggleRow
-              label="내 댓글 답글 알림"
-              checked={settings.notify_comment_reply}
-              disabled={savingKeys.includes('notify_comment_reply')}
-              onChange={(next) => handleToggle('notify_comment_reply', next)}
-            />
-            <ToggleRow
-              label="새 알림 팝업 표시 (이 기기)"
-              description="새 알림이 오면 화면 위쪽에 팝업으로 알려줍니다"
-              checked={toastEnabled}
-              onChange={handleToggleToast}
             />
           </Section>
         </div>

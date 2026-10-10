@@ -227,6 +227,9 @@ export const showOsNotification = async (notification: OsNotification): Promise<
 // ---------------------------------------------------------------------
 /** 지금 이 기기로 푸시를 받을 계정 (로그인 중일 때만) */
 let pushOwnerUserId: string | null = null
+/** 이번 실행에서 이미 푸시 등록을 마친 계정 (권한 허용 직후·로그인 직후에 두 번 등록하지 않도록) */
+let pushRegisteredFor: string | null = null
+let pushRegistering: Promise<void> | null = null
 let pushListenersReady: Promise<void> | null = null
 
 const savePushToken = async (token: string) => {
@@ -272,17 +275,27 @@ const ensurePushListeners = (): Promise<void> => {
 }
 
 /** 이 기기를 푸시 받을 기기로 등록 (로그인 + 기기 알림 켜짐 + 권한 허용일 때만). 결과 토큰은 'registration' 에서 저장 */
-const registerPush = async (): Promise<void> => {
-  if (!hasNativePush() || !pushOwnerUserId || !isDeviceNotifyEnabled()) return
-  if ((await getNotificationPermission()) !== 'granted') return
-  try {
-    await ensureAndroidChannels()
-    await ensurePushListeners()
-    const { PushNotifications } = await loadCapacitorPush()
-    await PushNotifications.register()
-  } catch {
-    // Firebase 설정이 없는 빌드 등 → 무시
-  }
+const registerPush = (): Promise<void> => {
+  const owner = pushOwnerUserId
+  if (!hasNativePush() || !owner || !isDeviceNotifyEnabled()) return Promise.resolve()
+  if (pushRegisteredFor === owner) return Promise.resolve()
+  if (pushRegistering) return pushRegistering
+
+  pushRegistering = (async () => {
+    if ((await getNotificationPermission()) !== 'granted') return
+    try {
+      await ensureAndroidChannels()
+      await ensurePushListeners()
+      const { PushNotifications } = await loadCapacitorPush()
+      await PushNotifications.register()
+      if (pushOwnerUserId === owner) pushRegisteredFor = owner
+    } catch {
+      // Firebase 설정이 없는 빌드 등 → 무시
+    }
+  })().finally(() => {
+    pushRegistering = null
+  })
+  return pushRegistering
 }
 
 /**
@@ -291,6 +304,7 @@ const registerPush = async (): Promise<void> => {
  */
 const unregisterPush = async (revokeDevice: boolean): Promise<void> => {
   if (!hasNativePush()) return
+  pushRegisteredFor = null
   const token = readStorage(PUSH_TOKEN_KEY)
   let removedOnServer = false
   if (token) {

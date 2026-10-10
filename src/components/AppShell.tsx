@@ -25,7 +25,7 @@ import {
   type AppNotificationData,
   type NotificationType,
 } from '@/lib/notifications'
-import { onProfileChanged } from '@/lib/userProfile'
+import { PROFILE_QUERY_PARAM, onProfileChanged } from '@/lib/userProfile'
 import { completeAppLogin, initAppRuntime, isApp, setAppStatusBarTheme, startAppLogin } from '@/lib/appBridge'
 import { releaseAppNotifications, setupAppNotifications, startLocalNotifier, type NotifierRole } from '@/lib/appNotify'
 import { requestReportsOpen } from '@/lib/appIntents'
@@ -60,7 +60,7 @@ const applyThemeClass = (root: HTMLElement, nextTheme: 'dark' | 'light') => {
   else root.classList.remove('dark')
 }
 
-// 사이트 공통 화면 (헤더 / 알림 토스트 / 전역 모달 / 하단 안내). 루트 레이아웃(서버 컴포넌트)이 감쌉니다.
+// 사이트 공통 화면 (헤더 / 알림 빨간점·앱 OS 알림 연결 / 전역 모달 / 하단 안내). 루트 레이아웃(서버 컴포넌트)이 감쌉니다.
 export default function AppShell({
   children,
 }: {
@@ -408,6 +408,160 @@ export default function AppShell({
   const compact = Boolean(user) && (isAdminGroup || isCreatorOrSuperAdmin);
   const withCompact = (base: string, compactClasses: string) => (compact ? `${base} ${compactClasses}` : base);
 
+  // ===== 관리자 빨간점 실시간 갱신 (제작자·최고관리자, 웹·앱 공통) =====
+  // 새 이의제기(제작자·최고관리자)·새 건의사항(제작자)이 들어오면 바로 빨간점을 다시 확인.
+  // 실시간 연결이 안 돼도 다른 동작에는 영향 없음 (마이 프로필을 닫을 때 등 기존 확인은 그대로)
+  const userEmail = user?.email ?? null;
+  const isCreatorAccount = isCreatorEmail(userEmail) || userRole === "creator";
+
+  useEffect(() => {
+    if (!userId || !isCreatorOrSuperAdmin) return;
+
+    let timer: number | null = null;
+    const scheduleCheck = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        checkProfileAlerts(userRole, userEmail ?? undefined);
+      }, ADMIN_ALERT_DEBOUNCE_MS);
+    };
+
+    // 표마다 채널을 따로 (한 표의 실시간 설정이 없어도 다른 표는 동작)
+    const seq = ++adminAlertChannelSeq;
+    const tables = isCreatorAccount ? ['blacklist_appeals', 'site_suggestions'] : ['blacklist_appeals'];
+    const channels = tables.map((table) =>
+      supabase
+        .channel(`admin-alerts-${table}-${userId}-${seq}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table }, scheduleCheck)
+        .subscribe()
+    );
+
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      channels.forEach((channel) => {
+        supabase.removeChannel(channel);
+      });
+    };
+  }, [userId, userEmail, userRole, isCreatorOrSuperAdmin, isCreatorAccount, checkProfileAlerts]);
+
+  // ===== 앱(안드로이드 APK / 윈도우 EXE) 전용 =====
+  // 화면 모양은 그대로 두고 로그인·OS 알림·뒤로가기·창 닫기만 앱에 맞게 처리 (일반 브라우저에서는 아무 일도 하지 않음)
+
+  /** 내 알림(좋아요/댓글/답글)을 눌렀을 때: 읽음 처리 → 해당 글(댓글 위치)로 이동 */
+  const openUserNotificationTarget = async (data: AppNotificationData) => {
+    const notificationId = Number(data.id);
+    let type = USER_NOTIFICATION_TYPES.find((t) => t === data.type) ?? null;
+    let postId = Number(data.post_id) || null;
+    let commentId = Number(data.comment_id) || null;
+
+    if (Number.isFinite(notificationId) && notificationId > 0) {
+      // 알림 데이터에 글 정보가 빠져 있으면 알림 기록에서 찾음
+      if (!postId || !type) {
+        const { data: row } = await supabase
+          .from('user_notifications')
+          .select('type, post_id, comment_id')
+          .eq('id', notificationId)
+          .maybeSingle();
+        if (row) {
+          type = USER_NOTIFICATION_TYPES.find((t) => t === row.type) ?? type;
+          postId = Number(row.post_id) || postId;
+          commentId = Number(row.comment_id) || commentId;
+        }
+      }
+      await markNotificationRead(notificationId);
+      refreshNotificationCount();
+    }
+
+    // 댓글/답글 알림은 해당 댓글 위치(#comment-번호)까지 이동
+    const path = postId
+      ? await resolveNotificationPath({ post_id: postId, comment_id: commentId, type: type ?? 'post_comment' })
+      : null;
+    if (path) router.push(path);
+    else setNoticePopup({ title: '게시글 없음', message: '삭제되었거나 존재하지 않는 게시글입니다.' });
+  };
+
+  /** OS 알림을 눌렀을 때 이동: 내 알림 → 글, 신고 → [신고 기록], 건의 → 건의함, 이의제기 → 관리자 전용 메시지 */
+  const routeAppNotification = (data: AppNotificationData) => {
+    // 글·신고 기록으로 이동할 때 마이 프로필 창이 열려 있으면 닫음 (같은 주소면 저절로 닫히지 않으므로)
+    if ((data.kind === 'user' || data.kind === 'report') && isUserHubOpen) closeUserHub();
+    if (data.kind === 'user') {
+      void openUserNotificationTarget(data).catch(() => {});
+      return;
+    }
+    if (data.kind === 'report') {
+      // [신고 기록] 창은 피드(커뮤니티/클랜)가 엶. 피드가 없는 화면이면 커뮤니티로 이동해서 열림
+      requestReportsOpen();
+      if (!/^\/(community|clan)(\/|$)/.test(pathname || '')) router.push('/community');
+      return;
+    }
+    // 마이 프로필은 로그인한 상태에서만 (로그인 확인 중이면 열어 두고, 확인되면 보임)
+    if (!authLoading && !user) return;
+    openUserHub(data.kind === 'suggestion' ? 'suggestion_inbox' : 'appeals');
+  };
+
+  const handleAppNotificationClick = useEffectEvent((payload: unknown) => {
+    const data = parseAppNotificationData(payload);
+    if (data) routeAppNotification(data);
+  });
+
+  // sfaclan://auth-callback 으로 돌아온 로그인 마무리 (성공하면 onAuthStateChange 가 화면을 갱신)
+  const handleAppDeepLink = useEffectEvent((url: string) => {
+    void completeAppLogin(url).then((result) => {
+      if (result.error) setNoticePopup({ title: '로그인 실패', message: result.error });
+    });
+  });
+
+  // [안드로이드] 뒤로가기: 이 화면이 연 창이 있으면 그 창을 닫고, 아니면 앱 기본 동작(뒤로/최소화)
+  const handleAppBackButton = useEffectEvent((): boolean => {
+    // 다른 유저 프로필 창(?profile=)은 방문 기록으로 열리므로 뒤로가기에 맡김
+    try {
+      if (new URL(window.location.href).searchParams.has(PROFILE_QUERY_PARAM)) return false;
+    } catch {}
+    if (noticePopup) {
+      setNoticePopup(null);
+      return true;
+    }
+    if (isUserHubOpen) {
+      closeUserHub();
+      return true;
+    }
+    if (isAdminModalOpen) {
+      setIsAdminModalOpen(false);
+      return true;
+    }
+    if (isBlacklistModalOpen) {
+      setIsBlacklistModalOpen(false);
+      return true;
+    }
+    return false;
+  });
+
+  // 앱 실행 환경 연결 (딥링크·알림 클릭·뒤로가기·창 닫기 요청) + 상태바 색
+  useEffect(() => {
+    if (!isApp()) return;
+    void setAppStatusBarTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    return initAppRuntime({
+      onDeepLink: (url) => handleAppDeepLink(url),
+      onNotificationClick: (payload) => handleAppNotificationClick(payload),
+      onCloseRequested: () => setIsAppClosePopupOpen(true),
+      onBackButton: () => handleAppBackButton(),
+    });
+  }, []);
+
+  // 로그인되면 앱 알림 준비 (처음 1번 알림 권한 묻기, FCM 빌드면 이 기기 푸시 등록). 일반 브라우저는 아무 일도 없음
+  useEffect(() => {
+    if (!userId || !isApp()) return;
+    void setupAppNotifications(userId).catch(() => {});
+  }, [userId]);
+
+  // 윈도우 앱 / FCM 없는 안드로이드: 앱이 떠 있는 동안 새 알림을 직접 감시해 OS 알림으로 띄움 (역할 확인 후 시작)
+  const notifierRole: NotifierRole = effectiveRole;
+  const isRoleReady = Boolean(userId) && roleUserId === userId;
+  useEffect(() => {
+    if (!userId || !isRoleReady || !isApp()) return;
+    return startLocalNotifier({ userId, role: notifierRole });
+  }, [userId, isRoleReady, notifierRole]);
+
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md transition-colors duration-300">
@@ -478,7 +632,7 @@ export default function AppShell({
 
                 {/* 프로필 버튼 (내 글 새 알림 / 건의함 / 관리자 메시지 알람 시 빨간점 표시) */}
                 <button
-                  onClick={() => setIsUserHubOpen(true)}
+                  onClick={() => openUserHub()}
                   className={withCompact('relative inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900 hover:border-emerald-500 transition text-[11px] sm:text-xs font-semibold text-zinc-800 dark:text-zinc-200 whitespace-nowrap shrink-0', 'max-[460px]:px-1')}
                   title={unreadNotificationCount > 0 ? `마이 프로필 (새 알림 ${unreadNotificationCount}개)` : '마이 프로필'}
                 >
@@ -545,30 +699,13 @@ export default function AppShell({
         <span>© 스틱파이터 커뮤니티</span>
       </footer>
 
-      {/* 새 알림 토스트 (누르면 해당 게시글로 이동) */}
-      {toast && (
-        <button
-          type="button"
-          onClick={handleToastClick}
-          className={`fixed top-16 sm:top-20 left-1/2 z-[100] px-4 py-2 bg-blue-600 text-white border border-blue-400 rounded-none text-xs font-bold tracking-wide shadow-2xl flex items-center gap-2 max-w-[90vw] cursor-pointer ${
-            toast.animatingOut ? 'animate-notice-out' : 'animate-notice-in'
-          }`}
-        >
-          <Bell className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">{describeNotification(toast.notification)}</span>
-        </button>
-      )}
-
       <AdminReplyPopup />
 
       {user && (
         <UserHubModal
           isOpen={isUserHubOpen}
-          onClose={() => {
-            setIsUserHubOpen(false);
-            checkProfileAlerts(userRole, user?.email);
-            refreshNotificationCount();
-          }}
+          initialView={userHubInitialView}
+          onClose={closeUserHub}
           userId={user.id}
           userEmail={user.email || ""}
           userRole={effectiveRole}
@@ -602,6 +739,17 @@ export default function AppShell({
           onAgreed={() => setIsTermsModalOpen(false)}
         />
       )}
+
+      {/* 앱 로그인 실패·삭제된 글 안내 등 (앱에서만 열림) */}
+      <CustomPopup
+        isOpen={noticePopup !== null}
+        title={noticePopup?.title ?? ''}
+        message={noticePopup?.message ?? ''}
+        onConfirm={() => setNoticePopup(null)}
+      />
+
+      {/* [윈도우 앱] 창 닫기(X) 확인 */}
+      <AppClosePopup isOpen={isAppClosePopupOpen} onClose={() => setIsAppClosePopupOpen(false)} />
     </>
   )
 }

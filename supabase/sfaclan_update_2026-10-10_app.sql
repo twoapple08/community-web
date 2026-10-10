@@ -199,7 +199,8 @@ begin
     raise exception '로그인이 필요합니다.' using errcode = '42501';
   end if;
 
-  if char_length(v_token) < 1 or char_length(v_token) > 4096 then
+  -- 토큰은 공백 없는 영문·숫자·기호(ASCII)만, 최대 4096자 (FCM 토큰은 보통 150~300자)
+  if char_length(v_token) < 1 or char_length(v_token) > 4096 or v_token !~ '^[!-~]+$' then
     raise exception '잘못된 푸시 토큰입니다.' using errcode = '22023';
   end if;
 
@@ -207,12 +208,17 @@ begin
     raise exception '지원하지 않는 기기 종류입니다.' using errcode = '22023';
   end if;
 
-  insert into public.push_tokens (token, user_id, platform)
-  values (v_token, v_uid, v_platform)
-  on conflict (token) do update
-    set user_id = excluded.user_id,
-        platform = excluded.platform,
-        updated_at = now();
+  begin
+    insert into public.push_tokens (token, user_id, platform)
+    values (v_token, v_uid, v_platform)
+    on conflict (token) do update
+      set user_id = excluded.user_id,
+          platform = excluded.platform,
+          updated_at = now();
+  exception when program_limit_exceeded then
+    -- 압축되지 않는 아주 긴 값은 색인 한도(약 2.7KB)를 넘어 저장할 수 없음
+    raise exception '잘못된 푸시 토큰입니다.' using errcode = '22023';
+  end;
 
   -- 한 계정에 기기가 너무 많이 쌓이지 않도록 최근 10대만 유지 (기기 교체·재설치 등)
   delete from public.push_tokens
@@ -504,20 +510,33 @@ begin
     end if;
 
     v_type := v_row ->> 'type';
+    -- 신고 문구 앞뒤 공백 정리 (사이트의 message.trim() 과 같은 공백 문자 기준)
+    v_text := regexp_replace(
+      coalesce(v_row ->> 'message', ''),
+      '^[\t\n\v\f\r    -     　﻿]+|[\t\n\v\f\r    -     　﻿]+$',
+      '',
+      'g'
+    );
     if v_type = 'report' then
       v_title := '신고 접수';
-      v_body := coalesce(nullif(btrim(v_row ->> 'message'), ''), '새 신고가 접수되었습니다.');
+      v_body := coalesce(nullif(v_text, ''), '새 신고가 접수되었습니다.');
       v_exclude := nullif(v_row ->> 'reporter_id', '');
     elsif v_type = 'review_required' then
       v_title := '신고 검토 필요';
-      v_body := coalesce(nullif(btrim(v_row ->> 'message'), ''), '신고가 누적되어 검토가 필요합니다.');
+      v_body := coalesce(nullif(v_text, ''), '신고가 누적되어 검토가 필요합니다.');
     else
       -- 예전 방식 기록(auto_deleted) 등은 푸시하지 않음
       return jsonb_build_object('tokens', '[]'::jsonb, 'reason', 'unsupported_type');
     end if;
 
     v_setting := 'notify_admin_report';
-    v_data := jsonb_build_object('kind', 'report', 'id', p_id::text, 'type', v_type);
+    v_data := jsonb_strip_nulls(jsonb_build_object(
+      'kind', 'report',
+      'id', p_id::text,
+      'type', v_type,
+      'post_id', v_row ->> 'post_id',
+      'comment_id', v_row ->> 'comment_id'
+    ));
     select coalesce(array_agg(s.id), '{}'::uuid[]) into v_candidates
       from public.sfa_push_staff_ids(false) as s(id);
 

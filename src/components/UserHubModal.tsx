@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -9,6 +9,8 @@ import { CrownIcon, RoleType } from './CrownIcon'
 import CustomPopup from './CustomPopup'
 import Avatar from './Avatar'
 import SettingsView from './userhub/SettingsView'
+import NotificationSettingsView from './userhub/NotificationSettingsView'
+import AppDownloadView from './userhub/AppDownloadView'
 import MyCommentsView from './userhub/MyCommentsView'
 import CreditsPopup from './userhub/CreditsPopup'
 import { isCreatorEmail } from '@/lib/roles'
@@ -43,10 +45,25 @@ import {
   CheckCheck,
   MessageSquare,
   CornerDownRight,
-  Info
+  Info,
+  Download
 } from 'lucide-react'
 
-type ModalView = 'menu' | 'notifications' | 'settings' | 'my_posts' | 'liked_posts' | 'my_comments' | 'appeals' | 'suggestion_write' | 'suggestion_inbox'
+type ModalView =
+  | 'menu'
+  | 'notifications'
+  | 'notification_settings'
+  | 'settings'
+  | 'my_posts'
+  | 'liked_posts'
+  | 'my_comments'
+  | 'appeals'
+  | 'suggestion_write'
+  | 'suggestion_inbox'
+  | 'app_download'
+
+/** 허브를 열 때 바로 보여줄 화면 (앱 알림을 눌렀을 때 등). 없으면 메뉴 */
+export type UserHubInitialView = 'notifications' | 'suggestion_inbox' | 'appeals' | 'notification_settings'
 
 interface PostItem {
   id: string
@@ -92,6 +109,8 @@ interface UserHubModalProps {
   onNicknameUpdated: (newNick: string) => void
   unreadNotificationCount: number
   onUnreadNotificationCountChange: (count: number) => void
+  /** 열릴 때마다 처음 보여줄 화면 (기본: 메뉴) */
+  initialView?: UserHubInitialView
 }
 
 export default function UserHubModal({
@@ -104,6 +123,7 @@ export default function UserHubModal({
   onNicknameUpdated,
   unreadNotificationCount,
   onUnreadNotificationCountChange,
+  initialView,
 }: UserHubModalProps) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -129,6 +149,7 @@ export default function UserHubModal({
 
   // 이의제기 관리 상태 (제작자, 최고관리자)
   const [appeals, setAppeals] = useState<BlacklistAppeal[]>([])
+  const [loadingAppeals, setLoadingAppeals] = useState(false)
   const [pendingAppealCount, setPendingAppealCount] = useState(0)
   const [selectedAppeal, setSelectedAppeal] = useState<BlacklistAppeal | null>(null)
   const [replyInput, setReplyInput] = useState('')
@@ -151,6 +172,7 @@ export default function UserHubModal({
 
   // 건의함 수신 상태 (제작자 전용)
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [unreadSuggestionCount, setUnreadSuggestionCount] = useState(0)
   const [selectedSuggestion, setSelectedSuggestion] = useState<SuggestionItem | null>(null)
   const [deletingReadSuggestions, setDeletingReadSuggestions] = useState(false)
@@ -171,20 +193,6 @@ export default function UserHubModal({
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  // 닉네임이 바뀔 때마다 메뉴로 돌아가지 않도록 currentNickname 은 의존성에서 제외 (개인 설정 화면 유지)
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentView('menu')
-      if (isCreator) {
-        checkFreezeStatus()
-        fetchSuggestions()
-      }
-      if (isCreatorOrSuperAdmin) {
-        fetchAppeals()
-      }
-    }
-  }, [isOpen, isCreator, isCreatorOrSuperAdmin])
 
   useEffect(() => {
     if (!isOpen || !userId) return
@@ -210,10 +218,13 @@ export default function UserHubModal({
   }
 
   const fetchAppeals = async () => {
+    // 목록이 비어 있을 때만 불러오는 중 표시 (알림을 눌러 바로 이 화면으로 열 때 '메시지 없음'이 잠깐 보이지 않게)
+    setLoadingAppeals(true)
     const { data } = await supabase
       .from('blacklist_appeals')
       .select('*')
       .order('created_at', { ascending: false })
+    setLoadingAppeals(false)
 
     if (data) {
       setAppeals(data as BlacklistAppeal[])
@@ -223,10 +234,12 @@ export default function UserHubModal({
   }
 
   const fetchSuggestions = async () => {
+    setLoadingSuggestions(true)
     const { data } = await supabase
       .from('site_suggestions')
       .select('*')
       .order('created_at', { ascending: false })
+    setLoadingSuggestions(false)
 
     if (data) {
       setSuggestions(data as SuggestionItem[])
@@ -468,18 +481,46 @@ export default function UserHubModal({
     setLoadingPosts(false)
   }
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     setLoadingNotifications(true)
     const list = await fetchNotifications(userId)
     setNotifications(list)
     setLoadingNotifications(false)
-  }
+  }, [userId])
 
   const handleSelectView = (view: ModalView) => {
     setCurrentView(view)
     if (view === 'my_posts') fetchMyPosts()
     else if (view === 'liked_posts') fetchLikedPosts()
     else if (view === 'notifications') loadNotifications()
+  }
+
+  // 열릴 때마다 처음 화면(기본 메뉴, 앱 알림을 누르면 해당 화면)으로. 권한이 필요한 화면은 권한이 확인된 뒤에 보여줌
+  // 닉네임이 바뀔 때마다 메뉴로 돌아가지 않도록 currentNickname 은 의존성에서 제외 (개인 설정 화면 유지)
+  useEffect(() => {
+    if (isOpen) {
+      const startView: ModalView =
+        initialView === 'suggestion_inbox'
+          ? (isCreator ? 'suggestion_inbox' : 'menu')
+          : initialView === 'appeals'
+            ? (isCreatorOrSuperAdmin ? 'appeals' : 'menu')
+            : initialView ?? 'menu'
+      setCurrentView(startView)
+      if (startView === 'notifications') loadNotifications()
+      if (isCreator) {
+        checkFreezeStatus()
+        fetchSuggestions()
+      }
+      if (isCreatorOrSuperAdmin) {
+        fetchAppeals()
+      }
+    }
+  }, [isOpen, initialView, isCreator, isCreatorOrSuperAdmin, loadNotifications])
+
+  // 헤더 뒤로가기: 알림 설정 → 알림, 나머지 → 메뉴
+  const handleBack = () => {
+    if (currentView === 'notification_settings') handleSelectView('notifications')
+    else setCurrentView('menu')
   }
 
   const handleOpenPost = (post: PostItem) => {
@@ -558,7 +599,7 @@ export default function UserHubModal({
             {currentView !== 'menu' && (
               <button
                 type="button"
-                onClick={() => setCurrentView('menu')}
+                onClick={handleBack}
                 className="p-1 -ml-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg transition"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -567,6 +608,7 @@ export default function UserHubModal({
             <h2 className="text-base font-bold text-zinc-900 dark:text-white">
               {currentView === 'menu' && '마이 프로필'}
               {currentView === 'notifications' && '알림'}
+              {currentView === 'notification_settings' && '알림 설정'}
               {currentView === 'settings' && '개인 설정'}
               {currentView === 'my_posts' && '내가 쓴 게시글'}
               {currentView === 'liked_posts' && '좋아요 누른 게시글'}
@@ -574,6 +616,7 @@ export default function UserHubModal({
               {currentView === 'appeals' && '관리자 전용 메시지'}
               {currentView === 'suggestion_write' && '건의사항 작성'}
               {currentView === 'suggestion_inbox' && '제작자 건의함'}
+              {currentView === 'app_download' && '앱 다운로드'}
             </h2>
           </div>
           <button onClick={onClose} className="p-1 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg transition">
@@ -656,7 +699,7 @@ export default function UserHubModal({
                   </div>
                   <div>
                     <h3 className="text-xs font-bold text-zinc-900 dark:text-white">개인 설정</h3>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">프로필 사진, 닉네임, 공개 범위, 알림을 설정합니다.</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">프로필 사진, 닉네임, 공개 범위를 설정합니다.</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
@@ -793,6 +836,25 @@ export default function UserHubModal({
                   <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                 </button>
               )}
+
+              {isCreatorOrSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectView('app_download')}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-800 transition group text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-teal-100 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400">
+                      <Download className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-zinc-900 dark:text-white">앱 다운로드</h3>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400">안드로이드(APK)·윈도우(설치 파일) 앱을 내려받습니다.</p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                </button>
+              )}
             </div>
 
             {isCreator && (
@@ -850,6 +912,12 @@ export default function UserHubModal({
         {currentView === 'settings' && (
           <SettingsView userId={userId} currentNickname={currentNickname} onNicknameUpdated={onNicknameUpdated} />
         )}
+
+        {currentView === 'notification_settings' && (
+          <NotificationSettingsView userId={userId} isCreator={isCreator} isCreatorOrSuperAdmin={isCreatorOrSuperAdmin} />
+        )}
+
+        {currentView === 'app_download' && <AppDownloadView />}
 
         {currentView === 'my_comments' && <MyCommentsView userId={userId} onNavigate={handleOpenCommentPath} />}
 
@@ -935,7 +1003,12 @@ export default function UserHubModal({
             </div>
 
             <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
-              {suggestions.length === 0 ? (
+              {loadingSuggestions && suggestions.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400">
+                  <Loader2 className="w-6 h-6 animate-spin text-yellow-500" />
+                  <span className="text-xs">건의사항을 불러오는 중...</span>
+                </div>
+              ) : suggestions.length === 0 ? (
                 <div className="py-12 text-center text-xs text-zinc-500">도착한 건의사항이 없습니다.</div>
               ) : (
                 suggestions.map((item) => (
@@ -996,6 +1069,16 @@ export default function UserHubModal({
                 >
                   <Trash2 className="w-3 h-3" />
                   <span>읽은 알림 삭제</span>
+                </button>
+                {/* 알림 설정 (앱 OS 알림 항목·이 기기·창 닫기). 높이는 옆 버튼에 맞춤 */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentView('notification_settings')}
+                  aria-label="알림 설정"
+                  title="알림 설정"
+                  className="self-stretch inline-flex items-center justify-center px-1.5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-400/60 dark:border-zinc-600 rounded-none transition"
+                >
+                  <Settings className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -1116,7 +1199,12 @@ export default function UserHubModal({
             </div>
 
             <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
-              {appeals.length === 0 ? (
+              {loadingAppeals && appeals.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500 dark:text-zinc-400">
+                  <Loader2 className="w-6 h-6 animate-spin text-red-500" />
+                  <span className="text-xs">메시지를 불러오는 중...</span>
+                </div>
+              ) : appeals.length === 0 ? (
                 <div className="py-12 text-center text-xs text-zinc-500">도착한 이의제기 메시지가 없습니다.</div>
               ) : (
                 appeals.map((item) => (

@@ -34,6 +34,7 @@ import { extractFirstImage, extractPlainText, countImages, countVideos, extractF
 import { fetchMyRole, fetchRoleMap } from '@/lib/roles';
 import { getPostPath } from '@/lib/postRoute';
 import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile';
+import { consumeReportsOpenRequest, onReportsOpenRequest } from '@/lib/appIntents';
 import {
   FEED_CACHE_FRESH_MS,
   getFeedCache,
@@ -166,6 +167,15 @@ function ClanFeedContent() {
 
   const isAdmin = Boolean(currentUserRole === 'creator' || currentUserRole === 'super_admin' || currentUserRole === 'admin');
   const isCreatorOrSuperAdmin = currentUserRole === 'creator' || currentUserRole === 'super_admin';
+
+  // [앱] 신고 알림을 누르면 [신고 기록] 창 열기 (제작자·최고관리자만)
+  // 권한을 아직 모르면 요청을 꺼내지 않고 두었다가, 권한이 확인되면 그때 꺼내서 염
+  useEffect(() => {
+    if (!isCreatorOrSuperAdmin) return;
+    const openReports = () => setIsAdminReportOpen(true);
+    if (consumeReportsOpenRequest()) openReports();
+    return onReportsOpenRequest(openReports);
+  }, [isCreatorOrSuperAdmin]);
 
   // 보기 방식 통합 로컬스토리지 키 (sfa_global_view_mode)
   useEffect(() => {

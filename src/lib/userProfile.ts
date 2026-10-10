@@ -351,9 +351,14 @@ export const emitProfileChanged = (event: ProfileChangedEvent) => {
 
 // ---------------------------------------------------------------------
 // 새 알림 토스트(상단 파란 팝업) 표시 여부 – 기기별 설정
+// (2026-10-10 알림 개편으로 파란 토스트 자체가 없어짐 → 더 이상 쓰지 않음. 남은 사용처가 정리되면 삭제)
 // ---------------------------------------------------------------------
 const TOAST_KEY = 'sfa_notify_toast'
 
+/**
+ * @deprecated 파란 알림 토스트가 없어졌습니다 (웹: 빨간 점만, 앱: OS 알림).
+ * 앱의 OS 알림은 마이 프로필 > 알림 > 알림 설정(프로필 notify_* + 기기별 isDeviceNotifyEnabled)으로 정합니다.
+ */
 export const isNotificationToastEnabled = (): boolean => {
   try {
     return localStorage.getItem(TOAST_KEY) !== '0'
@@ -362,6 +367,7 @@ export const isNotificationToastEnabled = (): boolean => {
   }
 }
 
+/** @deprecated 파란 알림 토스트가 없어졌습니다. isNotificationToastEnabled 설명 참고 */
 export const setNotificationToastEnabled = (enabled: boolean) => {
   try {
     localStorage.setItem(TOAST_KEY, enabled ? '1' : '0')
