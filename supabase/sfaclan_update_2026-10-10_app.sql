@@ -375,7 +375,7 @@ begin
   -- JS 정규식 \s 와 같은 공백 문자들 (일반 공백, 탭, 줄바꿈, 전각 공백 등)
   v_clean := btrim(regexp_replace(
     coalesce(p_text, ''),
-    '[\t\n\v\f\r    -     　﻿]+',
+    '[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+',
     ' ',
     'g'
   ));
@@ -513,7 +513,7 @@ begin
     -- 신고 문구 앞뒤 공백 정리 (사이트의 message.trim() 과 같은 공백 문자 기준)
     v_text := regexp_replace(
       coalesce(v_row ->> 'message', ''),
-      '^[\t\n\v\f\r    -     　﻿]+|[\t\n\v\f\r    -     　﻿]+$',
+      '^[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+|[\t\n\v\f\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+$',
       '',
       'g'
     );
