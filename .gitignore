@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Firebase 키·설정 파일 (apps/android/scripts/codespaces-setup-push.sh 가 다루는 파일, 절대 커밋 금지)
+*firebase-adminsdk*.json
+/google-services.json
+# Supabase CLI 임시 파일
+supabase/.temp/
