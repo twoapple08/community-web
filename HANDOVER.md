@@ -1,20 +1,31 @@
-# SFAClan 인수인계 프롬프트 (2026-10-10 기준)
+# SFAClan 인수인계 (2026-10-11 기준, 사이트 + 앱 통합본)
 
-> 사용법: 이 파일 전체를 새 AI 세션의 첫 메시지로 붙여넣거나, "저장소의 HANDOVER.md 를 먼저 읽어줘" 라고 요청.
+> 사용법: 새 AI 세션에 "저장소의 HANDOVER.md 를 먼저 읽어줘" 라고 요청 (이 파일 하나로 끝. 예전 HANDOVER_APP.md 는 여기로 합침).
 
 코드 저장소: twoapple08/community-web (GitHub) / 실서버: https://www.sfaclan.com
-최근 작업은 모두 작업 브랜치 ccr-d081b1c2-9mjot4 에 있음 (그 전 작업은 claude/charming-ptolemy-oe6qxa. main 반영 여부는 `git log origin/main --oneline -5` 로 확인)
-앱(APK/EXE)·앱 알림 작업의 현재 상태와 사용자가 할 일은 HANDOVER_APP.md 참고.
+작업 브랜치: **ccr-d081b1c2-9mjot4** (그 전 작업은 claude/charming-ptolemy-oe6qxa). main 반영 여부는 `git log origin/main --oneline -5` 로 확인.
+배포 스크립트 deploy_sfaclan_update.sh 의 BRANCH 기본값도 이 브랜치.
+
+**현재 상태 (2026-10-11)**
+- 사이트: 앱 연동 코드까지 main 에 배포 완료 (main = 55e679c).
+- 앱 설정 모두 끝남: 2026-10-10 앱 SQL 적용, GitHub Secrets 7개, Firebase(FCM), Edge Function send-push 배포·연결, 서명 키 백업.
+- 앱 빌드: 안드로이드(서명 APK, 푸시 포함)·윈도우(NSIS) 수동 빌드 성공 → Supabase 비공개 버킷 app-releases 에 업로드 완료.
+- **남은 것: 실기기 점검 (아래 9번 목록)** 과 그 결과 반영.
+- 작업 브랜치에만 있고 main 에 없는 것: codespaces-setup-push.sh 개선(DB 업데이트 자동 적용), 이 문서. 사이트·앱 동작과 무관하므로 급히 배포할 필요 없음.
 
 ## 0. AI 작업 규칙 (반드시 지킬 것)
 - 바꾸라고 한 것 외에는 화면·동작이 눈으로 보기에 완전히 똑같아야 한다. 코드는 바뀌어도 되지만 디자인/배치/문구/동작은 그대로 둔다.
 - 브라우저 기본 팝업(alert/confirm/prompt)은 쓰지 않는다. 사이트 전용 직각 팝업(src/components/CustomPopup.tsx)이나 같은 디자인 계열을 쓴다. 라운드 스퀘어도 가능하다.
-- 사용자는 모바일 또는 PC(VS Code + Git Bash, Node.js 설치)로 작업한다.
+- 사용자는 주로 **휴대폰(브라우저 + GitHub Codespaces 터미널)**, 가끔 PC(VS Code + Git Bash)로 작업한다. 휴대폰에서 긴 SQL 붙여넣기는 실패하기 쉬우므로
+  가능하면 "Codespaces 터미널에 한 줄 붙여넣으면 다 해 주는 스크립트"로 준다 (apps/android/scripts/codespaces-*.sh 방식).
 - 결과물은 "붙여넣기만 하면 되는 명령"으로 준다. 마지막에는 항상 에러 검사(타입 검사 + 빌드)를 통과해야만 실서버에 배포(main push)되는 명령을 준다.
 - 실서버 배포(main push)는 사용자가 직접 한다. AI는 작업 브랜치에 커밋·푸시까지만 하고 배포 명령을 알려준다. npx tsc --noEmit 은 실행해도 된다.
 - AI가 혼자 처리할 수 있는 건 직접 처리하고, 사용자가 해야 할 일(Supabase 작업 등)은 순서대로 정리해서 알려준다.
 - 복붙만으로 끝나는 작업(SQL 실행, 배포, 공지 작성, 실기기 확인)은 사용자에게 넘겨 토큰을 아낀다. 사용자가 할 일 안내는 모든 작업이 끝난 뒤 한 번에 한다.
-- 질문이나 필요한 자료가 있으면 먼저 물어본다. 답변은 한국어로 한다.
+- 질문이나 필요한 자료가 있으면 먼저 물어본다. **답변은 반드시 한국어로 한다** (영어로 답하면 사용자가 불편해함).
+- 비밀 값(service_role 키, Supabase 액세스 토큰, Firebase 서비스 계정 키, 서명 키 비밀번호)은 채팅에 붙여넣게 하지 않는다. 터미널·GitHub Secrets·Supabase Secrets 에만.
+  공개 저장소이므로 비밀 파일 커밋 금지, Actions 산출물(artifact) 금지, 로그에 비밀 값 출력 금지.
+- 서명 키를 새로 만들지 않는다 (새로 만들면 기존 설치 앱이 업데이트 불가). 필요하면 반드시 먼저 묻는다.
 - 이 저장소의 Next.js 는 16 버전으로 학습 데이터와 다르다. 코드를 쓰기 전에 node_modules/next/dist/docs/ 문서를 확인한다 (AGENTS.md 참고).
 
 ## 1. 프로젝트 개요
@@ -81,11 +92,11 @@ supabase/
   sfaclan_update_2026-10-07_avatar.sql  새 가입자는 항상 기본 프로필 사진 (여러 번 실행해도 안전)
   sfaclan_reset_avatars_once.sql        (1회용) 모든 유저 프로필 사진을 기본으로 되돌림
   sfaclan_update_2026-10-08_views.sql   게시글 조회수 (여러 번 실행해도 안전)
-  sfaclan_update_2026-10-10_app.sql     앱 알림·푸시·앱 다운로드 버킷 (여러 번 실행해도 안전, HANDOVER_APP.md 참고)
-  functions/send-push/index.ts          FCM 푸시 발송 Edge Function (import 없는 한 파일, 대시보드에 붙여넣어 배포)
+  sfaclan_update_2026-10-10_app.sql     앱 알림·푸시·앱 다운로드 버킷 (여러 번 실행해도 안전, 8번 참고)
+  functions/send-push/index.ts          FCM 푸시 발송 Edge Function (import 없는 한 파일. codespaces-setup-push.sh 가 배포, 대시보드 붙여넣기도 가능)
 apps/                            앱 껍데기 (사이트 빌드·타입검사·린트와 분리됨, tsconfig/eslint 에서 제외)
   assets/          앱 아이콘 원본 (make_base_icons.py 로 public/logo-community.png 에서 생성)
-  android/         Capacitor 8 안드로이드 앱 (README.md 참고)
+  android/         Capacitor 8 안드로이드 앱 (README.md 참고), scripts/codespaces-setup-*.sh = Codespaces 한 줄 설정 스크립트
   windows/         Tauri 2 윈도우 앱, NSIS 설치 프로그램 (README.md 참고)
 .github/workflows/app-android.yml, app-windows.yml   앱 빌드 (push = 확인용 빌드, 수동 실행 = 서명·업로드)
 deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
@@ -152,7 +163,7 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 - 프로필 사진: 새 가입자는 항상 기본 사진(사진 없음)으로 시작한다 (DB 트리거).
 - 기타
   - 알림: 일반 브라우저는 프로필 빨간점 + 마이 프로필 [알림]만 (파란 토스트는 2026-10-10 에 없앰). Supabase Realtime 을 쓰고, 실패하면 60초마다 확인한다.
-    앱(안드로이드/윈도우)은 모든 알림(좋아요·댓글·답글·신고·건의·이의제기)을 OS 알림으로 띄운다 (HANDOVER_APP.md).
+    앱(안드로이드/윈도우)은 모든 알림(좋아요·댓글·답글·신고·건의·이의제기)을 OS 알림으로 띄운다 (7~10번).
   - 건의사항, 이의제기, 사이트 얼리기, 공지(서명 기반 다시 보지 않기), 이용약관 첫 동의, 동영상 50MB, 임시보관.
 - 회색 보조 글씨(날짜·메타 정보 등): 라이트 모드는 text-zinc-500, 다크 모드는 dark:text-zinc-400 (라이트에서 흐리던 문제로 한 단계 진하게).
   새 UI 에 회색 글씨를 쓸 때도 "text-zinc-500 dark:text-zinc-400" 조합을 쓴다. 큰 장식용 빈 아이콘·기본 프로필 아이콘만 zinc-400 유지.
@@ -180,7 +191,7 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 
 - 2026-10-10 SQL: profiles.notify_admin_report/suggestion/appeal, push_tokens(+ sfa_register_push_token/sfa_unregister_push_token),
   푸시 발송 트리거 zz_sfa_push_dispatch(pg_net → Edge Function send-push), sfa_push_build(받는 사람·문구), 비공개 버킷 app-releases(제작자·최고관리자만 읽기),
-  admin_notifications·site_suggestions Realtime 등록(RLS 켜진 테이블만). 자세한 내용은 HANDOVER_APP.md.
+  admin_notifications·site_suggestions Realtime 등록(RLS 켜진 테이블만). 자세한 내용은 7~8번.
 
 ## 6. 주의할 점
 - globals.css 의 전역 * transition 규칙은 @layer base 안에 있다. 레이어 밖으로 빼면 Tailwind 의 transition·duration 유틸리티가 전부 무시된다.
@@ -191,13 +202,120 @@ deploy_sfaclan_update.sh         빌드 검사 후 main 배포 스크립트
 - 프로필 사진·닉네임을 바꾼 뒤 피드 목록에는 최대 1분 정도 예전 값이 보일 수 있다 (아바타 캐시 60초, 피드는 프로필 변경 이벤트를 받지 않음).
 - 프로필 창 목록에서 삭제 신청 중인 글은 작성자 본인만 본다. 클랜 피드에서는 관리자에게도 보인다.
 - 예전부터 있던 ESLint 경고(effect 안 setState, any 타입, 안 쓰는 import 등)는 남아 있다. 빌드에는 영향이 없다.
-- 실기기에서 아직 확인할 것: 색상 고리 터치 드래그, 이미지 크기조절 점 터치, 프로필 사진(GIF) 업로드, 신고 심사 흐름, 앱 전체(HANDOVER_APP.md 의 실기기 점검 목록).
+- 실기기에서 아직 확인할 것: 색상 고리 터치 드래그, 이미지 크기조절 점 터치, 프로필 사진(GIF) 업로드, 신고 심사 흐름, 앱 전체(9번 실기기 점검 목록).
 - 앱 판별(getAppPlatform)은 서버 렌더링 때 항상 null 이다. 앱에서만 다른 화면을 그릴 때는 마운트 후 값(useSyncExternalStore/effect)으로 그려야 hydration 오류가 안 난다.
 - 앱 화면은 실서버를 그대로 띄우므로, 사이트 배포만으로 앱 화면이 바뀐다. 앱 껍데기(apps/)는 아이콘·딥링크·플러그인·알림 채널을 바꿀 때만 다시 빌드한다.
 
-## 7. 남은 일 / 아이디어
-- 앱(APK/EXE): 코드·CI 완료. 사용자 설정(SQL, Secrets, Firebase, Edge Function) 후 실기기 점검 필요 → HANDOVER_APP.md.
+## 7. 앱(APK / EXE) – 사용자 결정 사항 (확정)
+
+- 앱 이름 **스틱파이터 커뮤니티**, 패키지 ID **com.sfaclan.community**, 앱 주소 **sfaclan://** (로그인 복귀 sfaclan://auth-callback).
+- 앱 UI = 사이트 UI 그대로 (앱은 실서버 https://www.sfaclan.com 을 띄움 → 사이트 배포 = 앱 화면 자동 최신).
+- 설치 대상: 지금은 제작자 + 최고관리자만 (마이 프로필 [앱 다운로드]). 나중에 모든 유저가 설치할 수 있게 알림 구조는 전체 유저 기준으로 만듦.
+- 앱이 꺼져 있어도 알림: 안드로이드는 FCM 푸시 (Firebase 프로젝트는 사용자가 만듦).
+- 윈도우 창 X: 처음에는 "완전히 닫기 / 트레이로 내리기" 팝업 + "다음부터 묻지 않기", 나중에 알림 설정에서 변경 가능.
+- 일반 브라우저 웹 푸시: 나중에 생각 (이번에는 안 함).
+- 알림 표시:
+  - **앱**: 모든 알림(좋아요·댓글·답글·신고(심사 포함)·건의함·이의제기)을 **OS 알림**으로 (앱을 보고 있을 때도). 사이트 파란 토스트는 쓰지 않음.
+  - **일반 브라우저**: 토스트도 OS 알림도 없이 **빨간 점만** (예전 파란 토스트는 없앰).
+- 알림 설정: 마이 프로필 → [알림] 창 머리의 **톱니바퀴** → 알림 설정.
+  - 알림을 끄면 OS 알림(팝업)만 안 뜨고, 알림 목록·빨간 점·신고 기록·건의함·관리자 메시지에는 그대로 쌓임 (DB 트리거도 이에 맞게 수정).
+  - 관리자 알림: 신고(심사 포함)·이의제기 = 제작자+최고관리자, 건의함 = 제작자. 각각 따로 끌 수 있음.
+- OS 알림을 누르면: 좋아요·댓글 → 해당 글/댓글 위치, 신고 → [신고 기록] 창, 건의 → 건의함, 이의제기 → 관리자 전용 메시지.
+
+## 8. 앱 – 구조
+
+| 구분 | 안드로이드 (apps/android) | 윈도우 (apps/windows) |
+|---|---|---|
+| 껍데기 | Capacitor 8.5 (server.url = https://www.sfaclan.com) | Tauri 2 (WebView2), NSIS 설치 프로그램 (관리자 권한 없이 설치) |
+| 앱 표시 | User-Agent 끝 ` SFAClanApp/<버전> (android)` (+ Firebase 포함 빌드면 ` SFAClanPush/1`) | 페이지보다 먼저 `window.__SFACLAN_APP__ = {platform:'windows', version}` |
+| 로그인 | 기본 브라우저(Custom Tab)에서 구글 로그인 → sfaclan://auth-callback → 같은 웹뷰에서 PKCE 코드 교환 | 기본 브라우저 → sfaclan:// (딥링크 + 단일 실행) → 같은 방식 |
+| 알림 | FCM 푸시 (앱이 꺼져 있어도). 앱이 앞에 있을 때 온 푸시는 로컬 알림으로 다시 띄움. 채널 sfa_alerts(헤즈업) | 앱이 떠 있는 동안(트레이 포함) 사이트가 Realtime + 60초 확인으로 감시 → 윈도우 알림(오른쪽 아래) |
+| 기타 | 뒤로가기(열린 창 닫기 → 뒤로 → 앱 내리기), 상태바·내비게이션바 여백/색 = 사이트 테마, 회전·분할·팝업 창에서 다시 로드 안 함, 연결 실패 화면 | 최소 360x560, 크기·위치 기억, 트레이(열기/종료), 다른 사이트 링크는 기본 브라우저, 연결 실패 화면 |
+
+- 사이트 쪽 연결 코드: src/lib/appBridge.ts (앱 판별·로그인·딥링크·창 닫기·상태바), src/lib/appNotify.ts (OS 알림·권한·FCM 토큰·감시),
+  src/lib/notifications.ts (OS 알림 문구), src/components/AppShell.tsx, AppClosePopup.tsx, userhub/NotificationSettingsView.tsx, userhub/AppDownloadView.tsx.
+  네이티브 모듈은 앱 안에서만 동적으로 불러오므로 일반 브라우저 방문자는 추가 다운로드가 없다.
+- 서버 푸시: DB 트리거 zz_sfa_push_dispatch (user_notifications / admin_notifications(report·review_required) / site_suggestions / blacklist_appeals INSERT)
+  → pg_net → Edge Function send-push → FCM. 받는 사람·문구·알림 설정 반영은 SQL 함수 sfa_push_build 가 계산 (앱 기기가 없는 회원은 함수 호출 자체가 없음).
+- 다른 기기에서 로그아웃 등으로 세션이 끝나면 그 폰의 FCM 토큰을 폐기 (로그아웃된 폰에 푸시가 계속 오지 않게).
+- 앱 다운로드: Supabase 비공개 버킷 app-releases (제작자·최고관리자만 읽기). 버튼을 누르면 1분짜리 주소를 발급해 기본 브라우저로 받음.
+  파일: android/sfaclan.apk, android/latest.json, windows/sfaclan-setup.exe, windows/latest.json
+- 빌드: GitHub Actions (.github/workflows/app-android.yml, app-windows.yml)
+  - push (apps/<플랫폼>/** 이 바뀌었을 때): 확인용 빌드만 (서명·업로드·Actions 산출물 없음)
+  - 수동 실행 (Actions → 앱 빌드 → Run workflow, upload 체크): 서명(안드로이드)된 파일을 비공개 버킷에 업로드. 공개 저장소라 산출물·비밀 값은 로그에 남기지 않음.
+  - 수동 실행은 워크플로 파일이 main 에 있어야 Actions 화면에 버튼이 보인다 → 사이트 배포(main 반영) 후에 실행.
+- 아이콘: apps/assets (public/logo-community.png 로 만든 흰 배경 아이콘). 원본 로고가 214x144 로 작아 아이콘이 살짝 흐릴 수 있음 → 고해상도 로고를 받으면
+  apps/assets/make_base_icons.py → apps/android 의 `npm run icons` → apps/windows 의 `npx tauri icon ../assets/icon-1024.png` 다시 실행.
+
+## 8-1. 앱 설정 기록 (모두 완료, 다시 할 때 참고)
+
+Codespaces 터미널에서 한 줄로 실행하는 스크립트 2개로 처리했다 (둘 다 다시 실행해도 안전).
+1. `codespaces-setup-secrets.sh`: 서명 키 생성 → GitHub Secrets 6개(ANDROID_KEYSTORE_BASE64/PASSWORD, ANDROID_KEY_ALIAS/PASSWORD, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+   → 서명 키 백업을 Supabase 비공개 버킷 **app-signing-backup** 에 올림 (**절대 지우지 말 것**. 잃으면 앱 업데이트 불가).
+   `cd /workspaces/community-web && bash <(git fetch -q origin ccr-d081b1c2-9mjot4 && git show origin/ccr-d081b1c2-9mjot4:apps/android/scripts/codespaces-setup-secrets.sh)`
+2. `codespaces-setup-push.sh`: Firebase 파일 2개(google-services.json, 서비스 계정 키) 확인 → Supabase Project URL + 액세스 토큰(sbp_) 입력
+   → service_role 키 자동 조회 → 2026-10-10 앱 SQL 이 없으면 관리 API 로 직접 적용 → app-releases 버킷·내려받기 정책 확인/생성
+   → send-push 배포(JWT 확인 끔)·비밀 값(PUSH_WEBHOOK_SECRET, FCM_SERVICE_ACCOUNT) 등록·동작 확인 → sfa_set_push_endpoint 로 DB 연결
+   → GitHub Secret GOOGLE_SERVICES_JSON → 안드로이드·윈도우 빌드(main, upload) 시작 → 서비스 계정 키 파일 삭제.
+   `cd /workspaces/community-web && bash <(git fetch -q origin ccr-d081b1c2-9mjot4 && git show origin/ccr-d081b1c2-9mjot4:apps/android/scripts/codespaces-setup-push.sh)`
+- Supabase 액세스 토큰: https://supabase.com/dashboard/account/tokens → Generate new token (설정 후 지워도 됨).
+- 로그인 복귀 주소: Supabase → Authentication → URL Configuration → Redirect URLs 에 `sfaclan://auth-callback` (등록 여부는 실기기 로그인으로 확인. 앱 로그인이 사이트로 돌아가 버리면 이것부터 확인).
+- Supabase 는 Pro 요금제 (무료 한도 초과로 업그레이드함).
+- 서명 인증서: CN=SFAClan, SHA-256 3170a94411a58cdf9ed877d75b565df2382ecad62cf18c69a80d7a51164e2234 (공개 정보, 빌드 로그와 비교용).
+- 새 앱 파일 올리기: GitHub → Actions → "앱 빌드 (안드로이드)" / "앱 빌드 (윈도우)" → Run workflow (branch main, upload 체크).
+  앱 화면은 실서버를 띄우므로 사이트만 바뀐 경우 다시 빌드할 필요 없음.
+- 설치 경고: 안드로이드 "출처를 알 수 없는 앱 허용"·Play 프로텍트 "무시하고 설치", 윈도우 SmartScreen "추가 정보 → 실행".
+
+## 8-2. 확인한 것 / 못 한 것
+
+확인함
+- 사이트: tsc, eslint(기존 오류만 남음, 새 오류 없음), next build. Playwright + 가짜 Supabase 로 마이 프로필·알림·알림 설정·앱 다운로드·개인 설정 화면 (320/360/448px, 라이트/다크),
+  가짜 Tauri 환경에서 이 기기·창 닫기 섹션, 창 닫기 팝업, 앱 이벤트 연결 순서 (listen → sfa_app_ready → sfa_take_pending).
+- 가짜 Capacitor 환경에서 권한 요청 1회, FCM 등록·토큰 저장 RPC, 앞에 있을 때 푸시 → 로컬 알림, 뒤로가기, 로그아웃 순서(토큰 해제 → 로그아웃).
+- SQL: 로컬 PostgreSQL 16 에서 2회 연속 실행, 알림 끄기여도 알림 저장됨, 받는 사람(제작자 이메일·최고관리자·신고자 제외·설정 꺼짐), 권한(일반 유저는 비밀 함수 호출 불가), 버킷 정책.
+- Edge Function: deno check/lint, 가짜 FCM 으로 보내기·토큰 정리·재시도.
+- CI: 안드로이드 APK, 윈도우 NSIS 설치 파일 실제 빌드 성공 (GitHub Actions).
+- 별도 검토 단계(보안·사이트 흐름·연결 계약·CI·네이티브 동작)에서 확인된 문제 7건은 모두 수정함.
+
+- 실제 환경: Supabase 에 SQL 적용, send-push 동작 확인(잘못된 요청 400 응답), 서명 APK·윈도우 설치 파일 빌드·업로드 성공 (2026-10-11).
+
+아직 못 함 (실기기 필요)
+- 실제 폰·PC 에서 설치·로그인·알림(FCM 실제 도착 포함)·창 크기·트레이.
+
+## 9. 실기기 점검 목록 (다음에 할 일)
+
+안드로이드 (15/16 과 14 이하 각각 있으면 좋음)
+- 설치 → 시작 화면(흰 배경 로고) → 사이트가 상태바·내비게이션바에 가려지지 않는지, 라이트/다크 전환 시 막대 색이 따라오는지.
+- 로그인: 기본 브라우저에서 구글 로그인 → 앱으로 돌아와 로그인 완료.
+- 알림 권한 묻기 1회 → 다른 계정으로 좋아요/댓글 → 앱 켜짐/뒤에 있음/완전히 꺼짐 각각 상단 알림 → 누르면 해당 글·댓글로 이동.
+- 관리자: 신고·건의·이의제기 알림 → 누르면 [신고 기록] / 건의함 / 관리자 전용 메시지.
+- 알림 설정에서 항목 끄기 → OS 알림만 안 오고 목록·빨간 점은 쌓이는지. "이 기기에서 알림 받기" 끄기.
+- 회전·분할 화면·팝업 창에서 다시 로드되지 않는지, 키보드가 입력창을 가리지 않는지, 뒤로가기(창 닫기 → 뒤로 → 앱 내리기).
+- 비행기 모드 → "인터넷 연결을 확인해 주세요" + 다시 시도.
+윈도우
+- 설치(관리자 권한 없이) → 창 최소 크기·크기/위치 기억·최대화.
+- 로그인: 기본 브라우저 → "앱 열기" 허용 → 앱에서 로그인 완료.
+- X → 닫기 팝업 (완전히 닫기 / 트레이로 내리기 / 다음부터 묻지 않기), 알림 설정 → 창 닫기에서 변경.
+- 트레이 상태에서 알림이 오른쪽 아래에 뜨는지, 누르면 창이 앞으로 오며 해당 위치로 이동하는지. 트레이 메뉴 열기/종료.
+- 앱을 한 번 더 실행하면 기존 창이 앞으로 오는지.
+- 알림이 안 뜨면: 윈도우 설정 → 시스템 → 알림 → "스틱파이터 커뮤니티" 켜짐, 방해 금지 꺼짐.
+
+## 10. 앱 – 알려진 제한 / 참고
+
+- 윈도우 앱을 완전히 닫으면 알림이 오지 않는다 (트레이로 내리면 계속 옴). 앱이 꺼진 뒤 예전 알림을 눌러도 해당 글로 이동하지 않을 수 있음.
+- Firebase 없이 빌드한 안드로이드 앱은 앱이 떠 있는 동안만 알림 (기기 절전 정책에 따라 뒤로 보낸 상태에서는 늦거나 안 올 수 있음).
+- 같은 글에 좋아요 → 취소 → 다시 좋아요를 하면 (알림을 읽기 전이면) 푸시가 다시 갈 수 있다. 이미 읽은 좋아요 알림이 다시 살아나는 경우(UPDATE)는 푸시하지 않는다.
+- 안드로이드 앱에서는 사이트의 HTTP 오류 페이지(404 등)도 Capacitor 가 연결 실패 화면으로 바꿔 보여 준다.
+- 사이트 쪽 같은 사이트 새 창(target=_blank) 링크는 윈도우 앱에서 권한 없는 보조 창으로 열린다 (앱 알림·로그인 불가, 일반 웹페이지처럼 동작).
+- 서명 키(p12)를 잃어버리면 같은 앱으로 업데이트가 안 된다 (지우고 새로 설치해야 함).
+- 앱 껍데기를 바꾸면(apps/) push 때 확인용 빌드가 자동으로 돈다. 실제 배포 파일은 수동 실행으로만 올라간다.
+- 앱 판별은 서버 렌더링에서 항상 null → 앱 전용 화면 요소는 마운트 후에만 그린다 (6번).
+
+## 11. 남은 일 / 아이디어
+- **실기기 점검(9번) 결과 반영.**
+- 고해상도 로고로 앱 아이콘 다시 만들기 (8번 '아이콘' 참고).
 - (나중에) 일반 브라우저 웹 푸시: 같은 서버 구조(push_tokens platform 'web', sfa_push_build) 재사용 가능. 지금은 하지 않기로 함.
-- 사용자 실기기 점검 결과 반영.
+- (선택) 사이트가 최신 앱 버전을 알려 주고 오래된 앱이면 "새 버전 받기" 안내 (latest.json 의 version/build 활용).
+- (나중에) 모든 유저에게 앱 다운로드 공개 (알림 구조는 이미 전체 유저 기준).
 - 계정 탈퇴 기능은 지금 건의사항이나 이메일로 요청받는 방식이다 (개인정보처리방침에 명시).
 - 모달 등장 애니메이션(animate-in 계열)은 플러그인이 없어 동작하지 않는다. 필요하면 키프레임을 직접 추가한다.
