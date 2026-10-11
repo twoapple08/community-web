@@ -23,6 +23,7 @@ SUPABASE_CLI_VERSION="2.120.0"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 KEY_DIR="$ROOT/apps/android/keystore"
 FN_SRC="$ROOT/supabase/functions/send-push/index.ts"
+BRANCH="ccr-d081b1c2-9mjot4"
 
 WORK="$(mktemp -d)"
 chmod 700 "$WORK"
@@ -308,6 +309,15 @@ while :; do
 done
 export SUPABASE_ACCESS_TOKEN
 
+# Supabase 관리 API 로 SQL 실행 (SQL Editor 에서 실행하는 것과 같음)
+mq() { # $1 = SQL, $2 = 제한 시간(초, 기본 60) → HTTP 코드 출력, 결과는 $WORK/mq.out
+  local body
+  body="$(python3 -I -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1")"
+  curl -sS --max-time "${2:-60}" -o "$WORK/mq.out" -w '%{http_code}' -X POST \
+    "https://api.supabase.com/v1/projects/$SB_REF/database/query" \
+    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d "$body" 2>/dev/null || true
+}
+
 echo "Supabase 도구 준비 중... (처음 한 번 1분 정도)"
 sb --version >/dev/null 2>"$WORK/sb.err" || fail "Supabase CLI 를 준비하지 못했습니다: $(tail -c 300 "$WORK/sb.err")"
 
@@ -364,9 +374,28 @@ rpc() { # $1 = 함수 이름, $2 = JSON 본문 → HTTP 코드 출력, 본문은
 rpc_detail() { if [ -s "$WORK/rpc.out" ]; then head -c 200 "$WORK/rpc.out"; else head -c 200 "$WORK/curl.err"; fi; }
 
 code="$(rpc sfa_get_push_secret '{}')"
+if [ "$code" = 404 ]; then
+  # 앱용 DB 업데이트가 없음 → 휴대폰 붙여넣기 대신 관리 API 로 직접 적용 (여러 번 실행해도 안전한 SQL)
+  echo "  DB 업데이트(2026-10-10 앱 SQL)가 아직 없어 지금 적용합니다... (최대 3분)"
+  APP_SQL="$WORK/app.sql"
+  git -C "$ROOT" show "origin/$BRANCH:supabase/sfaclan_update_2026-10-10_app.sql" >"$APP_SQL" 2>/dev/null \
+    || cp "$ROOT/supabase/sfaclan_update_2026-10-10_app.sql" "$APP_SQL" 2>/dev/null \
+    || fail "SQL 파일(supabase/sfaclan_update_2026-10-10_app.sql)을 찾지 못했습니다."
+  ac="$(mq "$(cat "$APP_SQL")" 180)"
+  if [ "${ac:0:1}" != 2 ]; then
+    fail "DB 업데이트 적용 실패 (HTTP $ac): $(head -c 400 "$WORK/mq.out")"
+  fi
+  echo "  ✓ DB 업데이트 적용"
+  mq "notify pgrst, 'reload schema';" >/dev/null
+  for _ in 1 2 3 4 5 6; do
+    sleep 5
+    code="$(rpc sfa_get_push_secret '{}')"
+    [ "$code" = 404 ] || break
+  done
+fi
 case "$code" in
   200) ;;
-  404) fail "DB 업데이트가 적용되지 않았습니다 (sfa_get_push_secret 없음). supabase/sfaclan_update_2026-10-10_app.sql 을 SQL Editor 에서 다시 실행해 주세요." ;;
+  404) fail "DB 업데이트를 적용했지만 아직 확인되지 않습니다. 1분 뒤 같은 명령으로 다시 실행해 주세요." ;;
   *) fail "푸시 비밀 값 조회 실패 (HTTP $code): $(rpc_detail)" ;;
 esac
 PUSH_SECRET="$(python3 -I -c 'import json,sys; v=json.load(open(sys.argv[1])); print(v if isinstance(v,str) else "")' "$WORK/rpc.out")"
@@ -392,13 +421,6 @@ fi
 
 # 내려받기 권한(제작자·최고관리자만 읽기) 정책: Supabase 관리 API 로 확인하고 없으면 만듦
 POLICY_SQL="drop policy if exists sfa_app_releases_senior_read on storage.objects; create policy sfa_app_releases_senior_read on storage.objects for select to authenticated using (bucket_id = 'app-releases' and (select public.sfa_is_senior_admin()));"
-mq() { # $1 = SQL → HTTP 코드 출력, 결과는 $WORK/mq.out
-  local body
-  body="$(python3 -I -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1")"
-  curl -sS --max-time 60 -o "$WORK/mq.out" -w '%{http_code}' -X POST \
-    "https://api.supabase.com/v1/projects/$SB_REF/database/query" \
-    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" -d "$body" 2>/dev/null || true
-}
 qc="$(mq "select count(*)::int as n from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'sfa_app_releases_senior_read'")"
 has_policy="$(python3 -I -c '
 import json, sys
