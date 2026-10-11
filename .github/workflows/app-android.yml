@@ -218,21 +218,36 @@ jobs:
             require("fs").writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
           ' "$latest" "$version" "$BUILD_NUMBER" "$built_at" "$size"
 
-          # $1 = 올릴 파일, $2 = 버킷 안 경로, $3 = Content-Type. 응답 내용·주소는 출력하지 않고 상태 코드만 확인
+          # 키 형식에 맞는 인증 헤더 (예전 service_role JWT 는 Authorization 에도, 새 sb_secret_ 키는 apikey 에만)
+          auth_headers=(-H "apikey: $SUPABASE_SERVICE_ROLE_KEY")
+          if [[ "$SUPABASE_SERVICE_ROLE_KEY" == *.*.* ]]; then
+            auth_headers+=(-H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+          fi
+          resp="$RUNNER_TEMP/upload-response.json"
+
+          # $1 = 올릴 파일, $2 = 버킷 안 경로, $3 = Content-Type
+          # 주소·키는 출력하지 않고, 실패하면 Storage 가 돌려준 오류 코드·문구만 보여 줌
           upload() {
             local status code=0
-            status="$(curl -s -o /dev/null -w '%{http_code}' --retry 2 --retry-delay 5 --max-time 900 \
+            status="$(curl -s -o "$resp" -w '%{http_code}' --retry 2 --retry-delay 5 --max-time 900 \
               -X POST "$base/$2" \
-              -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+              "${auth_headers[@]}" \
               -H "x-upsert: true" \
               -H "Cache-Control: max-age=60" \
               -H "Content-Type: $3" \
               --data-binary "@$1")" || code=$?
             if [ "$code" -ne 0 ] || [ "${status:0:1}" != "2" ]; then
-              echo "::error title=업로드 실패::$2 업로드 실패 (HTTP ${status:-000}, curl $code). 버킷 app-releases 가 있는지, SQL 을 실행했는지, 키가 맞는지 확인해 주세요."
+              local detail=""
+              detail="$(node -e '
+                let o = {}; try { o = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")) } catch {}
+                const pick = (v) => String(v ?? "").replace(/https?:\/\/\S+/g, "(주소)").slice(0, 200)
+                console.log([pick(o.statusCode), pick(o.error), pick(o.message)].filter(Boolean).join(" / "))
+              ' "$resp" 2>/dev/null || true)"
+              echo "::error title=업로드 실패::$2 업로드 실패 (HTTP ${status:-000}, curl $code${detail:+, $detail}). 버킷 app-releases 가 있는지, SQL 을 실행했는지, 키가 맞는지 확인해 주세요."
+              rm -f "$resp"
               return 1
             fi
+            rm -f "$resp"
             echo "업로드 완료: $2 (HTTP $status)"
           }
 
