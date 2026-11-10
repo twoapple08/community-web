@@ -1,0 +1,39 @@
+name: Storage → R2 이전 (1회용)
+
+# 기존 Supabase Storage 사진·동영상을 Cloudflare R2 로 복사
+# GitHub → Actions → "Storage → R2 이전" → Run workflow 로 수동 실행
+# 저장소 Settings → Secrets and variables → Actions 에 아래 비밀값이 있어야 함:
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '미리보기만 (true = 파일 개수만 세고 복사 안 함)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: 복사 실행
+        run: node scripts/migrate-storage-to-r2.mjs
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}

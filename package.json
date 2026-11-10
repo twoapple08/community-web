@@ -28,6 +28,7 @@
     "@tiptap/pm": "^3.31.4",
     "@tiptap/react": "^3.31.4",
     "@tiptap/starter-kit": "^3.31.4",
+    "aws4fetch": "^1.0.20",
     "lucide-react": "^1.49.0",
     "next": "16.3.8",
     "react": "19.2.8",
