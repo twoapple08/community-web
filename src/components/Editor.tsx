@@ -39,10 +39,10 @@ import {
   Outdent,
   HelpCircle
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { useState, useRef, useMemo, useEffect, useSyncExternalStore } from 'react'
 import { captureVideoFirstFrame } from '@/lib/videoUtils'
 import { compressPostImage } from '@/lib/imageCompress'
+import { uploadMedia, uploadToSupabaseStorage } from '@/lib/mediaUpload'
 import {
   applyTextStylePatch,
   isEmptyTextStylePatch,
@@ -474,21 +474,9 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
       let finalUrl: string | null = null
 
-      try {
-        const { error: err1 } = await supabase.storage.from('posts').upload(fileName, file)
-        if (!err1) {
-          const { data } = supabase.storage.from('posts').getPublicUrl(fileName)
-          if (data?.publicUrl) finalUrl = data.publicUrl
-        } else {
-          const { error: err2 } = await supabase.storage.from('post-images').upload(fileName, file)
-          if (!err2) {
-            const { data } = supabase.storage.from('post-images').getPublicUrl(fileName)
-            if (data?.publicUrl) finalUrl = data.publicUrl
-          }
-        }
-      } catch (err) {
-        console.warn("Storage upload error:", err)
-      }
+      // R2(무료 트래픽) 우선, 안 되면 Supabase Storage 'posts' → 'post-images' 순서로 시도
+      finalUrl = await uploadMedia('posts', fileName, file)
+      if (!finalUrl) finalUrl = await uploadToSupabaseStorage('post-images', fileName, file)
 
       if (!finalUrl) {
         finalUrl = await new Promise<string>((resolve) => {
@@ -534,37 +522,29 @@ export default function Editor({ content, onChange, minHeight = '320px' }: Edito
 
       if (thumbBlob) {
         const thumbName = `thumb-${Date.now()}-${Math.random().toString(36).substring(2)}.jpg`
-        const { error: thumbErr } = await supabase.storage.from('posts').upload(thumbName, thumbBlob, { contentType: 'image/jpeg' })
-        if (!thumbErr) {
-          const { data } = supabase.storage.from('posts').getPublicUrl(thumbName)
-          if (data?.publicUrl) posterUrl = data.publicUrl
-        }
+        posterUrl = await uploadMedia('posts', thumbName, thumbBlob, { contentType: 'image/jpeg', prefix: 'thumb-' })
       }
 
       setUploadProgressText('동영상 서버 전송 중...')
       const videoExt = file.name.split('.').pop() || 'mp4'
       const videoFileName = `vid-${Date.now()}-${Math.random().toString(36).substring(2)}.${videoExt}`
 
-      const { error: videoErr } = await supabase.storage.from('post-videos').upload(videoFileName, file, {
+      const videoUrl = await uploadMedia('post-videos', videoFileName, file, {
         contentType: file.type || 'video/mp4',
+        prefix: 'vid-',
       })
 
-      if (videoErr) {
+      if (!videoUrl) {
         setPopup({
           show: true,
           title: '업로드 실패',
-          message: `동영상 업로드 실패: ${videoErr.message}`,
+          message: '동영상 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.',
         })
       } else {
-        const { data } = supabase.storage.from('post-videos').getPublicUrl(videoFileName)
-        const videoUrl = data?.publicUrl
-
-        if (videoUrl) {
-          const posterAttr = posterUrl ? ` poster="${posterUrl}"` : ''
-          const videoHtml = `<video src="${videoUrl}"${posterAttr} controls playsinline preload="metadata" class="w-full max-h-[620px] my-3 bg-black rounded-none border border-zinc-300 dark:border-zinc-800 object-contain shadow-sm"></video><p></p>`
-          editor.chain().focus().insertContent(videoHtml).run()
-          onChange(editor.getHTML())
-        }
+        const posterAttr = posterUrl ? ` poster="${posterUrl}"` : ''
+        const videoHtml = `<video src="${videoUrl}"${posterAttr} controls playsinline preload="metadata" class="w-full max-h-[620px] my-3 bg-black rounded-none border border-zinc-300 dark:border-zinc-800 object-contain shadow-sm"></video><p></p>`
+        editor.chain().focus().insertContent(videoHtml).run()
+        onChange(editor.getHTML())
       }
     } catch (err) {
       setPopup({

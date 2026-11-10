@@ -11,6 +11,7 @@ import CommentText from './CommentText'
 import Avatar from './Avatar'
 import { fetchRoleMap } from '@/lib/roles'
 import { compressCommentImage } from '@/lib/imageCompress'
+import { uploadMedia } from '@/lib/mediaUpload'
 import { fetchAvatarMap, openUserProfile } from '@/lib/userProfile'
 
 interface CommentItem {
@@ -275,13 +276,10 @@ export default function CommentsSection({ postId, currentUserId, currentUserRole
     const fileName = `comment-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
 
     try {
-      const { error } = await supabase.storage.from('comment-images').upload(fileName, file)
-      if (!error) {
-        const { data } = supabase.storage.from('comment-images').getPublicUrl(fileName)
-        if (data?.publicUrl) {
-          if (isReply) setReplyImage(data.publicUrl)
-          else setAttachedImage(data.publicUrl)
-        }
+      const uploadedUrl = await uploadMedia('comment-images', fileName, file, { prefix: 'comment-' })
+      if (uploadedUrl) {
+        if (isReply) setReplyImage(uploadedUrl)
+        else setAttachedImage(uploadedUrl)
       } else {
         const reader = new FileReader()
         reader.onload = () => {
