@@ -1,0 +1,45 @@
+name: R2 미사용 파일 정리
+
+# 삭제된 글·수정으로 빠진 사진·쓰다 만 글의 사진처럼 DB 에서 안 쓰이는 R2 파일을 trash/ 폴더로 옮김
+# GitHub → Actions → "R2 미사용 파일 정리" → Run workflow 로 수동 실행
+#   preview : 옮길 목록만 보기 (기본)
+#   move    : 실제로 trash/ 로 옮기기
+#   restore : trash/ 안의 파일을 전부 원래 자리로 되돌리기
+# 필요한 비밀값은 "Storage → R2 이전" 과 같음
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 방식'
+        type: choice
+        options:
+          - preview
+          - move
+          - restore
+        default: preview
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: 정리 실행
+        run: node scripts/r2-cleanup-unused.mjs
+        env:
+          MODE: ${{ inputs.mode }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
